@@ -1,3 +1,37 @@
 # backend/data
 
-Data-access layer: migrations and one module per entity. The only folder that may import the database driver.
+Data-access layer: migrations and one module per entity. The only folder that may import the
+database driver (enforced by ESLint).
+
+## Rules
+
+- **User scoping.** Every function on a user-owned table takes a `UserId` (a branded type
+  from `ids.ts`). A plain string does not type-check, so a query cannot be written without it.
+  `regions` (reference data) and `suppression_list` (global, see below) are the exceptions.
+- **Evidence.** Company and contact writes only accept `Sourced<T>` values (value, source URL,
+  fetched-at time, fact or estimate). Each value is written together with its `evidence` row in
+  one transaction; a value with a missing or invalid source rejects the whole write.
+- **Company dedupe** (per user): Google place ID, then normalized domain, then normalized name
+  plus governorate. Names drop accents, punctuation and the legal forms SARL, SUARL, SA, SAS,
+  Ste and Société. Social and webmail hosts (Facebook, Instagram, Gmail, ...) never count as a
+  domain. A name match is skipped when both sides have a different place ID or domain, so
+  branches that share a name stay separate. On a match, newer values replace older ones;
+  identifiers only fill in when empty.
+- **Contact dedupe** on LinkedIn public ID (case-insensitive). Contacts without one are not
+  deduplicated yet.
+- **Suppression** is global: an objection recorded by any user blocks the email, phone (any
+  format) or LinkedIn ID for everyone. Every contact write checks it, including an update to a
+  contact whose stored email or phone was suppressed later, and raises `SuppressedContactError`.
+- **Run steps** store the Apify run and dataset IDs (`recordApifyStart`) before any waiting. A
+  step can only be started once, and the database rejects an Apify step past `pending` without
+  both IDs. `(run, stage, step_key)` is unique, so a unit of work is never planned twice.
+- **CRM leads** are unique per user, company and contact, and an upsert never changes the
+  stage, so a dismissed or opted-out lead never comes back as new.
+
+## Commands
+
+```sh
+npm run db:migrate    # apply pending migrations and seed regions
+npm run db:rollback   # undo the latest migration
+npm run db:seed       # regions plus a placeholder demo user, company, contact and lead
+```

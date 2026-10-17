@@ -1,0 +1,236 @@
+import { withTransaction, type Queryable } from './db.js';
+import { insertEvidence } from './evidence.js';
+import type { UserId } from './ids.js';
+import { normalizeCompanyName, normalizeDomain, normalizeEmail } from './normalize.js';
+import type { Sourced } from './sourced.js';
+
+export interface CompanyRecord {
+  id: string;
+  name: string;
+  normalizedName: string;
+  governorate: string;
+  sector: string | null;
+  googlePlaceId: string | null;
+  domain: string | null;
+  website: string | null;
+  phone: string | null;
+  email: string | null;
+  linkedinUrl: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** Every value arrives with its source. Optional fields are left unchanged when absent. */
+export interface CompanyInput {
+  name: Sourced<string>;
+  /** A region ID from the regions table. */
+  governorate: Sourced<string>;
+  googlePlaceId?: Sourced<string>;
+  website?: Sourced<string>;
+  sector?: Sourced<string>;
+  phone?: Sourced<string>;
+  email?: Sourced<string>;
+  linkedinUrl?: Sourced<string>;
+}
+
+export type MatchedBy = 'google_place_id' | 'domain' | 'name_governorate' | null;
+
+export interface UpsertCompanyResult {
+  company: CompanyRecord;
+  created: boolean;
+  matchedBy: MatchedBy;
+}
+
+interface Row {
+  id: string;
+  name: string;
+  normalized_name: string;
+  governorate: string;
+  sector: string | null;
+  google_place_id: string | null;
+  domain: string | null;
+  website: string | null;
+  phone: string | null;
+  email: string | null;
+  linkedin_url: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+const toCompany = (r: Row): CompanyRecord => ({
+  id: r.id,
+  name: r.name,
+  normalizedName: r.normalized_name,
+  governorate: r.governorate,
+  sector: r.sector,
+  googlePlaceId: r.google_place_id,
+  domain: r.domain,
+  website: r.website,
+  phone: r.phone,
+  email: r.email,
+  linkedinUrl: r.linkedin_url,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+});
+
+/**
+ * Finds the existing company in priority order: Google place ID, then normalized domain,
+ * then normalized name plus governorate. A name match is skipped when both sides carry a
+ * different place ID or domain: those are two businesses that share a name (e.g. branches).
+ */
+async function findMatch(
+  db: Queryable,
+  userId: UserId,
+  key: {
+    placeId: string | null;
+    domain: string | null;
+    normalizedName: string;
+    governorate: string;
+  },
+): Promise<{ row: Row; matchedBy: Exclude<MatchedBy, null> } | null> {
+  if (key.placeId) {
+    const { rows } = await db.query<Row>(
+      'SELECT * FROM companies WHERE user_id = $1 AND google_place_id = $2 FOR UPDATE',
+      [userId, key.placeId],
+    );
+    if (rows[0]) return { row: rows[0], matchedBy: 'google_place_id' };
+  }
+  if (key.domain) {
+    const { rows } = await db.query<Row>(
+      'SELECT * FROM companies WHERE user_id = $1 AND domain = $2 FOR UPDATE',
+      [userId, key.domain],
+    );
+    if (rows[0]) return { row: rows[0], matchedBy: 'domain' };
+  }
+  const { rows } = await db.query<Row>(
+    `SELECT * FROM companies
+      WHERE user_id = $1 AND normalized_name = $2 AND governorate = $3
+        AND ($4::text IS NULL OR google_place_id IS NULL OR google_place_id = $4)
+        AND ($5::text IS NULL OR domain IS NULL OR domain = $5)
+      ORDER BY created_at LIMIT 1 FOR UPDATE`,
+    [userId, key.normalizedName, key.governorate, key.placeId, key.domain],
+  );
+  return rows[0] ? { row: rows[0], matchedBy: 'name_governorate' } : null;
+}
+
+/**
+ * Inserts or merges a company and records evidence for every value given. On a match,
+ * newer values replace older ones, except identifiers (place ID, domain), which are only
+ * filled in when empty. Evidence keeps the full history either way.
+ */
+export async function upsertCompany(
+  db: Queryable,
+  userId: UserId,
+  input: CompanyInput,
+  runId: string | null = null,
+): Promise<UpsertCompanyResult> {
+  return withTransaction(db, async (tx) => {
+    const normalizedName = normalizeCompanyName(input.name.value);
+    const placeId = input.googlePlaceId?.value.trim() || null;
+    const domain = input.website ? normalizeDomain(input.website.value) : null;
+    const match = await findMatch(tx, userId, {
+      placeId,
+      domain,
+      normalizedName,
+      governorate: input.governorate.value,
+    });
+
+    const values = {
+      name: input.name.value.trim(),
+      normalized_name: normalizedName,
+      governorate: input.governorate.value,
+      sector: input.sector?.value ?? null,
+      website: input.website?.value.trim() ?? null,
+      phone: input.phone?.value.trim() ?? null,
+      email: input.email ? normalizeEmail(input.email.value) : null,
+      linkedin_url: input.linkedinUrl?.value.trim() ?? null,
+    };
+
+    let row: Row;
+    if (!match) {
+      const { rows } = await tx.query<Row>(
+        `INSERT INTO companies (user_id, name, normalized_name, governorate, sector, google_place_id,
+                                domain, website, phone, email, linkedin_url)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+        [
+          userId,
+          values.name,
+          normalizedName,
+          values.governorate,
+          values.sector,
+          placeId,
+          domain,
+          values.website,
+          values.phone,
+          values.email,
+          values.linkedin_url,
+        ],
+      );
+      row = rows[0]!;
+    } else {
+      // Identifiers fill only when empty and not already owned by another company.
+      const { rows } = await tx.query<Row>(
+        `UPDATE companies c SET
+           name = $3, normalized_name = $4, governorate = $5,
+           sector = COALESCE($6, c.sector),
+           google_place_id = COALESCE(c.google_place_id, CASE WHEN NOT EXISTS
+             (SELECT 1 FROM companies o WHERE o.user_id = $1 AND o.google_place_id = $7) THEN $7 END),
+           domain = COALESCE(c.domain, CASE WHEN NOT EXISTS
+             (SELECT 1 FROM companies o WHERE o.user_id = $1 AND o.domain = $8) THEN $8 END),
+           website = COALESCE($9, c.website), phone = COALESCE($10, c.phone),
+           email = COALESCE($11, c.email), linkedin_url = COALESCE($12, c.linkedin_url),
+           updated_at = now()
+         WHERE c.user_id = $1 AND c.id = $2 RETURNING *`,
+        [
+          userId,
+          match.row.id,
+          values.name,
+          normalizedName,
+          values.governorate,
+          values.sector,
+          placeId,
+          domain,
+          values.website,
+          values.phone,
+          values.email,
+          values.linkedin_url,
+        ],
+      );
+      row = rows[0]!;
+    }
+
+    const target = { companyId: row.id };
+    for (const [field, sourced] of Object.entries(input) as [
+      string,
+      Sourced<string> | undefined,
+    ][]) {
+      if (sourced) await insertEvidence(tx, userId, target, field, sourced, runId);
+    }
+    return { company: toCompany(row), created: !match, matchedBy: match?.matchedBy ?? null };
+  });
+}
+
+export async function getCompany(
+  db: Queryable,
+  userId: UserId,
+  companyId: string,
+): Promise<CompanyRecord | null> {
+  const { rows } = await db.query<Row>('SELECT * FROM companies WHERE user_id = $1 AND id = $2', [
+    userId,
+    companyId,
+  ]);
+  return rows[0] ? toCompany(rows[0]) : null;
+}
+
+export async function listCompanies(
+  db: Queryable,
+  userId: UserId,
+  filter: { governorate?: string } = {},
+): Promise<CompanyRecord[]> {
+  const { rows } = await db.query<Row>(
+    `SELECT * FROM companies WHERE user_id = $1 AND ($2::text IS NULL OR governorate = $2)
+      ORDER BY name`,
+    [userId, filter.governorate ?? null],
+  );
+  return rows.map(toCompany);
+}
