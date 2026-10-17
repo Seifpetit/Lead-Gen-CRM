@@ -74,3 +74,8 @@ export function phoneKey(phone: string): string {
 export function normalizeLinkedinId(id: string): string {
   return decodeURIComponent(id).trim().toLowerCase();
 }
+
+/** "  Usine  Agroalimentaire " -> "usine agroalimentaire": groups the same wording across runs. */
+export function normalizeQuery(query: string): string {
+  return stripAccents(query).toLowerCase().replace(/\s+/g, ' ').trim();
+}

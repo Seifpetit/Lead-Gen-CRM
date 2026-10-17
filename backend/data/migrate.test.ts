@@ -20,17 +20,20 @@ async function tables(): Promise<string[]> {
 }
 
 describe('migrations', () => {
-  it('creates every entity table', async () => {
+  it('creates every entity table and view', async () => {
     expect(await tables()).toEqual([
       'apify_events',
       'companies',
       'contacts',
       'crm_leads',
       'evidence',
+      'region_cells',
       'region_coverage',
+      'region_coverage_rollup',
       'regions',
       'run_steps',
       'runs',
+      'search_queries',
       'suppression_list',
       'users',
     ]);
@@ -44,6 +47,6 @@ describe('migrations', () => {
     expect(await migrateDown(db, Infinity)).toEqual(MIGRATIONS.map((m) => m.id).reverse());
     expect(await tables()).toEqual([]);
     expect(await migrateUp(db)).toEqual(MIGRATIONS.map((m) => m.id));
-    expect(await tables()).toHaveLength(11);
+    expect(await tables()).toHaveLength(14);
   });
 });

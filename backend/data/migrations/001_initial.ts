@@ -21,19 +21,40 @@ export const migration: Migration = {
       country text NOT NULL DEFAULT 'TN'
     );
 
+    -- Each region split into map rectangles, so discovery can search small areas (a Maps search
+    -- caps its results) and track which ones are exhausted. A dense cell can be split further;
+    -- its children point to it through parent_cell_id. Geometry, not user data: no user_id.
+    CREATE TABLE region_cells (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      region_id text NOT NULL REFERENCES regions (id),
+      parent_cell_id uuid REFERENCES region_cells (id),
+      cell_key text NOT NULL,
+      south double precision NOT NULL CHECK (south BETWEEN -90 AND 90),
+      west double precision NOT NULL CHECK (west BETWEEN -180 AND 180),
+      north double precision NOT NULL CHECK (north BETWEEN -90 AND 90),
+      east double precision NOT NULL CHECK (east BETWEEN -180 AND 180),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (region_id, cell_key),
+      CHECK (north > south AND east > west)
+    );
+    CREATE INDEX region_cells_parent_idx ON region_cells (parent_cell_id);
+
+    -- Coverage is kept per cell as counts (not shares), so it sums correctly into a region:
+    -- see the region_coverage_rollup view below.
     CREATE TABLE region_coverage (
       user_id uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-      region_id text NOT NULL REFERENCES regions (id),
+      region_cell_id uuid NOT NULL REFERENCES region_cells (id) ON DELETE CASCADE,
       places_found integer NOT NULL DEFAULT 0 CHECK (places_found >= 0),
+      qualified_companies integer NOT NULL DEFAULT 0 CHECK (qualified_companies >= 0),
+      companies_with_decision_maker integer NOT NULL DEFAULT 0
+        CHECK (companies_with_decision_maker >= 0),
+      decision_makers_with_channel integer NOT NULL DEFAULT 0
+        CHECK (decision_makers_with_channel >= 0),
       leads_found integer NOT NULL DEFAULT 0 CHECK (leads_found >= 0),
-      qualified_share numeric(5, 4) CHECK (qualified_share BETWEEN 0 AND 1),
-      decision_maker_share numeric(5, 4) CHECK (decision_maker_share BETWEEN 0 AND 1),
-      channel_share numeric(5, 4) CHECK (channel_share BETWEEN 0 AND 1),
       spent_usd numeric(12, 4) NOT NULL DEFAULT 0 CHECK (spent_usd >= 0),
-      cost_per_lead_usd numeric(12, 4) CHECK (cost_per_lead_usd >= 0),
       last_run_at timestamptz,
       updated_at timestamptz NOT NULL DEFAULT now(),
-      PRIMARY KEY (user_id, region_id)
+      PRIMARY KEY (user_id, region_cell_id)
     );
 
     CREATE TABLE runs (
@@ -79,6 +100,28 @@ export const migration: Migration = {
     );
     CREATE INDEX run_steps_unfinished_idx ON run_steps (status) WHERE status IN ('started', 'running');
 
+    -- One row per search sent to a provider, so the scheduler can see which cells and
+    -- wordings have stopped finding new places.
+    CREATE TABLE search_queries (
+      id bigserial PRIMARY KEY,
+      user_id uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+      run_id uuid NOT NULL REFERENCES runs (id) ON DELETE CASCADE,
+      run_step_id uuid REFERENCES run_steps (id) ON DELETE SET NULL,
+      region_cell_id uuid NOT NULL REFERENCES region_cells (id) ON DELETE CASCADE,
+      provider text NOT NULL,
+      query_text text NOT NULL,
+      normalized_query text NOT NULL,
+      requests_used integer NOT NULL DEFAULT 0 CHECK (requests_used >= 0),
+      results_returned integer NOT NULL DEFAULT 0 CHECK (results_returned >= 0),
+      new_places_found integer NOT NULL DEFAULT 0
+        CHECK (new_places_found BETWEEN 0 AND results_returned),
+      cost_usd numeric(12, 4) NOT NULL DEFAULT 0 CHECK (cost_usd >= 0),
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX search_queries_cell_idx
+      ON search_queries (user_id, region_cell_id, provider, normalized_query);
+    CREATE INDEX search_queries_run_idx ON search_queries (run_id);
+
     CREATE TABLE apify_events (
       id bigserial PRIMARY KEY,
       user_id uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
@@ -105,9 +148,14 @@ export const migration: Migration = {
       phone text,
       email text,
       linkedin_url text,
+      -- Where the stored fields came from (e.g. 'google_maps') and when they must be refreshed
+      -- or dropped, for providers whose terms limit how long their content may be kept.
+      source_provider text,
+      refresh_by timestamptz,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE INDEX companies_refresh_idx ON companies (user_id, refresh_by) WHERE refresh_by IS NOT NULL;
     CREATE UNIQUE INDEX companies_place_key ON companies (user_id, google_place_id)
       WHERE google_place_id IS NOT NULL;
     CREATE UNIQUE INDEX companies_domain_key ON companies (user_id, domain) WHERE domain IS NOT NULL;
@@ -182,17 +230,36 @@ export const migration: Migration = {
       created_at timestamptz NOT NULL DEFAULT now(),
       UNIQUE (kind, value)
     );
+
+    -- Region totals summed from cells, with the shares and cost per lead derived from the sums.
+    CREATE VIEW region_coverage_rollup AS
+    SELECT c.user_id,
+           rc.region_id,
+           count(*)::integer AS cells_covered,
+           sum(c.places_found)::integer AS places_found,
+           sum(c.qualified_companies)::integer AS qualified_companies,
+           sum(c.companies_with_decision_maker)::integer AS companies_with_decision_maker,
+           sum(c.decision_makers_with_channel)::integer AS decision_makers_with_channel,
+           sum(c.leads_found)::integer AS leads_found,
+           sum(c.spent_usd) AS spent_usd,
+           max(c.last_run_at) AS last_run_at
+      FROM region_coverage c
+      JOIN region_cells rc ON rc.id = c.region_cell_id
+     GROUP BY c.user_id, rc.region_id;
   `,
   down: /* sql */ `
+    DROP VIEW region_coverage_rollup;
     DROP TABLE suppression_list;
     DROP TABLE crm_leads;
     DROP TABLE evidence;
     DROP TABLE contacts;
     DROP TABLE companies;
     DROP TABLE apify_events;
+    DROP TABLE search_queries;
     DROP TABLE run_steps;
     DROP TABLE runs;
     DROP TABLE region_coverage;
+    DROP TABLE region_cells;
     DROP TABLE regions;
     DROP TABLE users;
   `,

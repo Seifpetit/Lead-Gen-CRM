@@ -1,5 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { getCompany, listCompanies, upsertCompany, type CompanyInput } from './companies.js';
+import {
+  getCompany,
+  listCompanies,
+  listCompaniesDueForRefresh,
+  upsertCompany,
+  type CompanyInput,
+} from './companies.js';
 import type { Db } from './db.js';
 import { listEvidence } from './evidence.js';
 import type { UserId } from './ids.js';
@@ -170,5 +176,33 @@ describe('upsertCompany evidence', () => {
     const other = await makeUser(db);
     expect(await getCompany(db, other, c.id)).toBeNull();
     expect(await listEvidence(db, other, { companyId: c.id })).toEqual([]);
+  });
+});
+
+describe('provider refresh', () => {
+  it('stores source provider and refresh date without making them evidence', async () => {
+    const refreshBy = new Date('2026-10-31T00:00:00Z');
+    const { company: c } = await upsertCompany(
+      db,
+      user,
+      company({ googlePlaceId: fact('place-1'), sourceProvider: 'google_maps', refreshBy }),
+    );
+    expect(c).toMatchObject({ sourceProvider: 'google_maps', refreshBy });
+    const ev = await listEvidence(db, user, { companyId: c.id });
+    expect(ev.map((e) => e.field)).not.toContain('refreshBy');
+
+    expect(await listCompaniesDueForRefresh(db, user, new Date('2026-10-30T00:00:00Z'))).toEqual(
+      [],
+    );
+    expect((await listCompaniesDueForRefresh(db, user, refreshBy)).map((x) => x.id)).toEqual([
+      c.id,
+    ]);
+
+    // A refresh moves the date forward; companies without one never come due.
+    const later = new Date('2026-11-30T00:00:00Z');
+    await upsertCompany(db, user, company({ googlePlaceId: fact('place-1'), refreshBy: later }));
+    await upsertCompany(db, user, company({ name: 'Other' }));
+    expect(await listCompaniesDueForRefresh(db, user, refreshBy)).toEqual([]);
+    expect(await listCompaniesDueForRefresh(db, await makeUser(db), later)).toEqual([]);
   });
 });

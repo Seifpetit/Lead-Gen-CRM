@@ -25,6 +25,18 @@ database driver (enforced by ESLint).
 - **Run steps** store the Apify run and dataset IDs (`recordApifyStart`) before any waiting. A
   step can only be started once, and the database rejects an Apify step past `pending` without
   both IDs. `(run, stage, step_key)` is unique, so a unit of work is never planned twice.
+- **Region cells** split each region into map rectangles (`createRegionGrid`); a dense cell is
+  split further with `splitCell`, and `listCells(..., { leafOnly: true })` gives the cells to
+  search. Cells are shared geometry, not user data. No real governorate bounds are seeded yet.
+- **Coverage** is stored per user and cell as counts (places, qualified, with decision-maker,
+  with channel, leads, spend), added to after each run. Shares and cost per lead are derived
+  from the counts; `listCoverage` rolls cells up per region (the `region_coverage_rollup` view).
+- **Search queries** log every search: wording, cell, provider, requests, results, new places,
+  cost, run. `queryYieldForCell` groups them by normalized wording, and `lastNewPlacesFound = 0`
+  marks a wording that has stopped finding anything new in that cell.
+- **Provider refresh**: companies carry `source_provider` and `refresh_by` (metadata, not
+  evidence). `listCompaniesDueForRefresh` returns the rows whose provider content must be
+  refreshed or dropped.
 - **CRM leads** are unique per user, company and contact, and an upsert never changes the
   stage, so a dismissed or opted-out lead never comes back as new.
 

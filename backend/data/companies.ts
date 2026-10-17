@@ -16,6 +16,8 @@ export interface CompanyRecord {
   phone: string | null;
   email: string | null;
   linkedinUrl: string | null;
+  sourceProvider: string | null;
+  refreshBy: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -31,6 +33,10 @@ export interface CompanyInput {
   phone?: Sourced<string>;
   email?: Sourced<string>;
   linkedinUrl?: Sourced<string>;
+  /** Provider the fields came from, e.g. 'google_maps'. Metadata, not a sourced fact. */
+  sourceProvider?: string;
+  /** When this provider's content must be refreshed or dropped under its storage terms. */
+  refreshBy?: Date;
 }
 
 export type MatchedBy = 'google_place_id' | 'domain' | 'name_governorate' | null;
@@ -53,6 +59,8 @@ interface Row {
   phone: string | null;
   email: string | null;
   linkedin_url: string | null;
+  source_provider: string | null;
+  refresh_by: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -69,6 +77,8 @@ const toCompany = (r: Row): CompanyRecord => ({
   phone: r.phone,
   email: r.email,
   linkedinUrl: r.linkedin_url,
+  sourceProvider: r.source_provider,
+  refreshBy: r.refresh_by,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -144,14 +154,16 @@ export async function upsertCompany(
       phone: input.phone?.value.trim() ?? null,
       email: input.email ? normalizeEmail(input.email.value) : null,
       linkedin_url: input.linkedinUrl?.value.trim() ?? null,
+      source_provider: input.sourceProvider ?? null,
+      refresh_by: input.refreshBy ?? null,
     };
 
     let row: Row;
     if (!match) {
       const { rows } = await tx.query<Row>(
         `INSERT INTO companies (user_id, name, normalized_name, governorate, sector, google_place_id,
-                                domain, website, phone, email, linkedin_url)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+                                domain, website, phone, email, linkedin_url, source_provider, refresh_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
         [
           userId,
           values.name,
@@ -164,6 +176,8 @@ export async function upsertCompany(
           values.phone,
           values.email,
           values.linkedin_url,
+          values.source_provider,
+          values.refresh_by,
         ],
       );
       row = rows[0]!;
@@ -179,6 +193,8 @@ export async function upsertCompany(
              (SELECT 1 FROM companies o WHERE o.user_id = $1 AND o.domain = $8) THEN $8 END),
            website = COALESCE($9, c.website), phone = COALESCE($10, c.phone),
            email = COALESCE($11, c.email), linkedin_url = COALESCE($12, c.linkedin_url),
+           source_provider = COALESCE($13, c.source_provider),
+           refresh_by = COALESCE($14, c.refresh_by),
            updated_at = now()
          WHERE c.user_id = $1 AND c.id = $2 RETURNING *`,
         [
@@ -194,13 +210,16 @@ export async function upsertCompany(
           values.phone,
           values.email,
           values.linkedin_url,
+          values.source_provider,
+          values.refresh_by,
         ],
       );
       row = rows[0]!;
     }
 
     const target = { companyId: row.id };
-    for (const [field, sourced] of Object.entries(input) as [
+    const { sourceProvider, refreshBy, ...sourcedFields } = input;
+    for (const [field, sourced] of Object.entries(sourcedFields) as [
       string,
       Sourced<string> | undefined,
     ][]) {
@@ -231,6 +250,19 @@ export async function listCompanies(
     `SELECT * FROM companies WHERE user_id = $1 AND ($2::text IS NULL OR governorate = $2)
       ORDER BY name`,
     [userId, filter.governorate ?? null],
+  );
+  return rows.map(toCompany);
+}
+
+/** Companies whose provider content must be refreshed or dropped by `now`, oldest first. */
+export async function listCompaniesDueForRefresh(
+  db: Queryable,
+  userId: UserId,
+  now: Date,
+): Promise<CompanyRecord[]> {
+  const { rows } = await db.query<Row>(
+    `SELECT * FROM companies WHERE user_id = $1 AND refresh_by <= $2 ORDER BY refresh_by`,
+    [userId, now],
   );
   return rows.map(toCompany);
 }
