@@ -1,0 +1,81 @@
+[
+  {
+    "placeId": "ChIJ-fixture-maps-001",
+    "title": "Huilerie El Fixture",
+    "address": "Route de Mahdia km 9, Sfax 3000, Tunisie",
+    "categoryName": "Huilerie",
+    "categories": ["Huilerie", "Producteur d'huile d'olive"],
+    "website": "https://huilerie-elfixture.example/",
+    "phone": "+216 74 000 101",
+    "phoneUnformatted": "+21674000101",
+    "emails": ["Contact@huilerie-elfixture.example"],
+    "linkedIns": ["https://www.linkedin.com/company/huilerie-el-fixture/"],
+    "location": { "lat": 34.7612, "lng": 10.7788 },
+    "permanentlyClosed": false,
+    "temporarilyClosed": false,
+    "reviewsCount": 37,
+    "url": "https://www.google.com/maps/place/?q=place_id:ChIJ-fixture-maps-001",
+    "scrapedAt": "2026-10-17T09:00:00.000Z"
+  },
+  {
+    "placeId": "ChIJ-fixture-maps-002",
+    "title": "Textiles Fixture Sud SARL",
+    "address": "Zone industrielle Sidi Salem, Sfax, Tunisie",
+    "categoryName": "Usine textile",
+    "categories": ["Usine textile"],
+    "website": null,
+    "phone": "98 000 202",
+    "contactDetails": { "emails": [] },
+    "location": { "lat": 34.7421, "lng": 10.7311 },
+    "reviewsCount": 6,
+    "url": "https://www.google.com/maps/place/?q=place_id:ChIJ-fixture-maps-002",
+    "scrapedAt": "2026-10-17T09:00:05.000Z"
+  },
+  {
+    "placeId": "ChIJ-fixture-maps-003",
+    "title": "Trans-Fixture Logistique",
+    "address": "Port de Sfax, Tunisie",
+    "categoryName": "Transporteur",
+    "categories": ["Transporteur", "Service de transport de marchandises"],
+    "website": "https://trans-fixture.example/",
+    "phone": "+216 74 000 303",
+    "url": "https://www.google.com/maps/place/?q=place_id:ChIJ-fixture-maps-003",
+    "scrapedAt": "2026-10-17T09:00:10.000Z"
+  },
+  {
+    "placeId": "ChIJ-fixture-maps-004",
+    "title": "Restaurant Le Fixture",
+    "address": "Avenue Hedi Chaker, Sfax, Tunisie",
+    "categoryName": "Restaurant",
+    "categories": ["Restaurant"],
+    "phone": "+216 74 000 404",
+    "reviewsCount": 812,
+    "url": "https://www.google.com/maps/place/?q=place_id:ChIJ-fixture-maps-004",
+    "scrapedAt": "2026-10-17T09:00:15.000Z"
+  },
+  {
+    "placeId": "ChIJ-fixture-maps-005",
+    "title": "Société Fixture Industries",
+    "address": "Route de l'Aéroport km 3, Sfax, Tunisie",
+    "categoryName": "Entreprise",
+    "categories": ["Entreprise"],
+    "website": "https://fixture-industries.example/",
+    "phone": "+216 74 000 505",
+    "emails": ["info@fixture-industries.example"],
+    "reviewsCount": 2,
+    "url": "https://www.google.com/maps/place/?q=place_id:ChIJ-fixture-maps-005",
+    "scrapedAt": "2026-10-17T09:00:20.000Z"
+  },
+  {
+    "placeId": "ChIJ-fixture-maps-006",
+    "title": "Cimenterie Fixture Fermée",
+    "categoryName": "Cimenterie",
+    "permanentlyClosed": true,
+    "url": "https://www.google.com/maps/place/?q=place_id:ChIJ-fixture-maps-006",
+    "scrapedAt": "2026-10-17T09:00:25.000Z"
+  },
+  {
+    "title": "Item without a place ID (dropped)",
+    "url": "https://www.google.com/maps/place/?q=place_id:missing"
+  }
+]

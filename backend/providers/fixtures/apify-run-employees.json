@@ -1,0 +1,9 @@
+{
+  "data": {
+    "id": "fixtureEmployeesRun001",
+    "status": "SUCCEEDED",
+    "defaultDatasetId": "fixtureEmployeesDataset001",
+    "usageTotalUsd": 0.004,
+    "chargedEventCounts": { "actor-start": 1, "short-profile": 6 }
+  }
+}

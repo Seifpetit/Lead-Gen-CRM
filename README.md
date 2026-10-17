@@ -10,8 +10,9 @@ shared/      Types used by both sides (Lead, Company, Contact, Evidence, Run, Ru
 backend/
   config/    Typed env loader, job-title dictionary (FR/EN), freight sectors, Tunisian governorates
   data/      Data-access layer: the only folder allowed to import the database driver
-  providers/ Apify adapters, one interface per stage
-  stages/    Pure pipeline stages
+  lib/       Pure helpers shared by data, providers and stages (normalize, geo, sourced, cost)
+  providers/ Apify and Google Places adapters, one interface per stage (no database access)
+  stages/    Pure pipeline stages and the query grid (no database access)
   runner/    Persisted, resumable run orchestrator
   routes/    Authenticated HTTP endpoints
   auth/      Sessions and password hashing (vetted library)
@@ -93,4 +94,6 @@ lint, typecheck and tests on every pull request and push to main.
   fact or estimate label.
 - No secrets in the repo. The Apify token lives in server-side env only.
 - No paid Apify run starts without a spend cap and explicit approval.
-- Only `backend/data/` may import the database driver (enforced by lint).
+- Only `backend/data/` may import the database driver, and `providers/`, `stages/` and `lib/`
+  may not import `data/` at all (both enforced by lint).
+- Provider and stage tests use fixtures and fakes only; `fetch` is stubbed to throw.

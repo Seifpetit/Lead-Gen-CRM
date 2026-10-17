@@ -1,0 +1,28 @@
+[
+  {
+    "fullName": "Salma Fixture",
+    "firstName": "Salma",
+    "lastName": "Fixture",
+    "company": "huilerie-elfixture.example",
+    "companyDomain": "huilerie-elfixture.example",
+    "email": "salma.fixture@huilerie-elfixture.example",
+    "emailStatus": "verified"
+  },
+  {
+    "fullName": "Karim Testeur",
+    "firstName": "Karim",
+    "lastName": "Testeur",
+    "company": "huilerie-elfixture.example",
+    "companyDomain": "huilerie-elfixture.example",
+    "email": "k.testeur@huilerie-elfixture.example",
+    "emailStatus": "catch_all"
+  },
+  {
+    "fullName": "Mehdi Commercial",
+    "firstName": "Mehdi",
+    "lastName": "Commercial",
+    "companyDomain": "huilerie-elfixture.example",
+    "email": "",
+    "emailStatus": "unknown"
+  }
+]

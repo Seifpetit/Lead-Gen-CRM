@@ -1,0 +1,8 @@
+{
+  "data": {
+    "id": "fixtureEmailRun001",
+    "status": "SUCCEEDED",
+    "defaultDatasetId": "fixtureEmailDataset001",
+    "chargedEventCounts": { "email-found-verified": 1 }
+  }
+}

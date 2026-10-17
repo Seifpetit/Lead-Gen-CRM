@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 const EnvSchema = z.object({
   APIFY_TOKEN: z.string().min(1),
+  /** Google Places API key. Optional: discovery falls back to the Apify Maps Actor. */
+  GOOGLE_PLACES_API_KEY: z.string().min(1).optional(),
   DATABASE_URL: z.string().url(),
   PORT: z.coerce.number().int().positive().default(3000),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
