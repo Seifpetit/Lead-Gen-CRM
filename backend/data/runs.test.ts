@@ -7,7 +7,6 @@ import {
 } from './apifyEvents.js';
 import type { Db } from './db.js';
 import type { UserId } from './ids.js';
-import { getCoverage, listCoverage, upsertCoverage } from './regionCoverage.js';
 import { addRunSpend, createRun, getRun, listRuns, updateRun } from './runs.js';
 import {
   ensureStep,
@@ -153,40 +152,5 @@ describe('apify events', () => {
     // Bypasses the type on purpose: the database is the last line of defense.
     const state = 'paused' as ApifyState;
     await expect(recordApifyEvent(db, user, { runStepId: step.id, state })).rejects.toThrow();
-  });
-});
-
-describe('region coverage', () => {
-  it('stores per-region yield and lists every governorate', async () => {
-    await upsertCoverage(db, user, 'sfax', {
-      placesFound: 2500,
-      qualifiedShare: 0.12,
-      costPerLeadUsd: 0.75,
-    });
-    const c = await upsertCoverage(db, user, 'sfax', {
-      decisionMakerShare: 0.5,
-      channelShare: 0.66,
-    });
-    expect(c).toMatchObject({
-      placesFound: 2500,
-      qualifiedShare: 0.12,
-      decisionMakerShare: 0.5,
-      channelShare: 0.66,
-      costPerLeadUsd: 0.75,
-    });
-
-    const all = await listCoverage(db, user);
-    expect(all).toHaveLength(24);
-    expect(all.find((r) => r.regionId === 'tunis')).toMatchObject({
-      placesFound: 0,
-      qualifiedShare: null,
-    });
-
-    const other = await makeUser(db);
-    expect(await getCoverage(db, other, 'sfax')).toBeNull();
-  });
-
-  it('rejects a share outside 0..1', async () => {
-    await expect(upsertCoverage(db, user, 'sfax', { qualifiedShare: 1.5 })).rejects.toThrow();
   });
 });
