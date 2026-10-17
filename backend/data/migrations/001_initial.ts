@@ -51,7 +51,6 @@ export const migration: Migration = {
       decision_makers_with_channel integer NOT NULL DEFAULT 0
         CHECK (decision_makers_with_channel >= 0),
       leads_found integer NOT NULL DEFAULT 0 CHECK (leads_found >= 0),
-      spent_usd numeric(12, 4) NOT NULL DEFAULT 0 CHECK (spent_usd >= 0),
       last_run_at timestamptz,
       updated_at timestamptz NOT NULL DEFAULT now(),
       PRIMARY KEY (user_id, region_cell_id)
@@ -63,17 +62,27 @@ export const migration: Migration = {
       region_id text NOT NULL REFERENCES regions (id),
       sectors text[] NOT NULL DEFAULT '{}',
       status text NOT NULL DEFAULT 'pending'
-        CHECK (status IN ('pending', 'running', 'finished', 'failed', 'cancelled')),
+        CHECK (status IN ('pending', 'running', 'finished', 'failed', 'cancelled', 'stopped_by_cap')),
       current_stage text
         CHECK (current_stage IN ('discover', 'qualify', 'find_people', 'enrich', 'verify', 'score')),
-      spend_cap_usd numeric(12, 4) NOT NULL CHECK (spend_cap_usd > 0),
-      spent_usd numeric(12, 4) NOT NULL DEFAULT 0 CHECK (spent_usd >= 0),
+      -- Spend is never stored here: it is summed from cost_ledger.
+      budget_cap_usd numeric(12, 4) NOT NULL CHECK (budget_cap_usd > 0),
       error text,
       created_at timestamptz NOT NULL DEFAULT now(),
       started_at timestamptz,
       finished_at timestamptz
     );
     CREATE INDEX runs_user_created_idx ON runs (user_id, created_at DESC);
+
+    -- Monthly spending cap per user. month is the first day of the month (UTC). Spend is
+    -- summed from cost_ledger.
+    CREATE TABLE user_budget (
+      user_id uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+      month date NOT NULL CHECK (extract(day FROM month) = 1),
+      cap_usd numeric(12, 4) NOT NULL CHECK (cap_usd > 0),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (user_id, month)
+    );
 
     CREATE TABLE run_steps (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -88,7 +97,6 @@ export const migration: Migration = {
         CHECK (status IN ('pending', 'started', 'running', 'finished', 'failed')),
       apify_run_id text,
       apify_dataset_id text,
-      cost_usd numeric(12, 4) NOT NULL DEFAULT 0 CHECK (cost_usd >= 0),
       error text,
       created_at timestamptz NOT NULL DEFAULT now(),
       started_at timestamptz,
@@ -99,6 +107,41 @@ export const migration: Migration = {
       CHECK (status = 'pending' OR actor_id IS NULL OR (apify_run_id IS NOT NULL AND apify_dataset_id IS NOT NULL))
     );
     CREATE INDEX run_steps_unfinished_idx ON run_steps (status) WHERE status IN ('started', 'running');
+
+    -- Every dollar spent, append-only. Rows are never updated or deleted (a trigger refuses it);
+    -- a correction is a new row with the opposite amount that points at the row it corrects.
+    -- Run, month and cost-per-lead totals are sums over this table.
+    CREATE TABLE cost_ledger (
+      id bigserial PRIMARY KEY,
+      user_id uuid NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
+      run_id uuid NOT NULL REFERENCES runs (id) ON DELETE RESTRICT,
+      run_step_id uuid REFERENCES run_steps (id) ON DELETE RESTRICT,
+      -- The map cell the spend was for, when it was for one (e.g. a Maps search).
+      region_cell_id uuid REFERENCES region_cells (id) ON DELETE RESTRICT,
+      provider text NOT NULL CHECK (provider IN ('apify', 'google', 'llm')),
+      -- What was bought: an Apify actor ID, a Google SKU, an LLM model.
+      item text NOT NULL,
+      units numeric(18, 6) NOT NULL,
+      unit_price_usd numeric(18, 8) NOT NULL CHECK (unit_price_usd >= 0),
+      amount_usd numeric(14, 6) NOT NULL,
+      kind text NOT NULL CHECK (kind IN ('estimated', 'actual')),
+      corrects_id bigint UNIQUE REFERENCES cost_ledger (id),
+      reconciled_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      CHECK (amount_usd = round(units * unit_price_usd, 6)),
+      -- Only a correction may be negative.
+      CHECK (corrects_id IS NOT NULL OR units >= 0)
+    );
+    CREATE INDEX cost_ledger_run_idx ON cost_ledger (run_id);
+    CREATE INDEX cost_ledger_user_time_idx ON cost_ledger (user_id, created_at);
+    CREATE INDEX cost_ledger_cell_idx ON cost_ledger (region_cell_id) WHERE region_cell_id IS NOT NULL;
+
+    CREATE FUNCTION cost_ledger_append_only() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      RAISE EXCEPTION 'cost_ledger is append-only: add a correcting row instead';
+    END $$;
+    CREATE TRIGGER cost_ledger_no_update_delete BEFORE UPDATE OR DELETE ON cost_ledger
+      FOR EACH ROW EXECUTE FUNCTION cost_ledger_append_only();
 
     -- One row per search sent to a provider, so the scheduler can see which cells and
     -- wordings have stopped finding new places.
@@ -152,6 +195,9 @@ export const migration: Migration = {
       -- or dropped, for providers whose terms limit how long their content may be kept.
       source_provider text,
       refresh_by timestamptz,
+      -- The run, and the map cell, that first found this company (cost attribution).
+      run_id uuid REFERENCES runs (id) ON DELETE SET NULL,
+      region_cell_id uuid REFERENCES region_cells (id) ON DELETE SET NULL,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
@@ -174,6 +220,8 @@ export const migration: Migration = {
       email text,
       phone text,
       current_role_verified boolean NOT NULL DEFAULT false,
+      -- The run that first found this person (cost attribution).
+      run_id uuid REFERENCES runs (id) ON DELETE SET NULL,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );
@@ -202,6 +250,7 @@ export const migration: Migration = {
     CREATE TABLE crm_leads (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+      -- The run that first produced this lead; kept when later runs find it again.
       run_id uuid REFERENCES runs (id) ON DELETE SET NULL,
       company_id uuid NOT NULL REFERENCES companies (id) ON DELETE CASCADE,
       contact_id uuid REFERENCES contacts (id) ON DELETE CASCADE,
@@ -219,6 +268,7 @@ export const migration: Migration = {
       UNIQUE NULLS NOT DISTINCT (user_id, company_id, contact_id)
     );
     CREATE INDEX crm_leads_user_stage_idx ON crm_leads (user_id, stage);
+    CREATE INDEX crm_leads_run_idx ON crm_leads (run_id);
 
     -- Global on purpose: a person who objects is suppressed for every user of the system.
     CREATE TABLE suppression_list (
@@ -241,7 +291,6 @@ export const migration: Migration = {
            sum(c.companies_with_decision_maker)::integer AS companies_with_decision_maker,
            sum(c.decision_makers_with_channel)::integer AS decision_makers_with_channel,
            sum(c.leads_found)::integer AS leads_found,
-           sum(c.spent_usd) AS spent_usd,
            max(c.last_run_at) AS last_run_at
       FROM region_coverage c
       JOIN region_cells rc ON rc.id = c.region_cell_id
@@ -255,8 +304,11 @@ export const migration: Migration = {
     DROP TABLE contacts;
     DROP TABLE companies;
     DROP TABLE apify_events;
+    DROP TABLE cost_ledger;
+    DROP FUNCTION cost_ledger_append_only();
     DROP TABLE search_queries;
     DROP TABLE run_steps;
+    DROP TABLE user_budget;
     DROP TABLE runs;
     DROP TABLE region_coverage;
     DROP TABLE region_cells;

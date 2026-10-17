@@ -164,7 +164,7 @@ describe('cross-user access fails closed', () => {
   it("returns 404 for another user's run and lead, same as a random ID", async () => {
     const alice = await signedIn('alice@example.com');
     const bob = await signedIn('bob@example.com');
-    const run = await createRun(db, alice.id, { regionId: 'sfax', spendCapUsd: 10 });
+    const run = await createRun(db, alice.id, { regionId: 'sfax', budgetCapUsd: 10 });
     const src = { sourceUrl: 'https://example.tn', fetchedAt: START, kind: 'fact' as const };
     const { company } = await upsertCompany(db, alice.id, {
       name: { value: 'Alpha', ...src },

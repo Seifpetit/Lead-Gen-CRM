@@ -7,7 +7,7 @@ import {
 } from './apifyEvents.js';
 import type { Db } from './db.js';
 import type { UserId } from './ids.js';
-import { addRunSpend, createRun, getRun, listRuns, updateRun } from './runs.js';
+import { createRun, getRun, listRuns, updateRun } from './runs.js';
 import {
   ensureStep,
   listSteps,
@@ -32,22 +32,21 @@ beforeEach(async () => {
 });
 
 describe('runs', () => {
-  it('tracks status transitions and spend', async () => {
-    const run = await createRun(db, user, { regionId: 'sfax', spendCapUsd: 10 });
-    expect(run).toMatchObject({ status: 'pending', spentUsd: 0, spendCapUsd: 10, region: 'sfax' });
+  it('tracks status transitions', async () => {
+    const run = await createRun(db, user, { regionId: 'sfax', budgetCapUsd: 10 });
+    expect(run).toMatchObject({ status: 'pending', spentUsd: 0, budgetCapUsd: 10, region: 'sfax' });
     await updateRun(db, user, run.id, { status: 'running', currentStage: 'discover' });
-    expect(await addRunSpend(db, user, run.id, 1.25)).toBe(1.25);
     const done = await updateRun(db, user, run.id, { status: 'finished', currentStage: null });
-    expect(done).toMatchObject({ status: 'finished', currentStage: null, spentUsd: 1.25 });
+    expect(done).toMatchObject({ status: 'finished', currentStage: null });
     expect(done?.finishedAt).not.toBeNull();
   });
 
-  it('rejects a run without a positive spend cap', async () => {
-    await expect(createRun(db, user, { regionId: 'sfax', spendCapUsd: 0 })).rejects.toThrow();
+  it('rejects a run without a positive budget cap', async () => {
+    await expect(createRun(db, user, { regionId: 'sfax', budgetCapUsd: 0 })).rejects.toThrow();
   });
 
   it("hides one user's runs from another", async () => {
-    const run = await createRun(db, user, { regionId: 'sfax', spendCapUsd: 10 });
+    const run = await createRun(db, user, { regionId: 'sfax', budgetCapUsd: 10 });
     const other = await makeUser(db);
     expect(await getRun(db, other, run.id)).toBeNull();
     expect(await listRuns(db, other)).toEqual([]);
@@ -57,7 +56,7 @@ describe('runs', () => {
 
 describe('run steps', () => {
   it('stores Apify run and dataset IDs when starting, and never starts a step twice', async () => {
-    const run = await createRun(db, user, { regionId: 'sfax', spendCapUsd: 10 });
+    const run = await createRun(db, user, { regionId: 'sfax', budgetCapUsd: 10 });
     const input = {
       runId: run.id,
       stage: 'discover',
@@ -82,16 +81,16 @@ describe('run steps', () => {
     ).rejects.toThrow(StepStateError);
 
     expect((await listUnfinishedSteps(db, user)).map((s) => s.id)).toEqual([step.id]);
-    await updateStepStatus(db, user, step.id, 'finished', { costUsd: 0.4 });
+    await updateStepStatus(db, user, step.id, 'finished');
     expect(await listUnfinishedSteps(db, user)).toEqual([]);
     expect((await listSteps(db, user, run.id))[0]).toMatchObject({
       status: 'finished',
-      costUsd: 0.4,
+      costUsd: 0,
     });
   });
 
   it('the database refuses an Apify step past pending without its IDs', async () => {
-    const run = await createRun(db, user, { regionId: 'sfax', spendCapUsd: 10 });
+    const run = await createRun(db, user, { regionId: 'sfax', budgetCapUsd: 10 });
     const step = (await ensureStep(db, user, {
       runId: run.id,
       stage: 'discover',
@@ -104,7 +103,7 @@ describe('run steps', () => {
   });
 
   it("cannot add a step to another user's run", async () => {
-    const run = await createRun(db, user, { regionId: 'sfax', spendCapUsd: 10 });
+    const run = await createRun(db, user, { regionId: 'sfax', budgetCapUsd: 10 });
     const other = await makeUser(db);
     expect(
       await ensureStep(db, other, { runId: run.id, stage: 'discover', stepKey: 'k' }),
@@ -114,7 +113,7 @@ describe('run steps', () => {
 
 describe('apify events', () => {
   it('records each state change of a run for the log widget', async () => {
-    const run = await createRun(db, user, { regionId: 'sfax', spendCapUsd: 10 });
+    const run = await createRun(db, user, { regionId: 'sfax', budgetCapUsd: 10 });
     const step = (await ensureStep(db, user, {
       runId: run.id,
       stage: 'discover',
@@ -141,7 +140,7 @@ describe('apify events', () => {
   });
 
   it('rejects an unknown state', async () => {
-    const run = await createRun(db, user, { regionId: 'sfax', spendCapUsd: 10 });
+    const run = await createRun(db, user, { regionId: 'sfax', budgetCapUsd: 10 });
     const step = (await ensureStep(db, user, {
       runId: run.id,
       stage: 'discover',

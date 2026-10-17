@@ -18,6 +18,9 @@ export interface CompanyRecord {
   linkedinUrl: string | null;
   sourceProvider: string | null;
   refreshBy: Date | null;
+  /** The run and map cell that first found this company. */
+  runId: string | null;
+  regionCellId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -37,6 +40,8 @@ export interface CompanyInput {
   sourceProvider?: string;
   /** When this provider's content must be refreshed or dropped under its storage terms. */
   refreshBy?: Date;
+  /** The map cell the company was found in (kept from the first find). */
+  regionCellId?: string;
 }
 
 export type MatchedBy = 'google_place_id' | 'domain' | 'name_governorate' | null;
@@ -61,6 +66,8 @@ interface Row {
   linkedin_url: string | null;
   source_provider: string | null;
   refresh_by: Date | null;
+  run_id: string | null;
+  region_cell_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -79,6 +86,8 @@ const toCompany = (r: Row): CompanyRecord => ({
   linkedinUrl: r.linkedin_url,
   sourceProvider: r.source_provider,
   refreshBy: r.refresh_by,
+  runId: r.run_id,
+  regionCellId: r.region_cell_id,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -162,8 +171,9 @@ export async function upsertCompany(
     if (!match) {
       const { rows } = await tx.query<Row>(
         `INSERT INTO companies (user_id, name, normalized_name, governorate, sector, google_place_id,
-                                domain, website, phone, email, linkedin_url, source_provider, refresh_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+                                domain, website, phone, email, linkedin_url, source_provider, refresh_by,
+                                run_id, region_cell_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
         [
           userId,
           values.name,
@@ -178,6 +188,8 @@ export async function upsertCompany(
           values.linkedin_url,
           values.source_provider,
           values.refresh_by,
+          runId,
+          input.regionCellId ?? null,
         ],
       );
       row = rows[0]!;
@@ -195,6 +207,7 @@ export async function upsertCompany(
            email = COALESCE($11, c.email), linkedin_url = COALESCE($12, c.linkedin_url),
            source_provider = COALESCE($13, c.source_provider),
            refresh_by = COALESCE($14, c.refresh_by),
+           run_id = COALESCE(c.run_id, $15), region_cell_id = COALESCE(c.region_cell_id, $16),
            updated_at = now()
          WHERE c.user_id = $1 AND c.id = $2 RETURNING *`,
         [
@@ -212,13 +225,15 @@ export async function upsertCompany(
           values.linkedin_url,
           values.source_provider,
           values.refresh_by,
+          runId,
+          input.regionCellId ?? null,
         ],
       );
       row = rows[0]!;
     }
 
     const target = { companyId: row.id };
-    const { sourceProvider, refreshBy, ...sourcedFields } = input;
+    const { sourceProvider, refreshBy, regionCellId, ...sourcedFields } = input;
     for (const [field, sourced] of Object.entries(sourcedFields) as [
       string,
       Sourced<string> | undefined,

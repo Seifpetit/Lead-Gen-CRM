@@ -31,7 +31,7 @@ export async function seedDemo(db: Queryable): Promise<void> {
     kind,
   });
 
-  const run = await createRun(db, user.id, { regionId: 'sfax', spendCapUsd: 10 });
+  const run = await createRun(db, user.id, { regionId: 'sfax', budgetCapUsd: 10 });
   const { company } = await upsertCompany(db, user.id, {
     name: src('Demo Logistics Company SARL'),
     governorate: src('sfax'),

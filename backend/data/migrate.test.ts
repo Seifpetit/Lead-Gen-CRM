@@ -25,6 +25,7 @@ describe('migrations', () => {
       'apify_events',
       'companies',
       'contacts',
+      'cost_ledger',
       'crm_leads',
       'evidence',
       'invites',
@@ -38,6 +39,7 @@ describe('migrations', () => {
       'search_queries',
       'sessions',
       'suppression_list',
+      'user_budget',
       'users',
     ]);
   });
@@ -50,6 +52,6 @@ describe('migrations', () => {
     expect(await migrateDown(db, Infinity)).toEqual(MIGRATIONS.map((m) => m.id).reverse());
     expect(await tables()).toEqual([]);
     expect(await migrateUp(db)).toEqual(MIGRATIONS.map((m) => m.id));
-    expect(await tables()).toHaveLength(17);
+    expect(await tables()).toHaveLength(19);
   });
 });
