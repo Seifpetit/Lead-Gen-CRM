@@ -27,10 +27,13 @@ describe('migrations', () => {
       'contacts',
       'crm_leads',
       'evidence',
+      'invites',
+      'login_failures',
       'region_coverage',
       'regions',
       'run_steps',
       'runs',
+      'sessions',
       'suppression_list',
       'users',
     ]);
@@ -44,6 +47,6 @@ describe('migrations', () => {
     expect(await migrateDown(db, Infinity)).toEqual(MIGRATIONS.map((m) => m.id).reverse());
     expect(await tables()).toEqual([]);
     expect(await migrateUp(db)).toEqual(MIGRATIONS.map((m) => m.id));
-    expect(await tables()).toHaveLength(11);
+    expect(await tables()).toHaveLength(14);
   });
 });

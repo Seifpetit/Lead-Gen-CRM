@@ -29,6 +29,7 @@ cp .env.example .env        # then set APIFY_TOKEN
 npm run db:up               # local Postgres on :5432
 npm run db:migrate          # create the schema and seed regions
 npm run db:seed             # optional placeholder demo data
+npm run auth:create-user -- you@example.com   # prompts for a password (min 12 chars)
 npm run dev:backend         # fails fast if APIFY_TOKEN or DATABASE_URL is missing
 npm run dev:frontend        # http://localhost:5173, proxies /api to :3000
 ```
@@ -62,6 +63,29 @@ sudo -u postgres psql -c "CREATE ROLE leadgen LOGIN SUPERUSER PASSWORD 'leadgen'
 
 CI (`.github/workflows/ci.yml`) runs a `postgres:16` service container, then format check,
 lint, typecheck and tests on every pull request and push to main.
+
+## Security
+
+- **Passwords** are hashed with argon2id (the `argon2` library); the app never stores or logs
+  them. Minimum length is 12.
+- **Sessions** live in Postgres. The cookie (`sid`) is a random 256-bit token, `HttpOnly`,
+  `Secure`, `SameSite=Strict`; only its SHA-256 is stored, so a database leak exposes no live
+  session. A session ends after 12 hours idle or 7 days in total (`SESSION_IDLE_HOURS`,
+  `SESSION_MAX_DAYS`), and logout deletes it server-side.
+- **Every route requires a session** unless it is explicitly marked public (only login, sign-up
+  and logout are). Unknown routes return 401 too. Handlers pass `currentUser(request).id` to the
+  data layer, whose functions only accept that branded `UserId`. Another user's record and a
+  nonexistent one both return 404.
+- **Brute force:** 5 failed sign-ins for an email within 15 minutes lock it for 15 minutes (the
+  correct password is refused while locked); 20 failures from one IP throttle that IP. Unknown
+  emails get the same response and timing as wrong passwords.
+- **Sign-up** is invite-only by default (`SIGNUP_MODE=invite`): create users with
+  `npm run auth:create-user -- <email>` or one-time codes with `npm run auth:create-invite`
+  (7-day expiry, stored hashed). `SIGNUP_MODE=open` lets anyone sign up.
+- **Logs** redact cookies, `Set-Cookie`, authorization headers and any `password`, `token` or
+  `inviteCode` field; request bodies are never logged.
+- **CSRF:** `SameSite=Strict` cookies plus JSON-only endpoints. Behind a reverse proxy, enable
+  Fastify's `trustProxy` for that proxy, or every client shares the proxy's IP for throttling.
 
 ## Ground rules
 

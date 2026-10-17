@@ -9,10 +9,16 @@
     "build": "tsc -b",
     "db:migrate": "tsx --env-file-if-exists=../.env data/cli.ts migrate",
     "db:rollback": "tsx --env-file-if-exists=../.env data/cli.ts rollback",
-    "db:seed": "tsx --env-file-if-exists=../.env data/cli.ts seed"
+    "db:seed": "tsx --env-file-if-exists=../.env data/cli.ts seed",
+    "auth:create-user": "tsx --env-file-if-exists=../.env auth/cli.ts create-user",
+    "auth:create-invite": "tsx --env-file-if-exists=../.env auth/cli.ts create-invite"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.1.3",
     "@lead-gen-crm/shared": "0.0.0",
+    "argon2": "^0.45.1",
+    "fastify": "^5.12.7",
+    "fastify-plugin": "^6.0.1",
     "pg": "^8.23.1",
     "zod": "^4.6.7"
   },

@@ -8,7 +8,14 @@ const valid = {
 
 describe('loadEnv', () => {
   it('returns typed config with defaults', () => {
-    expect(loadEnv(valid)).toEqual({ ...valid, PORT: 3000, NODE_ENV: 'development' });
+    expect(loadEnv(valid)).toEqual({
+      ...valid,
+      PORT: 3000,
+      NODE_ENV: 'development',
+      SIGNUP_MODE: 'invite',
+      SESSION_IDLE_HOURS: 12,
+      SESSION_MAX_DAYS: 7,
+    });
   });
 
   it.each(['APIFY_TOKEN', 'DATABASE_URL'])('fails fast when %s is missing', (name) => {
