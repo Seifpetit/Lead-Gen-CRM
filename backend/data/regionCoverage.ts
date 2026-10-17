@@ -8,7 +8,6 @@ export interface CoverageCounts {
   companiesWithDecisionMaker: number;
   decisionMakersWithChannel: number;
   leadsFound: number;
-  spentUsd: number;
 }
 
 export interface CoverageShares {
@@ -18,9 +17,9 @@ export interface CoverageShares {
   decisionMakerShare: number | null;
   /** decisionMakersWithChannel / companiesWithDecisionMaker */
   channelShare: number | null;
-  /** spentUsd / leadsFound */
-  costPerLeadUsd: number | null;
 }
+
+// Spend and cost per lead come from the cost ledger: see costLedger.ts.
 
 export interface CellCoverage extends CoverageCounts, CoverageShares {
   regionCellId: string;
@@ -41,7 +40,6 @@ export function deriveShares(c: CoverageCounts): CoverageShares {
     qualifiedShare: ratio(c.qualifiedCompanies, c.placesFound),
     decisionMakerShare: ratio(c.companiesWithDecisionMaker, c.qualifiedCompanies),
     channelShare: ratio(c.decisionMakersWithChannel, c.companiesWithDecisionMaker),
-    costPerLeadUsd: ratio(c.spentUsd, c.leadsFound),
   };
 }
 
@@ -51,7 +49,6 @@ interface CountRow {
   companies_with_decision_maker: number | null;
   decision_makers_with_channel: number | null;
   leads_found: number | null;
-  spent_usd: number | null;
   last_run_at: Date | null;
 }
 
@@ -62,7 +59,6 @@ function toCounts(r: CountRow): CoverageCounts {
     companiesWithDecisionMaker: r.companies_with_decision_maker ?? 0,
     decisionMakersWithChannel: r.decision_makers_with_channel ?? 0,
     leadsFound: r.leads_found ?? 0,
-    spentUsd: r.spent_usd ?? 0,
   };
 }
 
@@ -75,15 +71,14 @@ export async function addCellCoverage(
 ): Promise<CellCoverage> {
   await db.query(
     `INSERT INTO region_coverage AS c (user_id, region_cell_id, places_found, qualified_companies,
-       companies_with_decision_maker, decision_makers_with_channel, leads_found, spent_usd, last_run_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       companies_with_decision_maker, decision_makers_with_channel, leads_found, last_run_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT (user_id, region_cell_id) DO UPDATE SET
        places_found = c.places_found + EXCLUDED.places_found,
        qualified_companies = c.qualified_companies + EXCLUDED.qualified_companies,
        companies_with_decision_maker = c.companies_with_decision_maker + EXCLUDED.companies_with_decision_maker,
        decision_makers_with_channel = c.decision_makers_with_channel + EXCLUDED.decision_makers_with_channel,
        leads_found = c.leads_found + EXCLUDED.leads_found,
-       spent_usd = c.spent_usd + EXCLUDED.spent_usd,
        last_run_at = GREATEST(c.last_run_at, EXCLUDED.last_run_at),
        updated_at = now()`,
     [
@@ -94,7 +89,6 @@ export async function addCellCoverage(
       delta.companiesWithDecisionMaker ?? 0,
       delta.decisionMakersWithChannel ?? 0,
       delta.leadsFound ?? 0,
-      delta.spentUsd ?? 0,
       delta.runAt ?? null,
     ],
   );
@@ -124,7 +118,7 @@ export async function listCellCoverage(
 ): Promise<CellCoverage[]> {
   const { rows } = await db.query<CountRow & { id: string }>(
     `SELECT rc.id, c.places_found, c.qualified_companies, c.companies_with_decision_maker,
-            c.decision_makers_with_channel, c.leads_found, c.spent_usd, c.last_run_at
+            c.decision_makers_with_channel, c.leads_found, c.last_run_at
        FROM region_cells rc
        LEFT JOIN region_coverage c ON c.region_cell_id = rc.id AND c.user_id = $1
       WHERE rc.region_id = $2
@@ -145,7 +139,7 @@ export async function listCoverage(db: Queryable, userId: UserId): Promise<Regio
     `SELECT r.id AS region_id,
             (SELECT count(*)::integer FROM region_cells rc WHERE rc.region_id = r.id) AS cells_total,
             u.cells_covered, u.places_found, u.qualified_companies, u.companies_with_decision_maker,
-            u.decision_makers_with_channel, u.leads_found, u.spent_usd, u.last_run_at
+            u.decision_makers_with_channel, u.leads_found, u.last_run_at
        FROM regions r
        LEFT JOIN region_coverage_rollup u ON u.region_id = r.id AND u.user_id = $1
       ORDER BY r.name`,

@@ -29,14 +29,25 @@ database driver (enforced by ESLint).
   split further with `splitCell`, and `listCells(..., { leafOnly: true })` gives the cells to
   search. Cells are shared geometry, not user data. No real governorate bounds are seeded yet.
 - **Coverage** is stored per user and cell as counts (places, qualified, with decision-maker,
-  with channel, leads, spend), added to after each run. Shares and cost per lead are derived
-  from the counts; `listCoverage` rolls cells up per region (the `region_coverage_rollup` view).
+  with channel, leads), added to after each run. Shares are derived from the counts; `listCoverage` rolls cells up per region (the `region_coverage_rollup` view).
 - **Search queries** log every search: wording, cell, provider, requests, results, new places,
   cost, run. `queryYieldForCell` groups them by normalized wording, and `lastNewPlacesFound = 0`
   marks a wording that has stopped finding anything new in that cell.
 - **Provider refresh**: companies carry `source_provider` and `refresh_by` (metadata, not
   evidence). `listCompaniesDueForRefresh` returns the rows whose provider content must be
   refreshed or dropped.
+- **Cost ledger** (`cost_ledger`) is the only record of spend. Rows are append-only (a trigger
+  refuses UPDATE and DELETE); `correctCost` adds one opposite row, and `reconcileCost` corrects an
+  estimate and adds the actual. `amount_usd` must equal `units * unit_price_usd`. Run spend, step
+  cost, monthly spend (UTC month of the row) and cost per lead (run, region, cell) are all
+  computed from it; nothing stores a running total.
+- **Budgets**: every run has `budget_cap_usd`, and `user_budget` holds an optional monthly cap.
+  `recordCost` locks the run and, in the same transaction, sets it to `stopped_by_cap` once
+  either cap is reached. Costs after a stop are still recorded. `remainingBudget` is what the
+  orchestrator checks before starting a paid step.
+- **Run attribution**: companies, contacts and CRM leads keep the `run_id` that first produced
+  them (a later run that finds them again does not overwrite it); companies also keep their
+  `region_cell_id`, which is how cost per lead is computed per cell.
 - **CRM leads** are unique per user, company and contact, and an upsert never changes the
   stage, so a dismissed or opted-out lead never comes back as new.
 

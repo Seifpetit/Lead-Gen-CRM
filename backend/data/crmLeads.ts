@@ -52,7 +52,8 @@ export async function upsertLead(
   db: Queryable,
   userId: UserId,
   input: {
-    runId: string | null;
+    /** The run producing the lead. Kept from the first run when a later run finds it again. */
+    runId: string;
     companyId: string;
     contactId: string | null;
     score: Omit<ScoreBreakdown, 'total'>;

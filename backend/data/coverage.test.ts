@@ -79,7 +79,6 @@ describe('coverage per cell, rolled up per region', () => {
       companiesWithDecisionMaker: 10,
       decisionMakersWithChannel: 8,
       leadsFound: 8,
-      spentUsd: 4,
       runAt: new Date('2026-10-01T00:00:00Z'),
     });
     // A second run on the same cell adds to it.
@@ -93,7 +92,6 @@ describe('coverage per cell, rolled up per region', () => {
       placesFound: 50,
       qualifiedCompanies: 10,
       leadsFound: 2,
-      spentUsd: 1,
     });
 
     const sfax = (await getCoverage(db, user, 'sfax'))!;
@@ -106,8 +104,6 @@ describe('coverage per cell, rolled up per region', () => {
       decisionMakerShare: 10 / 40,
       channelShare: 0.8,
       leadsFound: 10,
-      spentUsd: 5,
-      costPerLeadUsd: 0.5,
     });
 
     const all = await listCoverage(db, user);
@@ -116,7 +112,6 @@ describe('coverage per cell, rolled up per region', () => {
       cellsTotal: 0,
       placesFound: 0,
       qualifiedShare: null,
-      costPerLeadUsd: null,
     });
     expect(await listCellCoverage(db, user, 'sfax')).toHaveLength(2);
   });
@@ -133,7 +128,7 @@ describe('coverage per cell, rolled up per region', () => {
 describe('search queries', () => {
   it('tracks yield per wording and cell, so exhausted wordings show up', async () => {
     const [cell] = await createRegionGrid(db, 'sfax', BOX, 1, 1);
-    const run = await createRun(db, user, { regionId: 'sfax', spendCapUsd: 10 });
+    const run = await createRun(db, user, { regionId: 'sfax', budgetCapUsd: 10 });
     const base = {
       runId: run.id,
       regionCellId: cell!.id,
@@ -179,7 +174,7 @@ describe('search queries', () => {
 
   it("rejects new places above results, and queries on another user's run", async () => {
     const [cell] = await createRegionGrid(db, 'sfax', BOX, 1, 1);
-    const run = await createRun(db, user, { regionId: 'sfax', spendCapUsd: 10 });
+    const run = await createRun(db, user, { regionId: 'sfax', budgetCapUsd: 10 });
     const q = {
       runId: run.id,
       regionCellId: cell!.id,

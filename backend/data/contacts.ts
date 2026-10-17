@@ -17,6 +17,8 @@ export interface ContactRecord {
   email: string | null;
   phone: string | null;
   currentRoleVerified: boolean;
+  /** The run that first found this person. */
+  runId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -51,6 +53,7 @@ interface Row {
   email: string | null;
   phone: string | null;
   current_role_verified: boolean;
+  run_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -66,6 +69,7 @@ const toContact = (r: Row): ContactRecord => ({
   email: r.email,
   phone: r.phone,
   currentRoleVerified: r.current_role_verified,
+  runId: r.run_id,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -120,8 +124,8 @@ export async function upsertContact(
     if (!existing) {
       const { rows } = await tx.query<Row>(
         `INSERT INTO contacts (user_id, company_id, full_name, title, role_class, linkedin_public_id,
-                               linkedin_url, email, phone, current_role_verified)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, false)) RETURNING *`,
+                               linkedin_url, email, phone, current_role_verified, run_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, false), $11) RETURNING *`,
         [
           userId,
           input.companyId,
@@ -133,6 +137,7 @@ export async function upsertContact(
           values.email,
           values.phone,
           values.current_role_verified,
+          runId,
         ],
       );
       row = rows[0]!;
@@ -142,7 +147,8 @@ export async function upsertContact(
            company_id = $3, full_name = $4, title = COALESCE($5, title),
            role_class = COALESCE($6, role_class), linkedin_url = COALESCE($7, linkedin_url),
            email = COALESCE($8, email), phone = COALESCE($9, phone),
-           current_role_verified = COALESCE($10, current_role_verified), updated_at = now()
+           current_role_verified = COALESCE($10, current_role_verified),
+           run_id = COALESCE(run_id, $11), updated_at = now()
          WHERE user_id = $1 AND id = $2 RETURNING *`,
         [
           userId,
@@ -155,6 +161,7 @@ export async function upsertContact(
           values.email,
           values.phone,
           values.current_role_verified,
+          runId,
         ],
       );
       row = rows[0]!;

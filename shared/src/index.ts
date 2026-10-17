@@ -91,7 +91,14 @@ export const RUN_STAGES = [
 ] as const;
 export type RunStage = (typeof RUN_STAGES)[number];
 
-export const RUN_STATUSES = ['pending', 'running', 'finished', 'failed', 'cancelled'] as const;
+export const RUN_STATUSES = [
+  'pending',
+  'running',
+  'finished',
+  'failed',
+  'cancelled',
+  'stopped_by_cap',
+] as const;
 export type RunStatus = (typeof RUN_STATUSES)[number];
 
 export interface Run {
@@ -100,7 +107,7 @@ export interface Run {
   sectors: string[];
   status: RunStatus;
   currentStage: RunStage | null;
-  spendCapUsd: number;
+  budgetCapUsd: number;
   spentUsd: number;
   createdAt: string;
   finishedAt: string | null;

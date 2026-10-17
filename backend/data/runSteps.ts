@@ -13,6 +13,7 @@ export interface RunStep {
   status: StepStatus;
   apifyRunId: string | null;
   apifyDatasetId: string | null;
+  /** Summed from the cost ledger. */
   costUsd: number;
   error: string | null;
   createdAt: Date;
@@ -35,6 +36,10 @@ interface Row {
   started_at: Date | null;
   finished_at: Date | null;
 }
+
+// Cost is summed from the cost ledger, never stored on the step.
+const SELECT_STEP = `SELECT s.*, COALESCE((SELECT sum(l.amount_usd) FROM cost_ledger l WHERE l.run_step_id = s.id), 0) AS cost_usd
+  FROM run_steps s`;
 
 const toStep = (r: Row): RunStep => ({
   id: r.id,
@@ -76,7 +81,7 @@ export async function ensureStep(
     [userId, input.runId, input.stage, input.stepKey, input.actorId ?? null],
   );
   const { rows } = await db.query<Row>(
-    'SELECT * FROM run_steps WHERE user_id = $1 AND run_id = $2 AND stage = $3 AND step_key = $4',
+    `${SELECT_STEP} WHERE s.user_id = $1 AND s.run_id = $2 AND s.stage = $3 AND s.step_key = $4`,
     [userId, input.runId, input.stage, input.stepKey],
   );
   return rows[0] ? toStep(rows[0]) : null;
@@ -93,15 +98,15 @@ export async function recordApifyStart(
   stepId: string,
   ids: { apifyRunId: string; apifyDatasetId: string },
 ): Promise<RunStep> {
-  const { rows } = await db.query<Row>(
+  const { rows } = await db.query<{ id: string }>(
     `UPDATE run_steps SET status = 'started', apify_run_id = $3, apify_dataset_id = $4,
             started_at = now(), updated_at = now()
-      WHERE user_id = $1 AND id = $2 AND status = 'pending' RETURNING *`,
+      WHERE user_id = $1 AND id = $2 AND status = 'pending' RETURNING id`,
     [userId, stepId, ids.apifyRunId, ids.apifyDatasetId],
   );
   if (!rows[0])
     throw new StepStateError(`Step ${stepId} is not pending; refusing to start it again`);
-  return toStep(rows[0]);
+  return (await getStep(db, userId, stepId))!;
 }
 
 export async function updateStepStatus(
@@ -109,21 +114,21 @@ export async function updateStepStatus(
   userId: UserId,
   stepId: string,
   status: Exclude<StepStatus, 'pending' | 'started'>,
-  extra: { costUsd?: number; error?: string } = {},
+  extra: { error?: string } = {},
 ): Promise<RunStep | null> {
-  const { rows } = await db.query<Row>(
-    `UPDATE run_steps SET status = $3, cost_usd = COALESCE($4, cost_usd), error = COALESCE($5, error),
+  const { rows } = await db.query<{ id: string }>(
+    `UPDATE run_steps SET status = $3, error = COALESCE($4, error),
             finished_at = CASE WHEN $3 IN ('finished', 'failed') THEN now() ELSE finished_at END,
             updated_at = now()
-      WHERE user_id = $1 AND id = $2 RETURNING *`,
-    [userId, stepId, status, extra.costUsd ?? null, extra.error ?? null],
+      WHERE user_id = $1 AND id = $2 RETURNING id`,
+    [userId, stepId, status, extra.error ?? null],
   );
-  return rows[0] ? toStep(rows[0]) : null;
+  return rows[0] ? getStep(db, userId, stepId) : null;
 }
 
 export async function listSteps(db: Queryable, userId: UserId, runId: string): Promise<RunStep[]> {
   const { rows } = await db.query<Row>(
-    'SELECT * FROM run_steps WHERE user_id = $1 AND run_id = $2 ORDER BY created_at',
+    `${SELECT_STEP} WHERE s.user_id = $1 AND s.run_id = $2 ORDER BY s.created_at`,
     [userId, runId],
   );
   return rows.map(toStep);
@@ -132,9 +137,21 @@ export async function listSteps(db: Queryable, userId: UserId, runId: string): P
 /** Steps with a live Apify run (started or running): what startup recovery must resume. */
 export async function listUnfinishedSteps(db: Queryable, userId: UserId): Promise<RunStep[]> {
   const { rows } = await db.query<Row>(
-    `SELECT * FROM run_steps WHERE user_id = $1 AND status IN ('started', 'running')
-      ORDER BY created_at`,
+    `${SELECT_STEP} WHERE s.user_id = $1 AND s.status IN ('started', 'running')
+      ORDER BY s.created_at`,
     [userId],
   );
   return rows.map(toStep);
+}
+
+export async function getStep(
+  db: Queryable,
+  userId: UserId,
+  stepId: string,
+): Promise<RunStep | null> {
+  const { rows } = await db.query<Row>(`${SELECT_STEP} WHERE s.user_id = $1 AND s.id = $2`, [
+    userId,
+    stepId,
+  ]);
+  return rows[0] ? toStep(rows[0]) : null;
 }
