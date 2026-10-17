@@ -1,0 +1,107 @@
+// Types shared by backend and frontend. Every stored value is traceable to a source.
+
+export const EVIDENCE_KINDS = ['fact', 'estimate'] as const;
+export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
+
+/** One sourced value. Nothing is stored or shown without one. */
+export interface Evidence {
+  field: string;
+  value: string;
+  sourceUrl: string;
+  /** ISO 8601 timestamp of when the source was read. */
+  fetchedAt: string;
+  kind: EvidenceKind;
+}
+
+export const ROLE_CLASSES = [
+  'logistics',
+  'transport',
+  'supply_chain',
+  'purchasing',
+  'operations',
+  'general_manager',
+] as const;
+export type RoleClass = (typeof ROLE_CLASSES)[number];
+
+export interface Company {
+  id: string;
+  name: string;
+  governorate: string;
+  sector: string | null;
+  googlePlaceId: string | null;
+  domain: string | null;
+  website: string | null;
+  phone: string | null;
+  email: string | null;
+  linkedinUrl: string | null;
+  evidence: Evidence[];
+}
+
+export interface Contact {
+  id: string;
+  companyId: string;
+  fullName: string;
+  title: string;
+  roleClass: RoleClass | null;
+  linkedinPublicId: string | null;
+  linkedinUrl: string | null;
+  email: string | null;
+  phone: string | null;
+  /** True only when a position at the company has no end date. */
+  currentRoleVerified: boolean;
+  evidence: Evidence[];
+}
+
+export const CRM_STAGES = [
+  'system_suggested',
+  'confirmed',
+  'contacted',
+  'response',
+  'dismissed',
+  'won',
+  'lost',
+  'opted_out',
+] as const;
+export type CrmStage = (typeof CRM_STAGES)[number];
+
+export interface ScoreBreakdown {
+  companyFit: number; // out of 50
+  contactFit: number; // out of 30
+  reachability: number; // out of 20
+  total: number;
+}
+
+/** A decision-maker with a contact channel; the company is the fallback channel. */
+export interface Lead {
+  id: string;
+  runId: string;
+  company: Company;
+  contact: Contact | null;
+  score: ScoreBreakdown;
+  crmStage: CrmStage;
+}
+
+export const RUN_STAGES = [
+  'discover',
+  'qualify',
+  'find_people',
+  'enrich',
+  'verify',
+  'score',
+] as const;
+export type RunStage = (typeof RUN_STAGES)[number];
+
+export const RUN_STATUSES = ['pending', 'running', 'finished', 'failed', 'cancelled'] as const;
+export type RunStatus = (typeof RUN_STATUSES)[number];
+
+export interface Run {
+  id: string;
+  region: string;
+  sectors: string[];
+  status: RunStatus;
+  currentStage: RunStage | null;
+  spendCapUsd: number;
+  spentUsd: number;
+  createdAt: string;
+  finishedAt: string | null;
+}

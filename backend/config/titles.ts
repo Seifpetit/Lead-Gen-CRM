@@ -1,0 +1,132 @@
+import type { RoleClass } from '@lead-gen-crm/shared';
+
+/**
+ * French and English job-title variants for each decision-maker role class.
+ * Variants are written lowercase without accents; titles are normalized the same way
+ * before lookup (see normalizeTitle). Matching logic lives in stages/ (pass 3).
+ */
+export const TITLE_DICTIONARY: Record<RoleClass, readonly string[]> = {
+  logistics: [
+    'directeur logistique',
+    'directrice logistique',
+    'responsable logistique',
+    'chef de service logistique',
+    'coordinateur logistique',
+    'coordinatrice logistique',
+    'gestionnaire logistique',
+    'logisticien',
+    'logisticienne',
+    'responsable entrepot',
+    'chef entrepot',
+    'logistics manager',
+    'logistics director',
+    'head of logistics',
+    'logistics coordinator',
+    'logistics supervisor',
+    'warehouse manager',
+  ],
+  transport: [
+    'responsable transport',
+    'directeur transport',
+    'chef de parc',
+    'responsable parc',
+    'responsable expedition',
+    'responsable expeditions',
+    'chef expedition',
+    'affreteur',
+    'responsable affretement',
+    'responsable import export',
+    'responsable transit',
+    'transport manager',
+    'fleet manager',
+    'shipping manager',
+    'freight manager',
+    'traffic manager',
+    'import export manager',
+  ],
+  supply_chain: [
+    'directeur supply chain',
+    'directrice supply chain',
+    'responsable supply chain',
+    'supply chain manager',
+    'supply chain director',
+    'head of supply chain',
+    'vp supply chain',
+    'responsable chaine logistique',
+    'responsable flux',
+    'responsable planification',
+    'demand planner',
+    'supply planner',
+  ],
+  purchasing: [
+    'directeur achats',
+    'directrice achats',
+    'responsable achats',
+    'responsable achat',
+    'acheteur',
+    'acheteuse',
+    'chef de service achats',
+    'responsable approvisionnement',
+    'approvisionneur',
+    'procurement manager',
+    'purchasing manager',
+    'head of procurement',
+    'buyer',
+    'senior buyer',
+    'sourcing manager',
+  ],
+  operations: [
+    'directeur des operations',
+    'directrice des operations',
+    'directeur operations',
+    'responsable des operations',
+    'responsable operations',
+    'directeur industriel',
+    'directeur de production',
+    'responsable de production',
+    'directeur d usine',
+    'directeur de site',
+    'operations manager',
+    'operations director',
+    'head of operations',
+    'coo',
+    'chief operating officer',
+    'plant manager',
+    'production manager',
+  ],
+  general_manager: [
+    'directeur general',
+    'directrice generale',
+    'dg',
+    'pdg',
+    'president directeur general',
+    'gerant',
+    'gerante',
+    'co gerant',
+    'fondateur',
+    'fondatrice',
+    'co fondateur',
+    'proprietaire',
+    'directeur general adjoint',
+    'dga',
+    'administrateur delegue',
+    'general manager',
+    'managing director',
+    'ceo',
+    'chief executive officer',
+    'founder',
+    'co founder',
+    'owner',
+    'country manager',
+  ],
+};
+
+/** Lowercase, strip accents and punctuation, collapse whitespace. */
+export function normalizeTitle(title: string): string {
+  return title
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
