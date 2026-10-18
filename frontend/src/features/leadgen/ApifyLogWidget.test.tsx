@@ -97,13 +97,19 @@ describe('Apify log widget', () => {
         }),
       }),
     );
-    expect(await screen.findByText('Discover: “huilerie” in cell r0c1')).toBeInTheDocument();
     expect(
-      screen.getByText('20 results, 16 kept, 4 dropped (dropped: outside region 1, no contact 3)'),
+      await screen.findByText(
+        'Searching Google Maps for companies matching “huilerie” in map square row 1, column 2',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Found 20 places, kept 16, dropped 4 (dropped: outside region 1, no contact 3)',
+      ),
     ).toBeInTheDocument();
     expect(screen.getByText(/Cost \$0\.012/)).toBeInTheDocument();
     expect(screen.getByText(/Took 1m 05s/)).toBeInTheDocument();
-    expect(screen.getByText(/Actor actor/)).toBeInTheDocument();
+    expect(screen.getByText(/Apify scraper actor/)).toBeInTheDocument();
   });
 
   it('links the Apify run ID to its console page', async () => {
@@ -120,7 +126,9 @@ describe('Apify log widget', () => {
       <ApifyLogWidget refreshKey={0} />,
       fakeServer({ 'GET /api/apify/log': logWith('finished') }),
     );
-    await screen.findByText('Discover: “huilerie” in cell r0c1');
+    await screen.findByText(
+      'Searching Google Maps for companies matching “huilerie” in map square row 1, column 2',
+    );
     const details = screen.getByText('Details').closest('details')!;
     expect(details).not.toHaveAttribute('open');
     expect(within(details).getAllByRole('listitem')).toHaveLength(2);
@@ -160,7 +168,9 @@ describe('Apify log widget', () => {
       recent: page([]),
     };
     renderWith(<ApifyLogWidget refreshKey={0} />, fakeServer({ 'GET /api/apify/log': log }));
-    expect(await screen.findByText('Find people: Huilerie Fixture')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Searching LinkedIn for people at Huilerie Fixture'),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(
         '3 people found, 0 decision-makers — no decision-makers because: no matching title (3)',
@@ -228,5 +238,108 @@ describe('Apify log widget', () => {
     await act(() => vi.advanceTimersByTimeAsync(APIFY_LOG_POLL_MS + 100));
     expect(await screen.findByText(/Showing the last known state/)).toBeInTheDocument();
     expect(screen.getByText('Run in sfax')).toBeInTheDocument();
+  });
+
+  it('says what it is doing right now, with a spinner, while a step is out', async () => {
+    renderWith(
+      <ApifyLogWidget refreshKey={0} />,
+      fakeServer({ 'GET /api/apify/log': logWith('running') }),
+    );
+    expect(await screen.findByText('Right now')).toBeInTheDocument();
+    expect(screen.getAllByRole('status', { name: 'Working on it' }).length).toBeGreaterThan(0);
+    // Once in the "right now" box and once in the step's own line.
+    expect(
+      screen.getAllByText(
+        'Searching Google Maps for companies matching “huilerie” in map square row 1, column 2',
+      ),
+    ).toHaveLength(2);
+  });
+
+  it('says which stage the run is on between steps, and shows nothing for a finished run', async () => {
+    const between: ApifyLog = {
+      runs: [
+        {
+          run: run({ status: 'running', currentStage: 'qualify' }),
+          steps: [step('finished')],
+        },
+      ],
+      attention: [],
+      recent: page([]),
+    };
+    const { unmount } = renderWith(
+      <ApifyLogWidget refreshKey={0} />,
+      fakeServer({ 'GET /api/apify/log': between }),
+    );
+    expect(
+      await screen.findByText(/Checking which of the companies found fit your sectors/),
+    ).toBeInTheDocument();
+    unmount();
+    renderWith(
+      <ApifyLogWidget refreshKey={0} />,
+      fakeServer({
+        'GET /api/apify/log': { ...between, runs: [{ ...between.runs[0]!, run: run() }] },
+      }),
+    );
+    await screen.findByText('Run in sfax');
+    expect(screen.queryByText('Right now')).not.toBeInTheDocument();
+  });
+
+  it('groups steps by kind of work, explains it, and totals each group', async () => {
+    const searches = ['a', 'b', 'c'].map((id) =>
+      step('finished', {
+        runStepId: id,
+        costUsd: 0.1,
+        summary: { returned: 10, kept: 8, dropped: [{ reason: 'no_contact', count: 2 }] },
+      }),
+    );
+    const log: ApifyLog = {
+      runs: [{ run: run({ status: 'finished' }), steps: searches }],
+      attention: [],
+      recent: page([]),
+    };
+    renderWith(<ApifyLogWidget refreshKey={0} />, fakeServer({ 'GET /api/apify/log': log }));
+    expect(await screen.findByText('Google Maps searches for companies')).toBeInTheDocument();
+    expect(
+      screen.getByText('3 of 3 searches done · 30 places found, 24 kept · $0.30'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Each search asks Google Maps, through an Apify scraper/),
+    ).toBeInTheDocument();
+  });
+
+  it('uses the cost checkpoints as the run timeline, marking where the spend crossed each one', async () => {
+    // Cap $2.00: checkpoints at $0.50, $1.00 and $1.50. One $0.60 step crosses the first,
+    // the next $1.00 step crosses the second and third.
+    const log: ApifyLog = {
+      runs: [
+        {
+          run: run({ status: 'running', currentStage: 'discover', budgetCapUsd: 2, spentUsd: 1.6 }),
+          steps: [
+            step('finished', { runStepId: 'a', costUsd: 0.6 }),
+            step('finished', { runStepId: 'b', costUsd: 1.0 }),
+          ],
+        },
+      ],
+      attention: [],
+      recent: page([]),
+    };
+    const { container } = renderWith(
+      <ApifyLogWidget refreshKey={0} />,
+      fakeServer({ 'GET /api/apify/log': log }),
+    );
+    expect(
+      await screen.findByText('Cost checkpoint: 25% of the spend cap reached ($0.50 of $2.00)'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Cost checkpoint: 50% of the spend cap reached ($1.00 of $2.00)'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Cost checkpoint: 75% of the spend cap reached ($1.50 of $2.00)'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: 'Spend of the run in sfax' })).toHaveAttribute(
+      'aria-valuenow',
+      '80',
+    );
+    expect(container.querySelectorAll('.progress-tick')).toHaveLength(3);
   });
 });

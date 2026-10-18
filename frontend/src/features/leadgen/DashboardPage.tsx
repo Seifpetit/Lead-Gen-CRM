@@ -11,13 +11,13 @@ import { Card } from '../../components/shared/Card.js';
 import { useT } from '../../i18n/index.js';
 import { formatNumber, formatUsd } from '../../lib/format.js';
 import { useResource } from '../../lib/useResource.js';
+import { RightNow } from './RightNow.js';
 import { StepLine } from './StepLine.js';
-import { MAX_ACTIVE_RUNS, StatusBadge } from './runParts.js';
+import { CHECKPOINTS, MAX_ACTIVE_RUNS, StatusBadge } from './runParts.js';
 import { RunsWidget } from './RunsWidget.js';
 import { StartRunWidget } from './StartRunWidget.js';
 
 /** Where the cost checkpoints sit along the bar, as shares of the spend cap. */
-export const CHECKPOINTS = [0.25, 0.5, 0.75];
 const ACTIVE_POLL_MS = 5_000;
 
 const total = (runs: RunSummary[], key: keyof RunFunnel) =>
@@ -173,9 +173,8 @@ function RunLogBox({ run, refreshKey }: { run: RunSummary; refreshKey: number })
     deps: [refreshKey],
   });
   // Newest step first; the Logs page has the whole history.
-  const steps = [...(log.data?.runs.find((r) => r.run.id === run.id)?.steps ?? [])]
-    .reverse()
-    .slice(0, 6);
+  const allSteps = log.data?.runs.find((r) => r.run.id === run.id)?.steps ?? [];
+  const steps = [...allSteps].reverse().slice(0, 6);
   return (
     <div className="log-box">
       <SectionTitle level={3}>{t('dash.logs.title')}</SectionTitle>
@@ -184,16 +183,19 @@ function RunLogBox({ run, refreshKey }: { run: RunSummary; refreshKey: number })
       ) : !log.data ? (
         <LoadingState />
       ) : (
-        <LogList
-          label={t('dash.logs.title')}
-          emptyText={t('apify.noEvents')}
-          newWindowHref="/leadgen/logs"
-          newWindowLabel={t('dash.logs.newWindow')}
-          items={steps.map((step) => ({
-            id: step.runStepId,
-            content: <StepLine step={step} />,
-          }))}
-        />
+        <>
+          <RightNow run={run} steps={allSteps} />
+          <LogList
+            label={t('dash.logs.title')}
+            emptyText={t('apify.noEvents')}
+            newWindowHref="/leadgen/logs"
+            newWindowLabel={t('dash.logs.newWindow')}
+            items={steps.map((step) => ({
+              id: step.runStepId,
+              content: <StepLine step={step} />,
+            }))}
+          />
+        </>
       )}
     </div>
   );

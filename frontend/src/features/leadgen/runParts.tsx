@@ -1,4 +1,4 @@
-import type { RunFunnel, RunStatus, RunSummary } from '@lead-gen-crm/shared';
+import type { ApifyState, RunFunnel, RunStatus, RunSummary } from '@lead-gen-crm/shared';
 import { useT, type StringKey } from '../../i18n/index.js';
 import { formatNumber, formatUsd } from '../../lib/format.js';
 
@@ -59,4 +59,14 @@ export function SpendMeter({ run }: { run: Pick<RunSummary, 'spentUsd' | 'budget
       <progress max={1} value={share} aria-hidden="true" />
     </div>
   );
+}
+
+/** Where the cost checkpoints sit along a run's spend cap, as shares of the cap. */
+export const CHECKPOINTS = [0.25, 0.5, 0.75];
+
+/** The state of one Apify run. */
+export function StateBadge({ state }: { state: ApifyState | null }) {
+  const t = useT();
+  if (!state) return <span className="badge badge-none">{t('apify.stateNone')}</span>;
+  return <span className={`badge badge-apify-${state}`}>{t(`apify.state.${state}`)}</span>;
 }

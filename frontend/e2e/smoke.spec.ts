@@ -76,6 +76,10 @@ test('sign in, run, watch, open the result, and work a lead through the CRM', as
     timeout: 100_000,
   });
   await side.getByRole('link', { name: 'Logs' }).click();
+  // A finished run keeps each group of steps collapsed under its totals; open one.
+  const searches = log.getByText(/searches done/).first();
+  await expect(searches).toBeVisible();
+  await searches.click();
   await expect(log.locator('.badge-apify-finished').first()).toBeVisible();
 
   // Spend shows up on the Costs page.

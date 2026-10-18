@@ -2,7 +2,8 @@ import type { ApifyStepView, StepSummary } from '@lead-gen-crm/shared';
 import { useT } from '../../i18n/index.js';
 import type { StringKey } from '../../i18n/index.js';
 import { formatDateTime, formatDuration, formatUsd } from '../../lib/format.js';
-import { StateBadge } from './ApifyLogWidget.js';
+import { StateBadge } from './runParts.js';
+import { stepSentence } from './stepText.js';
 
 const CONSOLE_RUN = 'https://console.apify.com/actors/runs/';
 
@@ -39,14 +40,8 @@ export function plainError(t: Translate, error: string): string {
  */
 export function StepLine({ step }: { step: ApifyStepView }) {
   const t = useT();
-  const { target, summary } = step;
-  const stage = t(`stage.${step.stage}`);
-  const title =
-    target.query && target.cell
-      ? t('apify.step.search', { stage, query: target.query, cell: target.cell })
-      : target.company
-        ? t('apify.step.company', { stage, company: target.company })
-        : t('apify.step.other', { stage });
+  const { summary } = step;
+  const title = stepSentence(t, step);
   const people = summary?.people;
   return (
     <div className="log-step">
