@@ -320,23 +320,41 @@ describe('orchestrator: crash safety', () => {
 });
 
 describe('orchestrator: money', () => {
-  it('stops a run at its budget cap, counting what in-flight runs may still spend', async () => {
+  it('holds a step back while in-flight steps reserve the budget, then runs it', async () => {
     const w = world();
-    // $0.70: room for one Google Maps run with its $0.50 max cost, not two.
+    // $0.70: room for one Google Maps run with its $0.50 max cost at a time, not two. The
+    // others wait for it to settle instead of stopping the run.
     const run = await w.orchestrator.startRun(user, {
       regionId: 'sfax',
       sectorIds: TEXTILE,
       budgetCapUsd: 0.7,
     });
     const end = await drive(w.orchestrator, user, run.id);
-    expect(end.status).toBe('stopped_by_cap');
-    expect(w.apify.startsFor(GOOGLE_MAPS_ACTOR)).toHaveLength(1);
+    expect(end.status).not.toBe('stopped_by_cap');
+    expect(w.apify.startsFor(GOOGLE_MAPS_ACTOR).length).toBeGreaterThan(1);
     const after = (await getRun(db, user, run.id))!;
     expect(after.spentUsd).toBeLessThanOrEqual(0.7);
-    // The in-flight run was still collected and settled after the stop.
     const rec = await reconcileRun(db, user, run.id);
     expect(rec.unsettledEstimateUsd).toBe(0);
     expect(await listLiveClaims(db, user)).toEqual([]);
+  });
+
+  it('stops a run, naming the Actor minimum, when its max cost cannot fit under the cap', async () => {
+    const w = world();
+    // The Actor needs a max cost of $0.50; the cap leaves less, though the estimate is far lower.
+    const run = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectorIds: TEXTILE,
+      budgetCapUsd: 0.4,
+    });
+    const end = await drive(w.orchestrator, user, run.id);
+    expect(end.status).toBe('stopped_by_cap');
+    const { rows } = await db.query<{ error: string }>('SELECT error FROM runs WHERE id = $1', [
+      run.id,
+    ]);
+    expect(rows[0]!.error).toContain('Actor minimum');
+    expect(rows[0]!.error).toContain('$0.5000');
+    expect(w.apify.startsFor(GOOGLE_MAPS_ACTOR)).toHaveLength(0);
   });
 
   it('refuses to start a run once the monthly cap is spent, and caps steps by it', async () => {
@@ -347,8 +365,8 @@ describe('orchestrator: money', () => {
       sectorIds: TEXTILE,
       budgetCapUsd: 10,
     });
-    expect((await drive(w.orchestrator, user, run.id)).status).toBe('stopped_by_cap');
-    expect(w.apify.startsFor(GOOGLE_MAPS_ACTOR)).toHaveLength(1);
+    await drive(w.orchestrator, user, run.id);
+    expect((await getRun(db, user, run.id))!.spentUsd).toBeLessThanOrEqual(0.6);
     await setMonthlyCap(db, user, new Date(), 0.001);
     await expect(
       w.orchestrator.startRun(user, { regionId: 'sfax', sectorIds: TEXTILE, budgetCapUsd: 10 }),
