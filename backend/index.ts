@@ -2,6 +2,7 @@ import { buildApp, LOG_REDACT } from './app.js';
 import { AuthService, DEFAULT_POLICY } from './auth/service.js';
 import { loadEnv } from './config/env.js';
 import { createDb } from './data/db.js';
+import { createClassifier } from './providers/anthropicClassifier.js';
 import { ApifyClient } from './providers/apify.js';
 import { EmailFinderVerifier } from './providers/emailFinder.js';
 import { GoogleMapsApifyDiscovery } from './providers/googleMapsApify.js';
@@ -24,8 +25,11 @@ const auth = new AuthService(db, {
 
 // Building the providers makes no request; only a started run calls Apify.
 const apify = new ApifyClient(env.APIFY_TOKEN);
+// The Claude classifier exists only when a key is set; without one, rules decide alone.
+const classifier = createClassifier(env);
 const runner = new Orchestrator({
   db,
+  ...(classifier ? { companyClassifier: classifier, titleClassifier: classifier } : {}),
   discovery: new GoogleMapsApifyDiscovery(apify),
   people: new LinkedinPeopleFinder(
     new CompanyEmployeesFinder(apify),
@@ -33,6 +37,7 @@ const runner = new Orchestrator({
   ),
   emails: new EmailFinderVerifier(apify),
   config: {
+    classifierRunCapUsd: env.CLASSIFIER_RUN_CAP_USD,
     webhook:
       env.APIFY_WEBHOOK_SECRET && env.PUBLIC_URL
         ? {

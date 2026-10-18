@@ -8,6 +8,36 @@ Provider adapters, one interface per stage (`types.ts`):
 | findPeople        | `PeopleFinder`     | `CompanyEmployeesFinder` (harvestapi/linkedin-company-employees), `ProfileSearchFinder` (harvestapi/linkedin-profile-search), `LinkedinPeopleFinder` (employees when the company has a LinkedIn page, profile search otherwise) |
 | findEmails        | `EmailFinder`      | `EmailFinderVerifier` (crustapi/email-finder-verifier)                                                                                                                                                                          |
 
+## Claude classifier (`anthropicClassifier.ts`)
+
+`AnthropicClassifier` implements `CompanyClassifier` and `TitleClassifier` (`stages/classifier.ts`)
+with the Anthropic Messages API over the same `HttpJson` layer as the other adapters (plain
+`fetch`, no SDK). It exists only when `ANTHROPIC_API_KEY` is set (`createClassifier`, wired in
+`backend/index.ts`); without a key everything behaves as before and undecided items go to review.
+
+- **When it is called.** Only after the rules cannot decide a company or a title, and only while
+  the run's classifier spend is under `CLASSIFIER_RUN_CAP_USD` (default $0.50, summed from the
+  ledger's `anthropic` rows). Past the cap, undecided items go to review with that reason.
+- **What it sees.** Company: name, category, types, website and the sector candidates (the sector
+  that found the place first). No address, no people. Title: the job title text only. The facts
+  are marked untrusted in the prompt.
+- **What it returns.** Strict JSON `{ verdict, reasons[] }` (plus `fields`, the facts it relied
+  on), validated with zod. A code fence around the JSON is the only leniency. Any HTTP error,
+  timeout (15 s), network failure or unreadable answer gives `review` for a company and no role
+  for a title, never `qualified`. Results are `estimate`s, carry the model name, and the runner
+  stores the facts it relied on plus its verdict as `classifier_*` evidence rows on the company.
+- **Cost.** Each call returns two `anthropic` cost entries (input and output tokens) from the
+  API's `usage`, priced with `ANTHROPIC_PRICES_PER_MTOK` in `config/pricing.ts`. An unreadable
+  answer is still billed. If `usage` is missing, a high guess is used, never zero. An unlisted
+  model is priced at the dearest known row. **The price table has not been checked against
+  Anthropic's pricing page; confirm it before the pilot.** Rows go to `cost_ledger` as `actual`
+  and count against the run cap and the month cap like any other spend.
+- **Secrets.** The key goes in the `x-api-key` header. The classifier never logs, and a failure
+  keeps only its kind (`timeout`, `http 529`, `network error`, `invalid answer`), not the
+  message, the prompt or the answer.
+- **Tests** use a fake `HttpJson`: valid and fenced JSON, invalid JSON, a wrong verdict, a
+  timeout, an HTTP error, missing usage, the run spend cap and no key.
+
 Rules:
 
 - **No database.** Adapters return values; the runner persists them. Lint refuses a `data/` or

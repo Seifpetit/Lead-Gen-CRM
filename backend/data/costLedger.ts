@@ -7,7 +7,7 @@ import type { UserId } from './ids.js';
  * cost-per-lead totals are always sums over this table.
  */
 
-export type CostProvider = 'apify' | 'google' | 'llm';
+export type CostProvider = 'apify' | 'google' | 'llm' | 'anthropic';
 export type CostKind = 'estimated' | 'actual';
 
 export interface CostEntryInput {
@@ -97,6 +97,21 @@ async function sumRun(db: Queryable, runId: string): Promise<number> {
   const { rows } = await db.query<{ total: number }>(
     'SELECT COALESCE(sum(amount_usd), 0) AS total FROM cost_ledger WHERE run_id = $1',
     [runId],
+  );
+  return rows[0]!.total;
+}
+
+/** What one provider has charged a run so far, from the ledger. */
+export async function runSpendByProvider(
+  db: Queryable,
+  userId: UserId,
+  runId: string,
+  provider: CostProvider,
+): Promise<number> {
+  const { rows } = await db.query<{ total: number }>(
+    `SELECT COALESCE(sum(amount_usd), 0) AS total FROM cost_ledger
+      WHERE user_id = $1 AND run_id = $2 AND provider = $3`,
+    [userId, runId, provider],
   );
   return rows[0]!.total;
 }

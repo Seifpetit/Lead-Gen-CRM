@@ -30,6 +30,8 @@ export interface CompanyFacts {
   types: readonly string[];
   website: string | null;
   address: string | null;
+  /** The sector whose search found the place, when known: the first sector candidate. */
+  querySectorId?: string | null;
   sourceUrl: string;
 }
 

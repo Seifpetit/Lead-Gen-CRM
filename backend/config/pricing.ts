@@ -35,6 +35,26 @@ export const APIFY_EVENT_PRICES: Record<string, Record<string, number>> = {
   },
 };
 
+/**
+ * Anthropic list prices in USD per million tokens, by model. NOT CHECKED against Anthropic's
+ * pricing page: the figures below are placeholders chosen to err high. Confirm them and update
+ * PRICES_CHECKED_ON-style before relying on the cost numbers. A model missing from this table
+ * is priced at the most expensive row, never at zero.
+ */
+export const ANTHROPIC_PRICES_PER_MTOK: Record<string, { input: number; output: number }> = {
+  'claude-haiku-5-5': { input: 1, output: 5 },
+};
+
+export function anthropicPrice(model: string): { input: number; output: number } {
+  const known = ANTHROPIC_PRICES_PER_MTOK[model];
+  if (known) return known;
+  const rows = Object.values(ANTHROPIC_PRICES_PER_MTOK);
+  return {
+    input: Math.max(...rows.map((r) => r.input)),
+    output: Math.max(...rows.map((r) => r.output)),
+  };
+}
+
 /** Run memory assumed when estimating per-GB start events. */
 export const APIFY_ESTIMATE_MEMORY_GB = 4;
 

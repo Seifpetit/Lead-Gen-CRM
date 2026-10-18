@@ -32,6 +32,12 @@ const EnvSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
+  /** Anthropic API key for the Claude classifier. Optional: without it, rules decide alone. */
+  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  /** Model the classifier calls. */
+  CLASSIFIER_MODEL: z.string().min(1).default('claude-haiku-5-5'),
+  /** Most the classifier may spend on one run, in USD. */
+  CLASSIFIER_RUN_CAP_USD: z.coerce.number().positive().default(0.5),
   /** A session ends after this many hours without a request. */
   SESSION_IDLE_HOURS: z.coerce.number().positive().default(12),
   /** A session ends this many days after sign-in, however active. */

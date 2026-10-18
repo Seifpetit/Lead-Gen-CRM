@@ -8,9 +8,15 @@ import {
   setContactEmail,
   upsertContact,
 } from '../data/contacts.js';
-import { recordCost, remainingBudget, settleStepCosts } from '../data/costLedger.js';
+import {
+  recordCost,
+  remainingBudget,
+  runSpendByProvider,
+  settleStepCosts,
+} from '../data/costLedger.js';
 import { upsertLead } from '../data/crmLeads.js';
 import { withTransaction, type Db, type Queryable } from '../data/db.js';
+import { insertEvidence } from '../data/evidence.js';
 import { listEvidence } from '../data/evidence.js';
 import { dismissalFeedback } from '../data/views.js';
 import type { UserId } from '../data/ids.js';
@@ -931,7 +937,7 @@ export class Orchestrator {
       const role = verifyCurrentRole(person.positions, identity);
       const title = await matchTitle(
         role.position?.title ?? person.headline?.value ?? '',
-        this.deps.titleClassifier,
+        (await this.classifierCapReached(userId, run.id)) ? undefined : this.deps.titleClassifier,
       );
       await this.recordLlmCosts(tx, userId, run.id, rc.regionCellId, title.costs);
       let contactId: string | null = null;
@@ -1008,6 +1014,48 @@ export class Orchestrator {
         payload: { emails },
       });
     }
+  }
+
+  /** True once the Claude classifier has spent this run's classifier allowance. */
+  private async classifierCapReached(userId: UserId, runId: string): Promise<boolean> {
+    if (!this.deps.companyClassifier && !this.deps.titleClassifier) return false;
+    const spent = await runSpendByProvider(this.db, userId, runId, 'anthropic');
+    return spent >= this.config.classifierRunCapUsd;
+  }
+
+  /** What the classifier relied on and what it concluded, as estimates on the company. */
+  private async recordClassifierEvidence(
+    tx: Queryable,
+    userId: UserId,
+    runId: string,
+    companyId: string,
+    place: DiscoveredPlace,
+    q: Qualification,
+  ): Promise<void> {
+    const at = new Date();
+    for (const e of q.evidence) {
+      await insertEvidence(
+        tx,
+        userId,
+        { companyId },
+        `classifier_${e.field}`,
+        { value: e.value, sourceUrl: e.sourceUrl, fetchedAt: at, kind: 'estimate' },
+        runId,
+      );
+    }
+    await insertEvidence(
+      tx,
+      userId,
+      { companyId },
+      'classifier_verdict',
+      {
+        value: `${q.verdict}: ${q.reasons.join('; ')}`,
+        sourceUrl: place.name.sourceUrl,
+        fetchedAt: at,
+        kind: 'estimate',
+      },
+      runId,
+    );
   }
 
   private async recordLlmCosts(
@@ -1149,12 +1197,24 @@ export class Orchestrator {
     const todo = await listRunCompanies(this.db, userId, run.id, ['discovered']);
     for (const rc of todo) {
       const payload = reviveDates<DiscoverPayload>(rc.payload);
+      const capped = await this.classifierCapReached(userId, run.id);
       const q = await qualify(payload.place, {
         querySectorId: payload.querySectorId,
-        ...(this.deps.companyClassifier ? { classifier: this.deps.companyClassifier } : {}),
+        ...(this.deps.companyClassifier && !capped
+          ? { classifier: this.deps.companyClassifier }
+          : {}),
+        ...(this.deps.companyClassifier && capped
+          ? {
+              classifierSkipped:
+                'classifier spend cap for this run reached; left for manual review',
+            }
+          : {}),
       });
       await withTransaction(this.db, async (tx) => {
         await this.recordLlmCosts(tx, userId, run.id, rc.regionCellId, q.costs);
+        if (q.method === 'classifier') {
+          await this.recordClassifierEvidence(tx, userId, run.id, rc.companyId, payload.place, q);
+        }
         const moved = await moveRunCompany(tx, userId, {
           runId: run.id,
           companyId: rc.companyId,

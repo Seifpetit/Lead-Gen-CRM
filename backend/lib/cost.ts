@@ -1,7 +1,7 @@
 // Cost entries returned by every paid call. The runner writes them to cost_ledger; nothing
 // here touches the database.
 
-export type CostProvider = 'apify' | 'google' | 'llm';
+export type CostProvider = 'apify' | 'google' | 'llm' | 'anthropic';
 
 export interface CostEntry {
   provider: CostProvider;

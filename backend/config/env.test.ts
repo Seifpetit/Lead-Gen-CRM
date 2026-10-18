@@ -18,6 +18,8 @@ describe('loadEnv', () => {
       SESSION_MAX_DAYS: 7,
       HOST: '127.0.0.1',
       DEV_ADMIN_LOGIN: false,
+      CLASSIFIER_MODEL: 'claude-haiku-5-5',
+      CLASSIFIER_RUN_CAP_USD: 0.5,
     });
   });
 

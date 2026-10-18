@@ -48,6 +48,8 @@ export interface FakeApifyOptions {
   billedFactor?: number;
   /** Places per cell key; every wording in a cell finds the same places. */
   placesPerCell?: (cellKey: string) => number;
+  /** Places no rule can decide (neutral name and category), so a classifier is consulted. */
+  undecided?: boolean;
 }
 
 export class FakeApify {
@@ -147,16 +149,16 @@ const src = <T>(value: T, sourceUrl: string, kind: 'fact' | 'estimate' = 'fact')
   kind,
 });
 
-export function fakePlace(cellKey: string, i: number): DiscoveredPlace {
+export function fakePlace(cellKey: string, i: number, undecided = false): DiscoveredPlace {
   const id = `${cellKey.replace(/[^a-z0-9]/gi, '')}x${i}`;
   const maps = `https://maps.example.test/place/${id}`;
   return {
     provider: 'apify_google_maps',
     placeId: src(`fake-place-${id}`, maps),
-    name: src(`Fixture Textile ${id}`, maps),
+    name: src(`Fixture ${undecided ? 'Atelier' : 'Textile'} ${id}`, maps),
     address: src(`Zone industrielle ${id}`, maps),
-    category: src('Usine textile', maps),
-    types: ['textile'],
+    category: src(undecided ? 'Atelier' : 'Usine textile', maps),
+    types: undecided ? [] : ['textile'],
     website: src(`https://fixture-${id.toLowerCase()}.example.tn`, maps),
     phones: [],
     emails: [],
@@ -174,7 +176,9 @@ export class FakeDiscovery implements CompanyDiscovery {
 
   private placesFor(q: DiscoveryQuery): DiscoveredPlace[] {
     const n = Math.min(this.apify.options.placesPerCell?.(q.cellKey) ?? 2, q.maxPlaces);
-    return Array.from({ length: n }, (_, i) => fakePlace(q.cellKey, i));
+    return Array.from({ length: n }, (_, i) =>
+      fakePlace(q.cellKey, i, this.apify.options.undecided),
+    );
   }
 
   estimate(q: DiscoveryQuery): CostEntry[] {
