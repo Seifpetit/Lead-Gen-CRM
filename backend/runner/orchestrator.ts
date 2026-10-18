@@ -16,7 +16,8 @@ import { dismissalFeedback } from '../data/views.js';
 import type { UserId } from '../data/ids.js';
 import { createRegionGrid, listCells } from '../data/regionCells.js';
 import { addCellCoverage } from '../data/regionCoverage.js';
-import { getRegionBounds } from '../data/regions.js';
+import { getRegionBounds, getRegionOutline } from '../data/regions.js';
+import { placeInOutline } from '../lib/geo.js';
 import {
   addRunCompany,
   listRunCompanies,
@@ -25,6 +26,7 @@ import {
   type RunCompanyState,
 } from '../data/runCompanies.js';
 import {
+  addDroppedPlaces,
   countRuns,
   createRunWithinLimit,
   getRun,
@@ -270,7 +272,14 @@ export class Orchestrator {
         throw new RunStartError(`Region ${input.regionId} has no map bounds yet`, 'no_bounds');
       const { rows, cols } = gridShape(bounds, this.config.cellsPerRun * 4);
       // Safe to race: cells are unique per (region, cell key).
-      await createRegionGrid(this.db, input.regionId, bounds, rows, cols);
+      await createRegionGrid(
+        this.db,
+        input.regionId,
+        bounds,
+        rows,
+        cols,
+        await getRegionOutline(this.db, input.regionId),
+      );
     }
     const mode = input.mode ?? 'normal';
     const run = await createRunWithinLimit(
@@ -852,7 +861,20 @@ export class Orchestrator {
   ): Promise<void> {
     const cellId = step.regionCellId;
     let newPlaces = 0;
+    let dropped = 0;
+    const outline = await getRegionOutline(tx, run.region);
     for (const place of places) {
+      // Spillage: a cell on the border also returns places from the neighbouring governorate.
+      // Drop them before anything is stored, so they never reach (or cost) the paid stages.
+      // A place with no coordinates cannot be judged and is kept.
+      if (
+        outline &&
+        place.location &&
+        !placeInOutline(place.location.lat, place.location.lng, outline)
+      ) {
+        dropped++;
+        continue;
+      }
       const refreshBy =
         place.provider === 'google_places'
           ? new Date(Date.now() + this.config.googleRefreshDays * 86_400_000)
@@ -891,6 +913,7 @@ export class Orchestrator {
         payload: { place, querySectorId: query.sectorId },
       });
     }
+    await addDroppedPlaces(tx, userId, run.id, dropped);
     if (cellId && (complete || places.length > 0)) {
       await recordSearchQuery(tx, userId, {
         runId: run.id,

@@ -3,9 +3,9 @@ import { APIFY_MIN_MAX_CHARGE_USD } from '../config/pricing.js';
 import { listCompaniesWithStaleContacts } from '../data/contacts.js';
 import type { Queryable } from '../data/db.js';
 import type { UserId } from '../data/ids.js';
-import { listCells } from '../data/regionCells.js';
+import { cellsInOutline, listCells } from '../data/regionCells.js';
 import { listCoverage } from '../data/regionCoverage.js';
-import { getRegionBounds } from '../data/regions.js';
+import { getRegionBounds, getRegionOutline } from '../data/regions.js';
 import { countActiveRuns, countRuns } from '../data/runs.js';
 import { listCellStats, listExhaustedQueries, type CellStats } from '../data/saturation.js';
 import { getMonthlyBudget } from '../data/userBudget.js';
@@ -95,7 +95,8 @@ export async function previewRun(
   } else if (bounds) {
     // Not built yet: starting the run would build this grid. Nothing is written here.
     const { rows, cols } = gridShape(bounds, config.cellsPerRun * 4);
-    stats = splitBounds(bounds, rows, cols).map((c) => ({
+    const outline = await getRegionOutline(db, input.regionId);
+    stats = cellsInOutline(splitBounds(bounds, rows, cols), outline).map((c) => ({
       regionCellId: c.key,
       cellKey: c.key,
       bounds: c.bounds,

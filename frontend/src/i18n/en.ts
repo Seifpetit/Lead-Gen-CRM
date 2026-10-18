@@ -224,6 +224,7 @@ export const en = {
   'run.steps.inFlight': 'in progress',
   'run.steps.finished': 'done',
   'run.steps.failed': 'failed',
+  'run.droppedOutside': 'Places outside the region, dropped before qualifying: {count}',
   'run.error': 'Run error: {message}',
   'run.leads.title': 'Leads',
   'run.leads.count': '{shown} of {total} shown, best score first',

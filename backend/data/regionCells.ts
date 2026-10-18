@@ -1,5 +1,6 @@
-import { splitBounds, type Bounds } from '../lib/geo.js';
+import { boundsIntersectOutline, splitBounds, type Bounds, type Outline } from '../lib/geo.js';
 import type { Queryable } from './db.js';
+import { getRegionOutline } from './regions.js';
 
 // Map rectangles that regions are searched in. Geometry, shared by all users: no user_id.
 
@@ -49,15 +50,27 @@ async function insertCells(
   }
 }
 
-/** Covers a region's bounds with a rows x cols grid of top-level cells. Idempotent. */
+/** Keeps only the cells that touch the outline (all of them when there is none). */
+export function cellsInOutline<T extends { bounds: Bounds }>(
+  cells: readonly T[],
+  outline: Outline | null,
+): T[] {
+  return outline ? cells.filter((c) => boundsIntersectOutline(c.bounds, outline)) : [...cells];
+}
+
+/**
+ * Covers a region's bounds with a rows x cols grid of top-level cells, keeping only the cells
+ * that intersect the region's outline when one is given. Idempotent.
+ */
 export async function createRegionGrid(
   db: Queryable,
   regionId: string,
   bounds: Bounds,
   rows: number,
   cols: number,
+  outline: Outline | null = null,
 ): Promise<RegionCell[]> {
-  await insertCells(db, regionId, null, splitBounds(bounds, rows, cols));
+  await insertCells(db, regionId, null, cellsInOutline(splitBounds(bounds, rows, cols), outline));
   return listCells(db, regionId);
 }
 
@@ -73,10 +86,14 @@ export async function splitCell(
 ): Promise<RegionCell[]> {
   const parent = await getCell(db, cellId);
   if (!parent) throw new Error('Unknown region cell');
-  const children = splitBounds(parent, rows, cols).map((c) => ({
-    key: `${parent.cellKey}.${c.key}`,
-    bounds: c.bounds,
-  }));
+  const outline = await getRegionOutline(db, parent.regionId);
+  const children = cellsInOutline(
+    splitBounds(parent, rows, cols).map((c) => ({
+      key: `${parent.cellKey}.${c.key}`,
+      bounds: c.bounds,
+    })),
+    outline,
+  );
   await insertCells(db, parent.regionId, parent.id, children);
   const { rows: found } = await db.query<Row>(
     'SELECT * FROM region_cells WHERE parent_cell_id = $1 ORDER BY cell_key',

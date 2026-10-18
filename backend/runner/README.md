@@ -107,6 +107,18 @@ Proposed fixes where an assumption is weak (none applied silently):
   applies the result; a crash right after it can repeat the call (a few cents at most).
 - Maintenance runs rebuild the company's place from stored evidence (name, website, phone,
   LinkedIn); address and category aren't re-checked.
-- Governorate bounds aren't seeded yet, so `startRun` fails with "has no map bounds yet" until
-  they are set (`setRegionBounds`), or cells are created another way.
+- Governorate bounds and outlines come from OpenStreetMap (`config/regionBounds.ts`,
+  `config/regionOutlines.json`, written by `npm run regions:fetch`) and are applied by
+  `db:migrate` / `db:seed`. Until they are fetched, `startRun` fails with "has no map bounds yet"
+  unless bounds were set by hand (`npm run regions:set-bounds -- <region> <s> <w> <n> <e>`; a
+  manual box is never overwritten by a seed).
+- **Spillage:** a search cell is kept only if it intersects the region's outline, and a
+  discovered place whose coordinates are outside the outline (more than ~550 m, since the stored
+  outline is simplified) is dropped before it is stored or qualified. The count is on the run
+  (`placesDroppedOutside`). A region without an outline uses its bounding box as the outline, so
+  a bounds-only region drops nothing inside its box. A place with no coordinates is kept.
+  Cells created before an outline existed are not pruned retroactively.
+- The Maps Actor takes each cell as given: `mapsInput` passes the rectangle as a GeoJSON
+  `customGeolocation` Polygon, which the Actor documents. It does not clip results to it, which
+  is why the outline check above exists. Not verified against a live run yet (pilot).
 - Nothing here runs a real Apify call: tests use `test/fakeProviders.ts`.

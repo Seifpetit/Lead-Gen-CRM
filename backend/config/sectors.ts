@@ -98,10 +98,17 @@ export const FREIGHT_SECTORS = [
   },
   {
     id: 'import-export',
-    name: 'Import and export trading',
-    searchTermsFr: ['import export', 'société de commerce international'],
+    name: 'Import and export',
+    searchTermsFr: ['import export', "société d'import", 'exportateur', 'commerce international'],
     searchTermsEn: ['trading company'],
-    keywords: ['import', 'export', 'commerce international', 'trading'],
+    keywords: [
+      'import',
+      'export',
+      'importateur',
+      'exportateur',
+      'commerce international',
+      'trading',
+    ],
   },
   {
     id: 'retail-chains',

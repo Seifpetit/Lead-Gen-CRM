@@ -588,3 +588,60 @@ describe('orchestrator: coverage and saturation', () => {
     expect(s.reason).toMatch(/explore run/);
   });
 });
+
+describe('orchestrator: places outside the governorate', () => {
+  // Outline over the west half of the Sfax box only.
+  const WEST_HALF = {
+    type: 'Polygon',
+    coordinates: [
+      [
+        [10.5, 34.6],
+        [10.7, 34.6],
+        [10.7, 34.9],
+        [10.5, 34.9],
+        [10.5, 34.6],
+      ],
+    ],
+  };
+  const INSIDE = { lat: 34.7, lng: 10.6 };
+  const OUTSIDE = { lat: 34.7, lng: 10.8 };
+
+  async function runWith(locationOf: NonNullable<FakeApifyOptions['locationOf']>) {
+    await db.query('UPDATE regions SET outline = $1 WHERE id = $2', [
+      JSON.stringify(WEST_HALF),
+      'sfax',
+    ]);
+    const w = world({ locationOf });
+    const run = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectors: TEXTILE,
+      budgetCapUsd: 10,
+    });
+    await drive(w.orchestrator, user, run.id);
+    return { run, companies: await listRunCompanies(db, user, run.id) };
+  }
+
+  it('drops places whose coordinates are outside the outline before they are stored, and counts them', async () => {
+    const { run, companies } = await runWith((_cell, i) => (i === 0 ? INSIDE : OUTSIDE));
+    // 2 cells x 2 wordings x 2 places = 8 sightings; the second place of each is outside.
+    expect((await getRun(db, user, run.id))?.placesDroppedOutside).toBe(4);
+    expect(companies).toHaveLength(2);
+    expect(companies.every((c) => c.state === 'scored')).toBe(true);
+    const names = await db.query<{ n: number }>(
+      'SELECT count(*)::integer AS n FROM companies WHERE user_id = $1',
+      [user],
+    );
+    expect(names.rows[0]!.n).toBe(2);
+  });
+
+  it('keeps places without coordinates, which cannot be judged', async () => {
+    const { run, companies } = await runWith((_cell, i) => (i === 0 ? INSIDE : null));
+    expect((await getRun(db, user, run.id))?.placesDroppedOutside).toBe(0);
+    expect(companies).toHaveLength(4);
+  });
+
+  it('forgives a place a few hundred metres outside the simplified edge', async () => {
+    const { run } = await runWith(() => ({ lat: 34.7, lng: 10.7 + 0.002 }));
+    expect((await getRun(db, user, run.id))?.placesDroppedOutside).toBe(0);
+  });
+});
