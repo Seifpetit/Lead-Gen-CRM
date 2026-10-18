@@ -24,12 +24,12 @@ describe('App', () => {
     ).toEqual(['Lead Gen', 'CRM']);
     expect(screen.getByText('seif@example.test')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument();
-    expect(await screen.findByRole('heading', { name: 'Lead Gen', level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Dashboard', level: 1 })).toBeInTheDocument();
   });
 
-  it('shows the four Lead Gen widgets', async () => {
+  it('shows the dashboard cards and previous runs', async () => {
     renderApp(fakeServer(signedIn), '/leadgen');
-    for (const name of ['Start a run', 'Runs', 'Apify log', 'Costs']) {
+    for (const name of ['Create run (0/2)', 'Results', 'Runs']) {
       expect(await screen.findByRole('region', { name })).toBeInTheDocument();
     }
   });

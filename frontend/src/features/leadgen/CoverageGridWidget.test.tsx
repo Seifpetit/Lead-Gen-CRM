@@ -61,18 +61,18 @@ describe('Coverage grid', () => {
 
   it('shows the yield on hover', async () => {
     const { user } = setup();
-    const square = (await screen.findAllByRole('button')).find((b) =>
-      /Sfax.*Agri-food/.test(b.getAttribute('aria-label') ?? ''),
-    )!;
+    const square = within(await screen.findByRole('table'))
+      .getAllByRole('button')
+      .find((b) => /Sfax.*Agri-food/.test(b.getAttribute('aria-label') ?? ''))!;
     await user.hover(square);
     expect(await screen.findByText(/12 searches, 40 new places, 5 leads/)).toBeInTheDocument();
   });
 
   it('hands the region and sector to Start a run on click', async () => {
     const { onPick, user } = setup();
-    const square = (await screen.findAllByRole('button')).find((b) =>
-      /Tunis.*Textile/.test(b.getAttribute('aria-label') ?? ''),
-    )!;
+    const square = within(await screen.findByRole('table'))
+      .getAllByRole('button')
+      .find((b) => /Tunis.*Textile/.test(b.getAttribute('aria-label') ?? ''))!;
     await user.click(square);
     expect(onPick).toHaveBeenCalledWith({ regionId: 'tunis', sectorIds: ['textile'] });
   });

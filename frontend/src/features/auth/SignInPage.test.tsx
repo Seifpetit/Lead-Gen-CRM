@@ -82,7 +82,7 @@ describe('Sign in', () => {
     });
     renderApp(server, '/signin');
     await fill('a@example.test', 'correct-password');
-    expect(await screen.findByRole('heading', { name: 'Lead Gen', level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Dashboard', level: 1 })).toBeInTheDocument();
     expect(server.to('POST /api/auth/login')[0]!.body).toEqual({
       email: 'a@example.test',
       password: 'correct-password',
@@ -153,7 +153,7 @@ describe('Sign in', () => {
     expect(screen.getByLabelText('Password')).not.toHaveAttribute('minlength');
     await user.click(screen.getByRole('button', { name: 'Back to sign in' }));
     await fill('test', 'test');
-    expect(await screen.findByRole('heading', { name: 'Lead Gen', level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Dashboard', level: 1 })).toBeInTheDocument();
     expect(server.to('POST /api/auth/login')[0]!.body).toEqual({ email: 'test', password: 'test' });
   });
 });
