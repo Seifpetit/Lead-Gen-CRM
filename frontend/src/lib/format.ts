@@ -85,3 +85,13 @@ export function evidenceFor(
   }
   return null;
 }
+
+/** "45s", "1m 05s" or "1h 02m" for a number of seconds. */
+export function formatDuration(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return '—';
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${String(s % 60).padStart(2, '0')}s`;
+  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+}

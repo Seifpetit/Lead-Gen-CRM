@@ -323,6 +323,27 @@ export interface ApifyEventView {
   occurredAt: string;
 }
 
+/** Why a result was dropped or a company had no decision-maker, as a code the UI words. */
+export type DropReason = 'outside_region' | 'already_known' | 'no_contact' | 'no_email_found';
+
+export type NoDecisionMakerReason =
+  'no_people_returned' | 'no_matching_title' | 'not_current' | 'suppressed';
+
+/** What one step's result came to, written when the result was applied. */
+export interface StepSummary {
+  returned: number;
+  kept: number;
+  dropped: { reason: DropReason; count: number }[];
+  /** People steps only: one company's people and why none (or how many) were decision-makers. */
+  people?: {
+    found: number;
+    decisionMakers: number;
+    /** True when the company has no LinkedIn page, so people came from a profile search. */
+    noLinkedinPage: boolean;
+    reasons: { reason: NoDecisionMakerReason; count: number }[];
+  };
+}
+
 export interface ApifyStepView {
   runStepId: string;
   stage: RunStage;
@@ -332,6 +353,13 @@ export interface ApifyStepView {
   apifyStatus: string | null;
   latestState: ApifyState | null;
   history: ApifyEventView[];
+  /** What the step searched: the wording and map cell, or the company. */
+  target: { query: string | null; cell: string | null; company: string | null };
+  summary: StepSummary | null;
+  costUsd: number;
+  durationSeconds: number | null;
+  /** The step's error as stored, e.g. "provider status ABORTED". */
+  error: string | null;
 }
 
 export interface ApifyLogRun {

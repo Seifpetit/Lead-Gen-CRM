@@ -1,4 +1,4 @@
-import type { RunStage } from '@lead-gen-crm/shared';
+import type { RunStage, StepSummary } from '@lead-gen-crm/shared';
 import type { Queryable } from './db.js';
 import type { UserId } from './ids.js';
 
@@ -324,4 +324,18 @@ export async function reservedHeadroom(
     [userId, runId],
   );
   return { runUsd: rows[0]!.run_usd, userUsd: rows[0]!.user_usd };
+}
+
+/** Stores what a step's result came to; read by the Apify log. */
+export async function setStepSummary(
+  db: Queryable,
+  userId: UserId,
+  stepId: string,
+  summary: StepSummary,
+): Promise<void> {
+  await db.query('UPDATE run_steps SET summary = $3 WHERE user_id = $1 AND id = $2', [
+    userId,
+    stepId,
+    JSON.stringify(summary),
+  ]);
 }

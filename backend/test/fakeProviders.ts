@@ -56,6 +56,8 @@ export interface FakeApifyOptions {
   unreachable?: boolean;
   /** People from the company list with no experience entries and a French filler-word title. */
   sparsePeople?: boolean;
+  /** People whose title is no decision-maker role. */
+  noDecisionMakers?: boolean;
 }
 
 export class FakeApify {
@@ -233,7 +235,11 @@ export class FakePeople implements PeopleFinder {
       via: 'company_employees',
       fullName: src(`Amine Testeur${slug.replace(/[^a-z0-9]/gi, '').slice(-6)}`, url),
       headline: src(
-        this.apify.options.sparsePeople ? 'Responsable des achats' : 'Directeur Logistique',
+        this.apify.options.noDecisionMakers
+          ? 'Assistante de direction'
+          : this.apify.options.sparsePeople
+            ? 'Responsable des achats'
+            : 'Directeur Logistique',
         url,
       ),
       linkedinUrl: src(url, url),
@@ -243,7 +249,9 @@ export class FakePeople implements PeopleFinder {
         ? []
         : [
             {
-              title: 'Directeur Logistique',
+              title: this.apify.options.noDecisionMakers
+                ? 'Assistante de direction'
+                : 'Directeur Logistique',
               companyName: q.companyName,
               companyLinkedinUrl: q.companyLinkedinUrl,
               startDate: '2020-01',

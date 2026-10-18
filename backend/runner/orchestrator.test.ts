@@ -4,7 +4,7 @@ import { expireClaims, listLiveClaims } from '../data/cellClaims.js';
 import { upsertCompany } from '../data/companies.js';
 import { listLedgerForRun, runSpendByProvider } from '../data/costLedger.js';
 import { listLeads } from '../data/crmLeads.js';
-import { loadLeads, runSummaries } from '../data/views.js';
+import { apifySteps, loadLeads, runSummaries } from '../data/views.js';
 import type { Db } from '../data/db.js';
 import type { UserId } from '../data/ids.js';
 import { createRegionGrid, listCells } from '../data/regionCells.js';
@@ -868,5 +868,76 @@ describe('orchestrator: first-run fixes', () => {
       expect(row.score_reasons.length).toBeGreaterThan(0);
       expect(row.score_reasons.every((r) => r.reason !== '')).toBe(true);
     }
+  });
+
+  it('records what each step came to, for the Apify log', async () => {
+    const { run } = await finished({
+      noDecisionMakers: true,
+      locationOf: (_c, i) => (i === 0 ? { lat: 34.7, lng: 10.6 } : null),
+    });
+    const steps = await apifySteps(db, user, { runIds: [run.id] });
+    const discover = steps.filter((s) => s.stage === 'discover');
+    expect(discover.length).toBeGreaterThan(0);
+    for (const s of discover) {
+      expect(s.target.query).toBeTruthy();
+      expect(s.target.cell).toBeTruthy();
+      expect(s.summary).toMatchObject({ returned: 2 });
+      expect(s.durationSeconds).not.toBeNull();
+      expect(s.costUsd).toBeGreaterThan(0);
+    }
+    // The first wording in a cell finds new places; a later wording finds the same ones.
+    expect(discover.some((s) => s.summary!.kept === 2 && s.summary!.dropped.length === 0)).toBe(
+      true,
+    );
+    expect(
+      discover.some((s) =>
+        s.summary!.dropped.some((d) => d.reason === 'already_known' && d.count === 2),
+      ),
+    ).toBe(true);
+
+    const people = steps.filter((s) => s.stage === 'find_people');
+    expect(people.length).toBeGreaterThan(0);
+    for (const s of people) {
+      expect(s.target.company).toBeTruthy();
+      expect(s.summary?.people).toMatchObject({
+        found: 1,
+        decisionMakers: 0,
+        reasons: [{ reason: 'no_matching_title', count: 1 }],
+      });
+    }
+  });
+
+  it('records a dropped place and a place with no contact in the discover summary', async () => {
+    await db.query('UPDATE regions SET outline = $1 WHERE id = $2', [
+      JSON.stringify({
+        type: 'Polygon',
+        coordinates: [
+          [
+            [10.5, 34.6],
+            [10.7, 34.6],
+            [10.7, 34.9],
+            [10.5, 34.9],
+            [10.5, 34.6],
+          ],
+        ],
+      }),
+      'sfax',
+    ]);
+    const { run } = await finished({
+      unreachable: true,
+      locationOf: (_c, i) => (i === 0 ? { lat: 34.7, lng: 10.6 } : { lat: 34.7, lng: 10.8 }),
+    });
+    const discover = (await apifySteps(db, user, { runIds: [run.id] })).filter(
+      (s) => s.stage === 'discover',
+    );
+    const first = discover.find((s) => s.summary!.dropped.some((d) => d.reason === 'no_contact'));
+    expect(first?.summary).toMatchObject({
+      returned: 2,
+      kept: 0,
+      dropped: [
+        { reason: 'outside_region', count: 1 },
+        { reason: 'no_contact', count: 1 },
+      ],
+    });
   });
 });

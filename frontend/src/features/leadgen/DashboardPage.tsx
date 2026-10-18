@@ -11,7 +11,7 @@ import { Card } from '../../components/shared/Card.js';
 import { useT } from '../../i18n/index.js';
 import { formatNumber, formatUsd } from '../../lib/format.js';
 import { useResource } from '../../lib/useResource.js';
-import { EventRow } from './ApifyLogWidget.js';
+import { StepLine } from './StepLine.js';
 import { MAX_ACTIVE_RUNS, StatusBadge } from './runParts.js';
 import { RunsWidget } from './RunsWidget.js';
 import { StartRunWidget } from './StartRunWidget.js';
@@ -172,7 +172,10 @@ function RunLogBox({ run, refreshKey }: { run: RunSummary; refreshKey: number })
     pollMs: ACTIVE_POLL_MS,
     deps: [refreshKey],
   });
-  const events = (log.data?.recent.items ?? []).filter((e) => e.runId === run.id).slice(0, 8);
+  // Newest step first; the Logs page has the whole history.
+  const steps = [...(log.data?.runs.find((r) => r.run.id === run.id)?.steps ?? [])]
+    .reverse()
+    .slice(0, 6);
   return (
     <div className="log-box">
       <SectionTitle level={3}>{t('dash.logs.title')}</SectionTitle>
@@ -186,9 +189,9 @@ function RunLogBox({ run, refreshKey }: { run: RunSummary; refreshKey: number })
           emptyText={t('apify.noEvents')}
           newWindowHref="/leadgen/logs"
           newWindowLabel={t('dash.logs.newWindow')}
-          items={events.map((event) => ({
-            id: event.id,
-            content: <EventRow event={event} region={run.region} />,
+          items={steps.map((step) => ({
+            id: step.runStepId,
+            content: <StepLine step={step} />,
           }))}
         />
       )}

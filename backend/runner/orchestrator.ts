@@ -1,4 +1,5 @@
 import type {
+  NoDecisionMakerReason,
   Run,
   RunPreview,
   RunPreviewInput,
@@ -58,6 +59,7 @@ import {
   recordStepPoll,
   reservedHeadroom,
   reserveStepCharge,
+  setStepSummary,
   type RunStep,
 } from '../data/runSteps.js';
 import {
@@ -178,7 +180,12 @@ interface PeopleDiagnostics {
   input: PeopleQuery;
   returned: number;
   kept: number;
-  rejected: { name: string; headline: string | null; reason: string }[];
+  rejected: {
+    name: string;
+    headline: string | null;
+    code: NoDecisionMakerReason;
+    reason: string;
+  }[];
 }
 
 interface StoredPerson {
@@ -888,9 +895,23 @@ export class Orchestrator {
         complete,
       );
     } else if (step.stage === 'find_people') {
-      await this.applyPeople(tx, userId, run, input as PeopleStepInput, items as FoundPerson[]);
+      await this.applyPeople(
+        tx,
+        userId,
+        run,
+        step.id,
+        input as PeopleStepInput,
+        items as FoundPerson[],
+      );
     } else if (step.stage === 'enrich') {
-      await this.applyEmails(tx, userId, run, input as EmailStepInput, items as FoundEmail[]);
+      await this.applyEmails(
+        tx,
+        userId,
+        run,
+        step.id,
+        input as EmailStepInput,
+        items as FoundEmail[],
+      );
     }
   }
 
@@ -911,6 +932,8 @@ export class Orchestrator {
     const cellId = step.regionCellId;
     let newPlaces = 0;
     let dropped = 0;
+    let alreadyKnown = 0;
+    let noContact = 0;
     const outline = await getRegionOutline(tx, run.region);
     for (const place of places) {
       // Spillage: a cell on the border also returns places from the neighbouring governorate.
@@ -951,6 +974,8 @@ export class Orchestrator {
         run.id,
       );
       if (created) newPlaces++;
+      else alreadyKnown++;
+      if (created && !isReachable(place)) noContact++;
       // Only companies new to this user go through the paid stages; a company another run
       // (or an earlier one) already found is skipped here.
       await addRunCompany(tx, userId, {
@@ -963,6 +988,20 @@ export class Orchestrator {
       });
     }
     await addDroppedPlaces(tx, userId, run.id, dropped);
+    const droppedReasons = (
+      [
+        ['outside_region', dropped],
+        ['already_known', alreadyKnown],
+        ['no_contact', noContact],
+      ] as const
+    )
+      .filter(([, count]) => count > 0)
+      .map(([reason, count]) => ({ reason, count }));
+    await setStepSummary(tx, userId, step.id, {
+      returned: places.length,
+      kept: places.length - dropped - alreadyKnown - noContact,
+      dropped: droppedReasons,
+    });
     if (cellId && (complete || places.length > 0)) {
       await recordSearchQuery(tx, userId, {
         runId: run.id,
@@ -987,6 +1026,7 @@ export class Orchestrator {
     tx: Queryable,
     userId: UserId,
     run: Run,
+    stepId: string,
     input: PeopleStepInput,
     found: FoundPerson[],
   ): Promise<void> {
@@ -1040,6 +1080,11 @@ export class Orchestrator {
         }
       }
       if (!contactId) {
+        const code: NoDecisionMakerReason = suppressed
+          ? 'suppressed'
+          : !title.roleClass
+            ? 'no_matching_title'
+            : 'not_current';
         const why = suppressed
           ? 'on the suppression list'
           : !title.roleClass
@@ -1048,6 +1093,7 @@ export class Orchestrator {
         rejected.push({
           name: person.fullName.value,
           headline: person.headline?.value ?? null,
+          code,
           reason: why,
         });
       }
@@ -1063,6 +1109,20 @@ export class Orchestrator {
       { runId: run.id, company: identity.name, ...peopleDiagnostics },
       'people step result',
     );
+    const counts = new Map<NoDecisionMakerReason, number>();
+    for (const r of rejected) counts.set(r.code, (counts.get(r.code) ?? 0) + 1);
+    if (found.length === 0) counts.set('no_people_returned', 1);
+    await setStepSummary(tx, userId, stepId, {
+      returned: found.length,
+      kept: peopleDiagnostics.kept,
+      dropped: [],
+      people: {
+        found: found.length,
+        decisionMakers: peopleDiagnostics.kept,
+        noLinkedinPage: input.query.companyLinkedinUrl === null,
+        reasons: [...counts].map(([reason, count]) => ({ reason, count })),
+      },
+    });
     await moveRunCompany(tx, userId, {
       runId: run.id,
       companyId: input.companyId,
@@ -1076,11 +1136,13 @@ export class Orchestrator {
     tx: Queryable,
     userId: UserId,
     run: Run,
+    stepId: string,
     input: EmailStepInput,
     found: FoundEmail[],
   ): Promise<void> {
     const byKey = new Map(found.map((e) => [e.key, e]));
     const perCompany = new Map<string, Record<string, FoundEmail>>();
+    let withEmail = 0;
     for (const ref of input.refs) {
       const result = byKey.get(ref.key);
       const map = perCompany.get(ref.companyId) ?? {};
@@ -1096,9 +1158,19 @@ export class Orchestrator {
         } catch (err) {
           if (!(err instanceof SuppressedContactError)) throw err;
           map[ref.key] = { ...result, email: null, status: 'not_found', rawStatus: 'suppressed' };
+          continue;
         }
+        withEmail++;
       }
     }
+    await setStepSummary(tx, userId, stepId, {
+      returned: input.refs.length,
+      kept: withEmail,
+      dropped:
+        input.refs.length > withEmail
+          ? [{ reason: 'no_email_found', count: input.refs.length - withEmail }]
+          : [],
+    });
     for (const [companyId, emails] of perCompany) {
       await moveRunCompany(tx, userId, {
         runId: run.id,

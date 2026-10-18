@@ -1,15 +1,13 @@
-import type { ApifyEventView, ApifyLogRun, ApifyState, ApifyStepView } from '@lead-gen-crm/shared';
+import type { ApifyLogRun, ApifyState } from '@lead-gen-crm/shared';
 import { useApi } from '../../api/context.js';
 import { EmptyState, ErrorState, LoadingState } from '../../components/states.js';
 import { Card } from '../../components/shared/Card.js';
-import { LogList } from '../../components/shared/LogList.js';
 import { useT } from '../../i18n/index.js';
-import { formatDateTime } from '../../lib/format.js';
 import { useResource } from '../../lib/useResource.js';
 import { StatusBadge } from './runParts.js';
+import { StepLine } from './StepLine.js';
 
 export const APIFY_LOG_POLL_MS = 5_000;
-const LATEST_EVENTS_PER_STEP = 3;
 
 export function StateBadge({ state }: { state: ApifyState | null }) {
   const t = useT();
@@ -27,8 +25,6 @@ export function ApifyLogWidget({ refreshKey }: { refreshKey: number }) {
   });
 
   const data = log.data;
-  const regionOf = new Map(data?.runs.map((r) => [r.run.id, r.run.region]));
-
   return (
     <Card
       title={t('apify.title')}
@@ -43,7 +39,7 @@ export function ApifyLogWidget({ refreshKey }: { refreshKey: number }) {
         <LoadingState />
       ) : log.error !== null && !data ? (
         <ErrorState error={log.error} onRetry={log.reload} />
-      ) : !data || (data.runs.length === 0 && data.recent.items.length === 0) ? (
+      ) : !data || data.runs.length === 0 ? (
         <EmptyState title={t('apify.empty.title')}>{t('apify.empty.body')}</EmptyState>
       ) : (
         <>
@@ -64,15 +60,6 @@ export function ApifyLogWidget({ refreshKey }: { refreshKey: number }) {
               <RunLog key={entry.run.id} entry={entry} />
             ))}
           </ul>
-          <h3>{t('apify.recent')}</h3>
-          <LogList
-            label={t('apify.recent')}
-            emptyText={t('apify.noEvents')}
-            items={data.recent.items.map((event) => ({
-              id: event.id,
-              content: <EventRow event={event} region={regionOf.get(event.runId)} />,
-            }))}
-          />
           <p className="muted small">
             {t('apify.polling', { seconds: APIFY_LOG_POLL_MS / 1000 })}
             {log.updatedAt &&
@@ -92,50 +79,22 @@ function RunLog({ entry }: { entry: ApifyLogRun }) {
         <strong>{t('apify.run', { region: entry.run.region })}</strong>
         <StatusBadge status={entry.run.status} />
       </div>
+      {entry.run.error && (
+        <p className="notice notice-warning" role="status">
+          {t('apify.run.stopped', { message: entry.run.error })}
+        </p>
+      )}
       {entry.steps.length === 0 ? (
         <p className="muted">{t('apify.noSteps')}</p>
       ) : (
         <ul className="log-steps">
           {entry.steps.map((step) => (
-            <StepLog key={step.runStepId} step={step} />
+            <li key={step.runStepId}>
+              <StepLine step={step} />
+            </li>
           ))}
         </ul>
       )}
     </li>
-  );
-}
-
-function StepLog({ step }: { step: ApifyStepView }) {
-  const t = useT();
-  const latest = [...step.history]
-    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
-    .slice(0, LATEST_EVENTS_PER_STEP);
-  return (
-    <li className="log-step">
-      <span>{t(`stage.${step.stage}`)}</span> <StateBadge state={step.latestState} />
-      {latest.length > 0 && (
-        <ol className="step-history">
-          {latest.map((e) => (
-            <li key={e.id}>
-              {t(`apify.state.${e.state}`)} ·{' '}
-              <time dateTime={e.occurredAt}>{formatDateTime(e.occurredAt)}</time>
-              {e.message ? ` · ${e.message}` : ''}
-            </li>
-          ))}
-        </ol>
-      )}
-    </li>
-  );
-}
-
-export function EventRow({ event, region }: { event: ApifyEventView; region: string | undefined }) {
-  const t = useT();
-  return (
-    <>
-      <StateBadge state={event.state} /> {region && <span>{region} · </span>}
-      <time dateTime={event.occurredAt}>{formatDateTime(event.occurredAt)}</time>
-      {event.message ? ` · ${event.message}` : ''}
-      <span className="visually-hidden"> {t('apify.recent')}</span>
-    </>
   );
 }
