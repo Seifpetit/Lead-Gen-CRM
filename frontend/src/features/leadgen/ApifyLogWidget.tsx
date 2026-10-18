@@ -1,19 +1,11 @@
-import type { ApifyLogRun, ApifyState } from '@lead-gen-crm/shared';
 import { useApi } from '../../api/context.js';
 import { EmptyState, ErrorState, LoadingState } from '../../components/states.js';
 import { Card } from '../../components/shared/Card.js';
 import { useT } from '../../i18n/index.js';
 import { useResource } from '../../lib/useResource.js';
-import { StatusBadge } from './runParts.js';
-import { StepLine } from './StepLine.js';
+import { RunLog } from './RunLog.js';
 
 export const APIFY_LOG_POLL_MS = 5_000;
-
-export function StateBadge({ state }: { state: ApifyState | null }) {
-  const t = useT();
-  if (!state) return <span className="badge badge-none">{t('apify.stateNone')}</span>;
-  return <span className={`badge badge-apify-${state}`}>{t(`apify.state.${state}`)}</span>;
-}
 
 /** The state of current Apify runs, refreshed by polling. */
 export function ApifyLogWidget({ refreshKey }: { refreshKey: number }) {
@@ -68,33 +60,5 @@ export function ApifyLogWidget({ refreshKey }: { refreshKey: number }) {
         </>
       )}
     </Card>
-  );
-}
-
-function RunLog({ entry }: { entry: ApifyLogRun }) {
-  const t = useT();
-  return (
-    <li className="log-run">
-      <div className="log-run-head">
-        <strong>{t('apify.run', { region: entry.run.region })}</strong>
-        <StatusBadge status={entry.run.status} />
-      </div>
-      {entry.run.error && (
-        <p className="notice notice-warning" role="status">
-          {t('apify.run.stopped', { message: entry.run.error })}
-        </p>
-      )}
-      {entry.steps.length === 0 ? (
-        <p className="muted">{t('apify.noSteps')}</p>
-      ) : (
-        <ul className="log-steps">
-          {entry.steps.map((step) => (
-            <li key={step.runStepId}>
-              <StepLine step={step} />
-            </li>
-          ))}
-        </ul>
-      )}
-    </li>
   );
 }
