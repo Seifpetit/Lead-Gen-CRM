@@ -8,6 +8,8 @@ import type { GovernorateId } from './regions.js';
  *
  * Source: OpenStreetMap contributors, ODbL, via nominatim.openstreetmap.org.
  * Fetched: 2026-10-18.
+ *
+ * manouba: derived from the neighbouring governorate outlines (the hole they leave around lat 36.81, lon 10.00), not an OpenStreetMap polygon (box of the derived outline, 1139 km2, 2026-10-18).
  */
 export const REGION_BOUNDS: Partial<Record<GovernorateId, Bounds>> = {
   tunis: { south: 36.6925111, west: 10.0037899, north: 36.9430196, east: 10.3548094 },
@@ -33,4 +35,5 @@ export const REGION_BOUNDS: Partial<Record<GovernorateId, Bounds>> = {
   gafsa: { south: 34.05264, west: 8.041679, north: 34.8102274, east: 9.56073 },
   tozeur: { south: 33.424659, west: 7.5219807, north: 34.5323541, east: 8.64814 },
   kebili: { south: 32.502602, west: 7.732558, north: 34.1854278, east: 10.0116637 },
+  manouba: { south: 36.558, west: 9.568, north: 36.968, east: 10.118 },
 };
