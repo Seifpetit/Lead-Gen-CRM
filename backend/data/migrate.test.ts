@@ -28,6 +28,8 @@ describe('migrations', () => {
       'cost_ledger',
       'crm_leads',
       'evidence',
+      'invites',
+      'login_failures',
       'region_cells',
       'region_coverage',
       'region_coverage_rollup',
@@ -35,6 +37,7 @@ describe('migrations', () => {
       'run_steps',
       'runs',
       'search_queries',
+      'sessions',
       'suppression_list',
       'user_budget',
       'users',
@@ -49,6 +52,6 @@ describe('migrations', () => {
     expect(await migrateDown(db, Infinity)).toEqual(MIGRATIONS.map((m) => m.id).reverse());
     expect(await tables()).toEqual([]);
     expect(await migrateUp(db)).toEqual(MIGRATIONS.map((m) => m.id));
-    expect(await tables()).toHaveLength(16);
+    expect(await tables()).toHaveLength(19);
   });
 });
