@@ -29,9 +29,9 @@ const SECTOR_IDS = FREIGHT_SECTORS.map((s) => s.id) as [string, ...string[]];
 // The search plan: what to search beyond the region. All of it is optional.
 const Wording = z
   .string()
-  // eslint-disable-next-line no-control-regex
   .transform((w) =>
     w
+      // eslint-disable-next-line no-control-regex
       .replace(/[\u0000-\u001f\u007f]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim(),

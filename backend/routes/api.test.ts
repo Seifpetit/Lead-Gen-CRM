@@ -7,6 +7,7 @@ import { listLiveClaims } from '../data/cellClaims.js';
 import { upsertContact } from '../data/contacts.js';
 import { upsertLead } from '../data/crmLeads.js';
 import type { Db } from '../data/db.js';
+import type { CoverageEntry } from '@lead-gen-crm/shared';
 import type { UserId } from '../data/ids.js';
 import { createRegionGrid, listCells } from '../data/regionCells.js';
 import { setRegionBounds } from '../data/regions.js';
@@ -715,11 +716,8 @@ describe('POST /api/runs with a search plan', () => {
 
 describe('GET /api/coverage', () => {
   const coverage = async (who: Who) => (await call(who, 'GET', '/api/coverage')).json();
-  const entry = (
-    c: { entries: { regionId: string; sectorId: string | null }[] },
-    r: string,
-    s: string | null,
-  ) => c.entries.find((e) => e.regionId === r && e.sectorId === s);
+  const entry = (c: { entries: CoverageEntry[] }, r: string, s: string | null): CoverageEntry =>
+    c.entries.find((e) => e.regionId === r && e.sectorId === s)!;
 
   it('reports queries, new places, leads, spend, cost per lead and a state per region and sector', async () => {
     const c = await coverage(alice);

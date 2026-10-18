@@ -52,8 +52,8 @@ export function cleanWordings(wordings: readonly string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const raw of wordings) {
-    // eslint-disable-next-line no-control-regex
     const text = raw
+      // eslint-disable-next-line no-control-regex
       .replace(/[\u0000-\u001f\u007f]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
