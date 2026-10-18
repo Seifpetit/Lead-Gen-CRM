@@ -20,8 +20,9 @@ export const migration: Migration = {
     -- Why each score point was given (reason, evidence, fact or estimate).
     ALTER TABLE crm_leads ADD COLUMN score_reasons jsonb NOT NULL DEFAULT '[]';
   `,
-  // Fails if any run company is 'unreachable': move those rows first.
   down: /* sql */ `
+    -- The old constraint has no 'unreachable'; those rows become 'skipped' (kept, never scored).
+    UPDATE run_companies SET state = 'skipped' WHERE state = 'unreachable';
     ALTER TABLE crm_leads DROP COLUMN score_reasons;
     DROP INDEX companies_phone_e164_idx;
     ALTER TABLE companies DROP COLUMN phone_foreign;
