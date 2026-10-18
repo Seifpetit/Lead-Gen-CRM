@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "e2e": "playwright test -c e2e/playwright.config.ts"
+    "e2e": "tsc -b ../shared && playwright test -c e2e/playwright.config.ts"
   },
   "dependencies": {
     "@lead-gen-crm/shared": "0.0.0",
