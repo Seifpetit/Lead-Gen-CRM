@@ -1,0 +1,81 @@
+[
+  {
+    "publicIdentifier": "salma-fixture-logistique",
+    "linkedinUrl": "https://www.linkedin.com/in/salma-fixture-logistique",
+    "firstName": "Salma",
+    "lastName": "Fixture",
+    "headline": "Directrice Logistique chez Huilerie El Fixture",
+    "location": { "linkedinText": "Sfax, Tunisia" },
+    "currentPosition": [
+      {
+        "companyName": "Huilerie El Fixture",
+        "position": "Directrice Logistique",
+        "companyLinkedinUrl": "https://www.linkedin.com/company/huilerie-el-fixture/"
+      }
+    ]
+  },
+  {
+    "publicIdentifier": "karim-fixture-scm",
+    "linkedinUrl": "https://www.linkedin.com/in/karim-fixture-scm",
+    "firstName": "Karim",
+    "lastName": "Testeur",
+    "headline": "Supply Chain Manager | Olive oil exports",
+    "location": "Sfax, Tunisia",
+    "experience": [
+      {
+        "position": "Supply Chain Manager",
+        "companyName": "Huilerie El Fixture",
+        "companyLinkedinUrl": "https://www.linkedin.com/company/huilerie-el-fixture/",
+        "startDate": { "text": "Mar 2022", "year": 2022, "month": "Mar" },
+        "endDate": { "text": "Present" }
+      },
+      {
+        "position": "Acheteur",
+        "companyName": "Cartonnerie Fixture",
+        "startDate": "2018",
+        "endDate": "2022"
+      }
+    ]
+  },
+  {
+    "publicIdentifier": "nabil-fixture-ancien",
+    "linkedinUrl": "https://www.linkedin.com/in/nabil-fixture-ancien",
+    "firstName": "Nabil",
+    "lastName": "Ancien",
+    "headline": "Responsable Transport",
+    "location": "Sfax, Tunisia",
+    "experience": [
+      {
+        "position": "Responsable Transport",
+        "companyName": "Huilerie El Fixture",
+        "companyLinkedinUrl": "https://www.linkedin.com/company/huilerie-el-fixture/",
+        "startDate": { "year": 2017, "month": 1 },
+        "endDate": { "year": 2024, "month": 6 }
+      }
+    ]
+  },
+  {
+    "publicIdentifier": "ines-fixture-assistante",
+    "linkedinUrl": "https://www.linkedin.com/in/ines-fixture-assistante",
+    "fullName": "Ines Assistante",
+    "headline": "Assistante Logistique",
+    "currentPosition": [
+      { "companyName": "Huilerie El Fixture", "position": "Assistante Logistique" }
+    ]
+  },
+  {
+    "publicIdentifier": "mehdi-fixture-commercial",
+    "linkedinUrl": "https://www.linkedin.com/in/mehdi-fixture-commercial",
+    "firstName": "Mehdi",
+    "lastName": "Commercial",
+    "headline": "Directeur Commercial Export",
+    "currentPosition": [
+      { "companyName": "Huilerie El Fixture", "position": "Directeur Commercial Export" }
+    ]
+  },
+  {
+    "firstName": "No",
+    "lastName": "Url",
+    "headline": "Gérant"
+  }
+]

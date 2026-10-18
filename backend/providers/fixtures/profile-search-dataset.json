@@ -1,0 +1,23 @@
+[
+  {
+    "publicIdentifier": "hela-fixture-gerante",
+    "linkedinUrl": "https://www.linkedin.com/in/hela-fixture-gerante",
+    "firstName": "Héla",
+    "lastName": "Fixture",
+    "headline": "Gérante - Textiles Fixture Sud",
+    "location": "Sfax, Tunisia",
+    "currentPosition": [{ "companyName": "Textiles Fixture Sud", "position": "Gérante" }],
+    "_meta": { "pagination": { "pageNumber": 1 } }
+  },
+  {
+    "publicIdentifier": "omar-fixture-other",
+    "linkedinUrl": "https://www.linkedin.com/in/omar-fixture-other",
+    "firstName": "Omar",
+    "lastName": "Ailleurs",
+    "headline": "Responsable Production",
+    "currentPosition": [
+      { "companyName": "Autre Société Fixture", "position": "Responsable Production" }
+    ],
+    "_meta": { "pagination": { "pageNumber": 1 } }
+  }
+]

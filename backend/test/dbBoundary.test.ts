@@ -27,6 +27,15 @@ describe('database driver boundary', () => {
     expect(await ruleIdsFor(code, 'backend/runner/x.ts')).toContain('no-restricted-imports');
   });
 
+  it.each(['backend/providers/x.ts', 'backend/stages/x.ts', 'backend/lib/x.ts'])(
+    'rejects a data-layer import in %s',
+    async (file) => {
+      const code = "import { getRun } from '../data/runs.js';\nexport const g = getRun;\n";
+      expect(await ruleIdsFor(code, file)).toContain('no-restricted-imports');
+      expect(await ruleIdsFor(importPg, file)).toContain('no-restricted-imports');
+    },
+  );
+
   it('allows a driver import in backend/data/', async () => {
     expect(await ruleIdsFor(importPg, 'backend/data/x.ts')).not.toContain('no-restricted-imports');
   });

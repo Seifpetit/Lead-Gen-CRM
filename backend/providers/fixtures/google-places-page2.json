@@ -1,0 +1,19 @@
+{
+  "places": [
+    {
+      "id": "ChIJ-fixture-gp-003",
+      "displayName": { "text": "Cartonnerie du Sud", "languageCode": "fr" },
+      "formattedAddress": "Route de Tunis km 7, Sfax, Tunisie",
+      "location": { "latitude": 34.7805, "longitude": 10.7012 },
+      "types": ["manufacturer", "point_of_interest", "establishment"],
+      "primaryType": "manufacturer",
+      "businessStatus": "OPERATIONAL",
+      "googleMapsUri": "https://maps.google.com/?cid=1000000000000000003"
+    },
+    {
+      "id": "ChIJ-fixture-gp-001",
+      "displayName": { "text": "Conserverie Sfax Littoral", "languageCode": "fr" },
+      "googleMapsUri": "https://maps.google.com/?cid=1000000000000000001"
+    }
+  ]
+}

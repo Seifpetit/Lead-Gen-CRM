@@ -1,0 +1,30 @@
+{
+  "places": [
+    {
+      "id": "ChIJ-fixture-gp-001",
+      "displayName": { "text": "Conserverie Sfax Littoral", "languageCode": "fr" },
+      "formattedAddress": "Route de Gabès km 4, Sfax, Tunisie",
+      "location": { "latitude": 34.7101, "longitude": 10.7402 },
+      "types": ["food_manufacturer", "point_of_interest", "establishment"],
+      "primaryType": "food_manufacturer",
+      "primaryTypeDisplayName": {
+        "text": "Fabricant de produits alimentaires",
+        "languageCode": "fr"
+      },
+      "businessStatus": "OPERATIONAL",
+      "googleMapsUri": "https://maps.google.com/?cid=1000000000000000001"
+    },
+    {
+      "id": "ChIJ-fixture-gp-002",
+      "displayName": { "text": "Transports Ben Fixture", "languageCode": "fr" },
+      "formattedAddress": "Zone industrielle Poudrière, Sfax, Tunisie",
+      "location": { "latitude": 34.7302, "longitude": 10.7521 },
+      "types": ["moving_company", "point_of_interest", "establishment"],
+      "primaryType": "moving_company",
+      "primaryTypeDisplayName": { "text": "Entreprise de transport", "languageCode": "fr" },
+      "businessStatus": "OPERATIONAL",
+      "googleMapsUri": "https://maps.google.com/?cid=1000000000000000002"
+    }
+  ],
+  "nextPageToken": "fixture-page-token-2"
+}

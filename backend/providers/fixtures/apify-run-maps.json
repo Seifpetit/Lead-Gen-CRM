@@ -1,0 +1,24 @@
+{
+  "data": {
+    "id": "fixtureMapsRun001",
+    "actId": "fixtureActMaps",
+    "status": "SUCCEEDED",
+    "defaultDatasetId": "fixtureMapsDataset001",
+    "usageTotalUsd": 0.0213,
+    "chargedEventCounts": {
+      "apify-actor-start": 4,
+      "place-scraped": 6,
+      "contact-details-scraped": 4
+    },
+    "pricingInfo": {
+      "pricingModel": "PAY_PER_EVENT",
+      "pricingPerEvent": {
+        "actorChargeEvents": {
+          "apify-actor-start": { "eventPriceUsd": 0.00005 },
+          "place-scraped": { "eventPriceUsd": 0.004 },
+          "contact-details-scraped": { "eventPriceUsd": 0.002 }
+        }
+      }
+    }
+  }
+}
