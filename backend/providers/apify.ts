@@ -12,6 +12,7 @@ interface ApifyRunData {
   defaultDatasetId: string;
   usageTotalUsd?: number | null;
   chargedEventCounts?: Record<string, number> | null;
+  stats?: { restartCount?: number; resurrectCount?: number; migrationCount?: number } | null;
   pricingInfo?: {
     pricingPerEvent?: {
       actorChargeEvents?: Record<string, { eventPriceUsd?: number }>;
@@ -55,6 +56,9 @@ export class ApifyClient {
     if (options.maxTotalChargeUsd !== undefined) {
       params.set('maxTotalChargeUsd', String(options.maxTotalChargeUsd));
     }
+    if (options.webhooks && options.webhooks.length > 0) {
+      params.set('webhooks', Buffer.from(JSON.stringify(options.webhooks)).toString('base64'));
+    }
     const qs = params.size > 0 ? `?${params}` : '';
     const res = await this.http<{ data: ApifyRunData }>(
       `${this.baseUrl}/acts/${actorPath(actorId)}/runs${qs}`,
@@ -97,6 +101,10 @@ function toRun(actorId: string, d: ApifyRunData): ApifyRun {
     usage: {
       chargedEventCounts: d.chargedEventCounts ?? {},
       usageTotalUsd: d.usageTotalUsd ?? null,
+      restarts:
+        (d.stats?.restartCount ?? 0) +
+        (d.stats?.migrationCount ?? 0) +
+        (d.stats?.resurrectCount ?? 0),
     },
     reportedPrices,
   };
@@ -140,8 +148,28 @@ export async function collectApifyRun<Raw, T>(
   map: (items: Raw[], run: ApifyRun) => T[],
 ): Promise<ProviderJob<T>> {
   const run = await client.getRun(ref);
-  if (RUNNING.includes(run.status)) return { state: 'running', run: run.ref, costs: [] };
+  if (RUNNING.includes(run.status)) {
+    return {
+      state: 'running',
+      run: run.ref,
+      costs: [],
+      status: run.status,
+      restarts: run.usage.restarts,
+    };
+  }
   const costs = costsFromUsage(run);
+  if (run.status === 'ABORTED' || run.status === 'TIMED-OUT') {
+    // Stopped by its max cost or timeout: what it produced is paid for, so read it.
+    const partial = await client.datasetItems<Raw>(run.ref.datasetId);
+    return {
+      state: 'failed',
+      run: run.ref,
+      status: run.status,
+      costs,
+      usage: run.usage,
+      items: map(partial, run),
+    };
+  }
   if (run.status !== 'SUCCEEDED') {
     return { state: 'failed', run: run.ref, status: run.status, costs, usage: run.usage };
   }

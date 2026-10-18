@@ -1,0 +1,590 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { listApifyEventsForRun } from '../data/apifyEvents.js';
+import { expireClaims, listLiveClaims } from '../data/cellClaims.js';
+import { upsertCompany } from '../data/companies.js';
+import { listLedgerForRun } from '../data/costLedger.js';
+import { listLeads } from '../data/crmLeads.js';
+import type { Db } from '../data/db.js';
+import type { UserId } from '../data/ids.js';
+import { createRegionGrid, listCells } from '../data/regionCells.js';
+import { getRun, RunLimitError } from '../data/runs.js';
+import { listRunCompanies } from '../data/runCompanies.js';
+import { listSteps } from '../data/runSteps.js';
+import { listCellStats, listRegionStats } from '../data/saturation.js';
+import { makeUser, openTestDb, resetData } from '../data/testDb.js';
+import { setMonthlyCap } from '../data/userBudget.js';
+import type { Bounds } from '../lib/geo.js';
+import { GOOGLE_MAPS_ACTOR } from '../providers/googleMapsApify.js';
+import { fakePlace, fakeProviders, type FakeApifyOptions } from '../test/fakeProviders.js';
+import type { RunnerConfig } from './config.js';
+import {
+  Orchestrator,
+  RunStartError,
+  SimulatedCrash,
+  type OrchestratorDeps,
+} from './orchestrator.js';
+import { reconcileRun } from './reconcile.js';
+import { ALL_WORDINGS, suggestNextRegion } from './scheduler.js';
+import { signStep, verifyWebhook, webhookFor } from './webhooks.js';
+
+// Orchestrator tests against a real Postgres and a fake Apify (test/fakeProviders.ts).
+// No network, no paid calls.
+
+const SFAX: Bounds = { south: 34.6, west: 10.5, north: 34.9, east: 10.9 };
+const TEXTILE = ['textile'];
+
+let db: Db;
+let user: UserId;
+beforeAll(async () => {
+  db = await openTestDb();
+});
+afterAll(async () => {
+  await db.end();
+});
+beforeEach(async () => {
+  await resetData(db);
+  await db.query('DELETE FROM region_cells');
+  user = await makeUser(db);
+  // Two cells: small enough to saturate in a test.
+  await createRegionGrid(db, 'sfax', SFAX, 1, 2);
+});
+
+function world(
+  opts: FakeApifyOptions = {},
+  config: Partial<RunnerConfig> = {},
+  extra: Partial<OrchestratorDeps> = {},
+) {
+  const fake = fakeProviders(opts);
+  const make = (more: Partial<OrchestratorDeps> = {}) =>
+    new Orchestrator({
+      db,
+      discovery: fake.discovery,
+      people: fake.people,
+      emails: fake.emails,
+      config: { cellsPerRun: 2, ...config },
+      ...extra,
+      ...more,
+    });
+  return { ...fake, orchestrator: make(), make };
+}
+
+/** Advances until the run is over and nothing is out with Apify. */
+async function drive(o: Orchestrator, userId: UserId, runId: string, max = 1000) {
+  for (let i = 0; i < max; i++) {
+    const r = await o.advance(userId, runId);
+    if (r.status !== 'running' && r.status !== 'pending' && r.inFlight === 0) return r;
+  }
+  throw new Error('run did not settle');
+}
+
+async function estimatesPerStep(runId: string): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  for (const e of await listLedgerForRun(db, user, runId)) {
+    if (e.kind !== 'estimated' || e.correctsId || !e.runStepId) continue;
+    counts.set(e.runStepId, (counts.get(e.runStepId) ?? 0) + 1);
+  }
+  return counts;
+}
+
+const duplicates = (xs: string[]) => xs.filter((x, i) => xs.indexOf(x) !== i);
+
+describe('orchestrator: a full run', () => {
+  it('moves a region through every stage to scored leads, all from fake Apify runs', async () => {
+    const w = world();
+    const run = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectors: TEXTILE,
+      budgetCapUsd: 10,
+    });
+    expect(run.status).toBe('running');
+    expect(run.currentStage).toBe('discover');
+    const end = await drive(w.orchestrator, user, run.id);
+    expect(end.status).toBe('finished');
+
+    // 2 cells x 2 textile wordings; the 2 places per cell are found by the first wording only.
+    expect(w.apify.startsFor(GOOGLE_MAPS_ACTOR)).toHaveLength(4);
+    const companies = await listRunCompanies(db, user, run.id);
+    expect(companies.filter((c) => c.isNew)).toHaveLength(4);
+    expect(companies.filter((c) => c.state === 'scored')).toHaveLength(4);
+    const leads = await listLeads(db, user, { runId: run.id });
+    expect(leads).toHaveLength(4);
+    expect(leads.every((l) => l.contactId)).toBe(true);
+
+    // Every step's estimate was replaced by an actual; nothing left unsettled.
+    const rec = await reconcileRun(db, user, run.id);
+    expect(rec.unsettledEstimateUsd).toBe(0);
+    expect(rec.steps.every((s) => s.actualUsd !== null)).toBe(true);
+    // Estimates are for 20 places; each query found 2 (or 0): actuals are much lower.
+    expect(rec.actualUsd).toBeLessThan(rec.estimatedUsd);
+    expect(rec.flagged.some((f) => f.note.startsWith('Under estimate'))).toBe(true);
+
+    // State changes were logged per Apify run.
+    const events = await listApifyEventsForRun(db, user, run.id);
+    const states = new Set(events.map((e) => e.state));
+    expect([...states].sort()).toEqual(['finished', 'running', 'started']);
+    // Claims are released at the end.
+    expect(await listLiveClaims(db, user)).toEqual([]);
+  });
+
+  it('passes a max cost to every Apify run, within the remaining budget', async () => {
+    const w = world();
+    const run = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectors: TEXTILE,
+      budgetCapUsd: 10,
+    });
+    await drive(w.orchestrator, user, run.id);
+    const runs = [...w.apify.runs.values()];
+    expect(runs.every((r) => typeof r.options.maxTotalChargeUsd === 'number')).toBe(true);
+    // Google Maps: never below the Actor's minimum of $0.50.
+    const maps = runs.filter((r) => r.ref.actorId === GOOGLE_MAPS_ACTOR);
+    expect(maps.every((r) => r.options.maxTotalChargeUsd === 0.5)).toBe(true);
+  });
+
+  it('logs Apify migrations as restarting and keeps polling', async () => {
+    const w = world({ polls: 3 });
+    const run = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectors: TEXTILE,
+      budgetCapUsd: 10,
+    });
+    await w.orchestrator.advance(user, run.id); // starts discover steps
+    w.apify.migrate('fakeRun1');
+    await drive(w.orchestrator, user, run.id);
+    const events = await listApifyEventsForRun(db, user, run.id);
+    expect(events.filter((e) => e.state === 'restarting')).toHaveLength(1);
+  });
+
+  it('handles a signed webhook by advancing the run, and ignores a forged one', async () => {
+    const secret = 'test-webhook-secret';
+    const w = world({}, { webhook: { url: 'https://runner.example.test/apify', secret } });
+    const run = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectors: TEXTILE,
+      budgetCapUsd: 10,
+    });
+    await w.orchestrator.advance(user, run.id);
+    const started = [...w.apify.runs.values()][0]!;
+    const hook = started.options.webhooks![0]!;
+    // What Apify would send: the template with eventType and resource filled in.
+    const body = JSON.parse(
+      hook
+        .payloadTemplate!.replace('{{eventType}}', '"ACTOR.RUN.SUCCEEDED"')
+        .replace('{{resource}}', '{"id":"fakeRun1"}'),
+    );
+    const payload = verifyWebhook(secret, body);
+    expect(payload).toMatchObject({ userId: user, eventType: 'ACTOR.RUN.SUCCEEDED' });
+    expect(verifyWebhook(secret, { ...body, stepId: 'someone-else' })).toBeNull();
+    expect(verifyWebhook('wrong-secret', body)).toBeNull();
+    expect(await w.orchestrator.onStepWebhook(user, payload!.stepId)).toMatchObject({
+      status: 'running',
+    });
+    // The same webhook twice applies nothing twice.
+    await w.orchestrator.onStepWebhook(user, payload!.stepId);
+    await drive(w.orchestrator, user, run.id);
+    expect([...(await estimatesPerStep(run.id)).values()].every((n) => n === 1)).toBe(true);
+  });
+
+  it('signs per step', () => {
+    expect(signStep('s', 'u', 'a')).not.toBe(signStep('s', 'u', 'b'));
+    expect(webhookFor({ url: 'https://x.test', secret: 's' }, 'u', 'a').eventTypes).toContain(
+      'ACTOR.RUN.SUCCEEDED',
+    );
+  });
+});
+
+describe('orchestrator: crash safety', () => {
+  async function baselineLabels(): Promise<string[]> {
+    const labels: string[] = [];
+    const w = world({}, {}, { checkpoint: (l) => void labels.push(l) });
+    const run = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectors: TEXTILE,
+      budgetCapUsd: 10,
+    });
+    await drive(w.orchestrator, user, run.id);
+    return [...new Set(labels)];
+  }
+
+  it('dies at every stage boundary and resumes without paying for anything twice', async () => {
+    const labels = await baselineLabels();
+    // Every boundary of every stage is covered.
+    for (const l of [
+      'run:created',
+      'run:planned',
+      'discover:estimated',
+      'discover:called',
+      'discover:started',
+      'discover:applied',
+      'stage:discover->qualify',
+      'qualify:company',
+      'find_people:planned',
+      'find_people:called',
+      'find_people:applied',
+      'enrich:planned',
+      'enrich:applied',
+      'stage:verify->score',
+      'score:company',
+      'run:finished',
+    ]) {
+      expect(labels).toContain(l);
+    }
+
+    for (const label of labels) {
+      await resetData(db);
+      user = await makeUser(db);
+      let armed = true;
+      const w = world(
+        {},
+        {},
+        {
+          checkpoint: (l) => {
+            if (armed && l === label) {
+              armed = false;
+              throw new SimulatedCrash(l);
+            }
+          },
+        },
+      );
+      let runId: string | null = null;
+      try {
+        runId = (
+          await w.orchestrator.startRun(user, {
+            regionId: 'sfax',
+            sectors: TEXTILE,
+            budgetCapUsd: 10,
+          })
+        ).id;
+        await drive(w.orchestrator, user, runId);
+      } catch (err) {
+        expect(err, label).toBeInstanceOf(SimulatedCrash);
+      }
+      expect(armed, `crash at ${label}`).toBe(false);
+
+      // A new process: same database, same Apify account, no memory.
+      const fresh = w.make({ checkpoint: () => {} });
+      await fresh.recover();
+      runId ??= (await db.query<{ id: string }>('SELECT id FROM runs WHERE user_id = $1', [user]))
+        .rows[0]!.id;
+      const end = await drive(fresh, user, runId);
+      expect(end.status, label).toBe('finished');
+
+      // Never started twice: each query, company and email batch went to Apify at most once.
+      for (const actor of new Set(w.apify.starts.map((s) => s.actor))) {
+        expect(duplicates(w.apify.startsFor(actor)), `${label} ${actor}`).toEqual([]);
+      }
+      // Never estimated twice, and every step settled or kept its one estimate.
+      const counts = await estimatesPerStep(runId);
+      expect(
+        [...counts.values()].every((n) => n === 1),
+        label,
+      ).toBe(true);
+      const steps = await listSteps(db, user, runId);
+      expect(
+        steps.every((s) => s.processedAt !== null),
+        label,
+      ).toBe(true);
+      // Results are applied once: one company per place, one lead per contact.
+      const companies = await db.query<{ n: number }>(
+        'SELECT count(*)::integer AS n FROM companies WHERE user_id = $1',
+        [user],
+      );
+      expect(companies.rows[0]!.n, label).toBeLessThanOrEqual(4);
+      const rec = await reconcileRun(db, user, runId);
+      expect(rec.ledgerUsd, label).toBeLessThanOrEqual(10);
+    }
+  }, 120_000);
+
+  it('re-attaches to Apify runs that were out when the process died', async () => {
+    const w = world({ polls: 2 });
+    const run = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectors: TEXTILE,
+      budgetCapUsd: 10,
+    });
+    await w.orchestrator.advance(user, run.id); // four runs started, then the process "dies"
+    const fresh = w.make();
+    const { runs, stepsResumed } = await fresh.recover();
+    expect(runs).toBe(1);
+    expect(stepsResumed).toBe(4);
+    await drive(fresh, user, run.id);
+    const events = await listApifyEventsForRun(db, user, run.id);
+    expect(events.filter((e) => e.state === 'resumed')).toHaveLength(4);
+    expect(duplicates(w.apify.startsFor(GOOGLE_MAPS_ACTOR))).toEqual([]);
+  });
+});
+
+describe('orchestrator: money', () => {
+  it('stops a run at its budget cap, counting what in-flight runs may still spend', async () => {
+    const w = world();
+    // $0.70: room for one Google Maps run with its $0.50 max cost, not two.
+    const run = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectors: TEXTILE,
+      budgetCapUsd: 0.7,
+    });
+    const end = await drive(w.orchestrator, user, run.id);
+    expect(end.status).toBe('stopped_by_cap');
+    expect(w.apify.startsFor(GOOGLE_MAPS_ACTOR)).toHaveLength(1);
+    const after = (await getRun(db, user, run.id))!;
+    expect(after.spentUsd).toBeLessThanOrEqual(0.7);
+    // The in-flight run was still collected and settled after the stop.
+    const rec = await reconcileRun(db, user, run.id);
+    expect(rec.unsettledEstimateUsd).toBe(0);
+    expect(await listLiveClaims(db, user)).toEqual([]);
+  });
+
+  it('refuses to start a run once the monthly cap is spent, and caps steps by it', async () => {
+    await setMonthlyCap(db, user, new Date(), 0.6);
+    const w = world();
+    const run = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectors: TEXTILE,
+      budgetCapUsd: 10,
+    });
+    expect((await drive(w.orchestrator, user, run.id)).status).toBe('stopped_by_cap');
+    expect(w.apify.startsFor(GOOGLE_MAPS_ACTOR)).toHaveLength(1);
+    await setMonthlyCap(db, user, new Date(), 0.001);
+    await expect(
+      w.orchestrator.startRun(user, { regionId: 'sfax', sectors: TEXTILE, budgetCapUsd: 10 }),
+    ).rejects.toBeInstanceOf(RunStartError);
+  });
+
+  it('allows at most 2 concurrent runs per user (configurable)', async () => {
+    await createRegionGrid(db, 'tunis', { south: 36.7, west: 10.0, north: 36.9, east: 10.3 }, 1, 2);
+    await createRegionGrid(
+      db,
+      'sousse',
+      { south: 35.7, west: 10.5, north: 35.9, east: 10.7 },
+      1,
+      2,
+    );
+    const w = world({ polls: 5 });
+    const starts = await Promise.allSettled(
+      ['sfax', 'tunis', 'sousse'].map((regionId) =>
+        w.orchestrator.startRun(user, { regionId, sectors: TEXTILE, budgetCapUsd: 10 }),
+      ),
+    );
+    expect(starts.filter((s) => s.status === 'fulfilled')).toHaveLength(2);
+    const rejected = starts.find((s) => s.status === 'rejected') as PromiseRejectedResult;
+    expect(rejected.reason).toBeInstanceOf(RunLimitError);
+
+    await createRegionGrid(
+      db,
+      'nabeul',
+      { south: 36.4, west: 10.6, north: 36.6, east: 10.8 },
+      1,
+      2,
+    );
+    const three = world({}, { maxConcurrentRunsPerUser: 3 });
+    await expect(
+      three.orchestrator.startRun(user, { regionId: 'nabeul', sectors: TEXTILE, budgetCapUsd: 10 }),
+    ).resolves.toMatchObject({ status: 'running' });
+  });
+
+  it('reports estimate vs actual per step, including Apify billing differences', async () => {
+    const w = world({ billedFactor: 0.5 });
+    const run = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectors: TEXTILE,
+      budgetCapUsd: 10,
+    });
+    await drive(w.orchestrator, user, run.id);
+    const rec = await reconcileRun(db, user, run.id);
+    const maps = rec.steps.filter((s) => s.stage === 'discover' && (s.actualUsd ?? 0) > 0);
+    expect(maps.length).toBeGreaterThan(0);
+    for (const s of maps) {
+      // Apify billed half our priced events; the ledger follows the bill.
+      expect(s.actualUsd).toBeCloseTo(s.reportedUsd!, 6);
+      expect(s.items[0]!.actualUnits).toBe(2);
+    }
+    expect(rec.ledgerUsd).toBeCloseTo(rec.actualUsd + rec.unattributedUsd, 6);
+  });
+});
+
+describe('orchestrator: concurrency', () => {
+  it('lets two runs split the cells, never share one, and frees a dead run’s cells', async () => {
+    const w = world({ polls: 2 });
+    const [a, b] = await Promise.all([
+      w.orchestrator.startRun(user, { regionId: 'sfax', sectors: TEXTILE, budgetCapUsd: 10 }),
+      w.orchestrator.startRun(user, { regionId: 'sfax', sectors: TEXTILE, budgetCapUsd: 10 }),
+    ]);
+    const claims = await listLiveClaims(db, user);
+    const cells = await listCells(db, 'sfax', { leafOnly: true });
+    // Each cell is held by exactly one run.
+    expect(claims.map((c) => c.regionCellId).sort()).toEqual(cells.map((c) => c.id).sort());
+    const owners = new Set(claims.map((c) => c.runId));
+    for (const run of [a!, b!]) {
+      const steps = await listSteps(db, user, run.id);
+      const mine = new Set(claims.filter((c) => c.runId === run.id).map((c) => c.regionCellId));
+      expect(steps.every((s) => mine.has(s.regionCellId!))).toBe(true);
+      if (!owners.has(run.id)) expect(run.status).toBe('failed');
+    }
+
+    // The holder of the first cell "dies": its claims lapse and a new run can take them.
+    const holder = claims[0]!.runId;
+    await db.query("UPDATE runs SET status = 'failed' WHERE id = $1", [holder]);
+    await expireClaims(db, user, holder);
+    const c = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectors: TEXTILE,
+      budgetCapUsd: 10,
+    });
+    expect(c.status).toBe('running');
+    const now = await listLiveClaims(db, user);
+    expect(now.filter((x) => x.runId === c.id).map((x) => x.regionCellId)).toContain(
+      claims[0]!.regionCellId,
+    );
+  });
+
+  it('two runs finding the same company at the same moment store it once', async () => {
+    // Every cell returns the same two places, so both runs find the same companies.
+    await db.query('DELETE FROM region_cells');
+    await createRegionGrid(db, 'sfax', SFAX, 1, 2);
+    const fake = world({}, { cellsPerRun: 1, maxInFlightSteps: 1 });
+    const same = fakePlace('shared', 0);
+    fake.discovery.discoverCompanies = async (q, options) =>
+      fake.apify.start(GOOGLE_MAPS_ACTOR, `${q.cellKey}|${q.normalizedQuery}`, [same], [], options);
+    // Started one after the other so each claims its own cell; then both run at once.
+    const a = await fake.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectors: TEXTILE,
+      budgetCapUsd: 10,
+    });
+    const b = await fake.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectors: TEXTILE,
+      budgetCapUsd: 10,
+    });
+    expect(b.status).toBe('running');
+    await Promise.all([drive(fake.orchestrator, user, a.id), drive(fake.orchestrator, user, b.id)]);
+    const { rows } = await db.query<{ n: number }>(
+      'SELECT count(*)::integer AS n FROM companies WHERE user_id = $1',
+      [user],
+    );
+    expect(rows[0]!.n).toBe(1);
+    const firsts = [
+      ...(await listRunCompanies(db, user, a.id)),
+      ...(await listRunCompanies(db, user, b.id)),
+    ].filter((c) => c.isNew);
+    expect(firsts).toHaveLength(1);
+  });
+
+  it('a duplicate insert racing on place ID, domain or LinkedIn fails safely into a merge', async () => {
+    const place = fakePlace('race', 0);
+    const input = {
+      name: place.name,
+      governorate: { ...place.name, value: 'sfax', kind: 'estimate' as const },
+      googlePlaceId: place.placeId,
+      website: place.website!,
+    };
+    const c1 = await db.connect();
+    const c2 = await db.connect();
+    try {
+      await c1.query('BEGIN');
+      await c2.query('BEGIN');
+      const first = await upsertCompany(c1, user, input);
+      // The second insert blocks on the unique index until the first commits.
+      const second = upsertCompany(c2, user, input);
+      await new Promise((r) => setTimeout(r, 100));
+      await c1.query('COMMIT');
+      const merged = await second;
+      await c2.query('COMMIT');
+      expect(first.created).toBe(true);
+      expect(merged.created).toBe(false);
+      expect(merged.company.id).toBe(first.company.id);
+    } finally {
+      c1.release();
+      c2.release();
+    }
+  });
+});
+
+describe('orchestrator: coverage and saturation', () => {
+  it('exhausts wordings and cells, saturates the region and switches it to maintenance', async () => {
+    const w = world({ polls: 0 }, { maxInFlightSteps: 8 });
+    // Run 1: each cell's two places are found by the first wording; every other wording
+    // finds nothing new and is exhausted.
+    const r1 = await w.orchestrator.startRun(user, { regionId: 'sfax', budgetCapUsd: 50 });
+    expect((await drive(w.orchestrator, user, r1.id)).status).toBe('finished');
+    let stats = await listCellStats(db, user, 'sfax');
+    expect(stats.every((c) => c.exhaustedAt === null)).toBe(true);
+    const ex1 = await db.query<{ n: number }>(
+      'SELECT count(*)::integer AS n FROM exhausted_queries WHERE user_id = $1',
+      [user],
+    );
+    expect(ex1.rows[0]!.n).toBe(2 * (ALL_WORDINGS.length - 1));
+
+    // Run 2 searches only the wordings still alive, finds nothing new: cells exhausted.
+    const r2 = await w.orchestrator.startRun(user, { regionId: 'sfax', budgetCapUsd: 50 });
+    expect(await listSteps(db, user, r2.id)).toHaveLength(2);
+    expect((await drive(w.orchestrator, user, r2.id)).status).toBe('finished');
+    stats = await listCellStats(db, user, 'sfax');
+    expect(stats.every((c) => c.exhaustedAt !== null)).toBe(true);
+    const region = (await listRegionStats(db, user)).find((r) => r.regionId === 'sfax')!;
+    expect(region.mode).toBe('saturated');
+
+    // A normal run has nothing left to search.
+    const r3 = await w.orchestrator.startRun(user, { regionId: 'sfax', budgetCapUsd: 50 });
+    expect(r3.status).toBe('failed');
+
+    // The scheduler now proposes maintenance with ways to widen the search.
+    const suggestion = await suggestNextRegion(db, user, w.orchestrator.config);
+    expect(suggestion.regionId).toBe('sfax');
+    expect(suggestion.mode).toBe('maintenance');
+    expect(suggestion.widening.join(' ')).toMatch(/Arabic/);
+
+    // Maintenance: contacts older than 90 days are re-checked; cells re-searched on a slow
+    // schedule pass only new places through the paid stages.
+    await db.query(
+      "UPDATE contacts SET updated_at = now() - interval '120 days' WHERE user_id = $1",
+      [user],
+    );
+    await db.query(
+      "UPDATE region_coverage SET last_run_at = now() - interval '40 days' WHERE user_id = $1",
+      [user],
+    );
+    const peopleBefore = w.apify.startsFor('harvestapi/linkedin-company-employees').length;
+    const m = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      budgetCapUsd: 50,
+      mode: 'maintenance',
+    });
+    expect(m.mode).toBe('maintenance');
+    expect((await drive(w.orchestrator, user, m.id)).status).toBe('finished');
+    const companies = await listRunCompanies(db, user, m.id);
+    expect(companies.filter((c) => c.isNew)).toHaveLength(0);
+    // Every known company with stale contacts was re-checked, nothing else.
+    expect(w.apify.startsFor('harvestapi/linkedin-company-employees').length - peopleBefore).toBe(
+      4,
+    );
+  }, 60_000);
+
+  it('suggests an explore run one time in five, and explains each choice', async () => {
+    await createRegionGrid(db, 'tunis', { south: 36.7, west: 10.0, north: 36.9, east: 10.3 }, 1, 2);
+    const w = world({ polls: 0 });
+    let s = await suggestNextRegion(db, user, w.orchestrator.config);
+    expect(s.reason).toMatch(/No region has produced leads yet/);
+
+    const run = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectors: TEXTILE,
+      budgetCapUsd: 10,
+    });
+    await drive(w.orchestrator, user, run.id);
+    s = await suggestNextRegion(db, user, w.orchestrator.config);
+    expect(s.regionId).toBe('sfax');
+    expect(s.reason).toMatch(/best yield/);
+
+    // Runs 2 to 4 (stand-ins), so the next one is the fifth.
+    for (let i = 0; i < 3; i++) {
+      await db.query(
+        `INSERT INTO runs (user_id, region_id, budget_cap_usd, status) VALUES ($1, 'sfax', 1, 'finished')`,
+        [user],
+      );
+    }
+    s = await suggestNextRegion(db, user, w.orchestrator.config);
+    expect(s.regionId).toBe('tunis');
+    expect(s.reason).toMatch(/explore run/);
+  });
+});

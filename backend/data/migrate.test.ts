@@ -23,17 +23,21 @@ describe('migrations', () => {
   it('creates every entity table and view', async () => {
     expect(await tables()).toEqual([
       'apify_events',
+      'cell_claims',
       'companies',
       'contacts',
       'cost_ledger',
       'crm_leads',
       'evidence',
+      'exhausted_queries',
       'invites',
       'login_failures',
       'region_cells',
       'region_coverage',
       'region_coverage_rollup',
+      'region_status',
       'regions',
+      'run_companies',
       'run_steps',
       'runs',
       'search_queries',
@@ -52,6 +56,6 @@ describe('migrations', () => {
     expect(await migrateDown(db, Infinity)).toEqual(MIGRATIONS.map((m) => m.id).reverse());
     expect(await tables()).toEqual([]);
     expect(await migrateUp(db)).toEqual(MIGRATIONS.map((m) => m.id));
-    expect(await tables()).toHaveLength(19);
+    expect(await tables()).toHaveLength(23);
   });
 });

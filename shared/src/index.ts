@@ -101,10 +101,15 @@ export const RUN_STATUSES = [
 ] as const;
 export type RunStatus = (typeof RUN_STATUSES)[number];
 
+export const RUN_MODES = ['normal', 'maintenance'] as const;
+export type RunMode = (typeof RUN_MODES)[number];
+
 export interface Run {
   id: string;
   region: string;
   sectors: string[];
+  /** normal: search for new places; maintenance: slow re-runs of a saturated region. */
+  mode: RunMode;
   status: RunStatus;
   currentStage: RunStage | null;
   budgetCapUsd: number;
