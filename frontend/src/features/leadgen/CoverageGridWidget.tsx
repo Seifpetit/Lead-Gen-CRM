@@ -1,5 +1,5 @@
 import type { Coverage, CoverageEntry } from '@lead-gen-crm/shared';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApi } from '../../api/context.js';
 import { ErrorState, LoadingState } from '../../components/states.js';
 import { Widget } from '../../components/Widget.js';
@@ -22,9 +22,25 @@ export function CoverageGridWidget({
   const api = useApi();
   const coverage = useResource(() => api.coverage.get(), { deps: [refreshKey] });
   const [active, setActive] = useState<CoverageEntry | null>(null);
+  const [full, setFull] = useState(false);
+
+  useEffect(() => {
+    if (!full) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setFull(false);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [full]);
 
   return (
-    <Widget title={t('grid.title')} className="widget-wide">
+    <Widget
+      title={t('grid.title')}
+      className={full ? 'widget-wide widget-fullscreen' : 'widget-wide'}
+      actions={
+        <button type="button" className="button" aria-pressed={full} onClick={() => setFull(!full)}>
+          {full ? t('grid.fullscreen.exit') : t('grid.fullscreen')}
+        </button>
+      }
+    >
       {coverage.error !== null && !coverage.data ? (
         <ErrorState error={coverage.error} onRetry={coverage.reload} />
       ) : !coverage.data ? (

@@ -128,7 +128,7 @@ function StepLog({ step }: { step: ApifyStepView }) {
   );
 }
 
-function EventRow({ event, region }: { event: ApifyEventView; region: string | undefined }) {
+export function EventRow({ event, region }: { event: ApifyEventView; region: string | undefined }) {
   const t = useT();
   return (
     <li>

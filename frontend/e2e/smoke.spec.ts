@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 // One pass through the whole journey against the fake Apify: sign in, preview and start a run,
-// watch it in the log widget, open the result, and move a lead through every CRM stage.
+// watch it on the Logs page, open the result, and move a lead through every CRM stage.
 
 const EMAIL = 'e2e@example.test';
 const PASSWORD = 'e2e-password-123';
@@ -30,13 +30,17 @@ test('sign in, run, watch, open the result, and work a lead through the CRM', as
   const nav = page.getByRole('navigation', { name: 'Main' });
   await expect(nav.getByRole('link')).toHaveText(['Lead Gen', 'CRM']);
   await nav.getByRole('link', { name: 'Lead Gen' }).click();
-  await expect(page.getByRole('heading', { name: 'Lead Gen', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible();
+  const side = page.getByRole('navigation', { name: 'Lead Gen sections' });
+  await expect(side.getByRole('link')).toHaveText(['Dashboard', 'Coverage', 'Costs', 'Logs']);
 
-  // Clean start: no runs yet.
+  // Clean start: no active run, no runs yet.
+  await expect(page.getByText('No active run')).toBeVisible();
   const runs = page.getByRole('region', { name: 'Runs' });
   await expect(runs.getByText('No runs yet')).toBeVisible();
 
-  // Preview: region first, nothing is spent or started.
+  // Preview: Create run opens the flow; region first, nothing is spent or started.
+  await page.getByRole('button', { name: 'Create run' }).click();
   const start = page.getByRole('region', { name: 'Start a run' });
   await start.getByLabel('Region').selectOption({ label: 'Sfax' });
   const estimate = start.getByRole('region', { name: 'Estimate' });
@@ -55,21 +59,32 @@ test('sign in, run, watch, open the result, and work a lead through the CRM', as
   await dialog.getByRole('button', { name: 'Confirm and start run' }).click();
   await expect(start.getByText(/Run started in sfax/)).toBeVisible();
 
-  // Watch it in the Apify log while it runs.
+  // The dashboard shows it as active, with its progress bar.
+  await expect(page.getByRole('region', { name: 'Create run (1/2)' })).toBeVisible();
+  await expect(page.getByRole('progressbar')).toBeVisible();
+  await expect(runs.getByRole('row', { name: /sfax/ }).getByText('Running')).toBeVisible();
+
+  // Watch it on the Logs page while it runs.
+  await side.getByRole('link', { name: 'Logs' }).click();
   const log = page.getByRole('region', { name: 'Apify log' });
   await expect(log.getByText('Run in sfax')).toBeVisible();
   await expect(log.locator('.badge-apify-running, .badge-apify-started').first()).toBeVisible();
-  await expect(runs.getByRole('row', { name: /sfax/ }).getByText('Running')).toBeVisible();
 
   // It finishes on its own.
+  await side.getByRole('link', { name: 'Dashboard' }).click();
   await expect(runs.getByRole('row', { name: /sfax/ }).getByText('Finished')).toBeVisible({
     timeout: 100_000,
   });
+  await side.getByRole('link', { name: 'Logs' }).click();
   await expect(log.locator('.badge-apify-finished').first()).toBeVisible();
 
-  // Spend shows up in the costs widget.
+  // Spend shows up on the Costs page.
+  await side.getByRole('link', { name: 'Costs' }).click();
   const costs = page.getByRole('region', { name: 'Costs' });
   await expect(costs.getByRole('table')).toBeVisible();
+
+  // Open the result from the dashboard.
+  await side.getByRole('link', { name: 'Dashboard' }).click();
 
   // Open the result: people first, every field tagged.
   await runs.getByRole('link', { name: 'Open run for sfax' }).click();

@@ -3,6 +3,8 @@ import { useT, type StringKey } from '../../i18n/index.js';
 import { formatNumber, formatUsd } from '../../lib/format.js';
 
 export const ACTIVE_STATUSES: readonly RunStatus[] = ['pending', 'running'];
+/** The server's limit on runs in progress at once (preview.limits.maxActiveRuns says the same). */
+export const MAX_ACTIVE_RUNS = 2;
 export const isActive = (status: RunStatus) => ACTIVE_STATUSES.includes(status);
 
 export function StatusBadge({ status }: { status: RunStatus }) {
