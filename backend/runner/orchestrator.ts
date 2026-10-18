@@ -101,7 +101,7 @@ import { gridSectorIds } from './plan.js';
 import { applyDismissalFeedback, score } from '../stages/score.js';
 import { verifyCurrentRole, type RoleVerification } from '../stages/verifyCurrentRole.js';
 import { DEFAULT_RUNNER_CONFIG, type RunnerConfig } from './config.js';
-import { actualCosts, maxChargeFor, sumUsd } from './costs.js';
+import { actualCosts, checkStepFit, sumUsd } from './costs.js';
 import { reviveDates } from './json.js';
 import { titleKeywords } from './keywords.js';
 import { previewRun } from './preview.js';
@@ -563,6 +563,7 @@ export class Orchestrator {
       if (inFlight >= this.config.maxInFlightSteps) break;
       const outcome = await this.startStep(userId, run, step);
       if (outcome === 'capped') return true;
+      if (outcome === 'waiting') break;
       progressed = true;
       if (outcome === 'started') inFlight++;
     }
@@ -584,7 +585,7 @@ export class Orchestrator {
     userId: UserId,
     run: Run,
     step: RunStep,
-  ): Promise<'started' | 'done' | 'capped' | 'skipped'> {
+  ): Promise<'started' | 'done' | 'capped' | 'skipped' | 'waiting'> {
     // A pending step with an estimate already written was interrupted between writing it and
     // recording the start: the call may have gone out. Never start it twice.
     if (await this.hasEstimate(userId, step.id)) {
@@ -619,26 +620,33 @@ export class Orchestrator {
     const input = reviveDates<never>(step.input);
     const estimate = provider.estimate(this.providerInput(step.stage, input) as never);
     const estimateUsd = sumUsd(estimate);
+    const now = new Date();
     const remaining = await remainingBudget(
       this.db,
       userId,
       run.id,
-      new Date(),
+      now,
       await reservedHeadroom(this.db, userId, run.id),
     );
-    const actorMin = step.actorId ? (APIFY_MIN_MAX_CHARGE_USD[step.actorId] ?? 0) : 0;
-    const maxCharge = step.actorId
-      ? maxChargeFor(estimateUsd, remaining, this.config.maxChargeHeadroom, actorMin)
-      : remaining;
-    if (estimateUsd >= remaining || maxCharge === null) {
+    const fit = checkStepFit({
+      estimateUsd,
+      remainingUsd: remaining,
+      unreservedUsd: await remainingBudget(this.db, userId, run.id, now),
+      headroom: this.config.maxChargeHeadroom,
+      hasActor: step.actorId !== null,
+      actorMinimumUsd: step.actorId ? (APIFY_MIN_MAX_CHARGE_USD[step.actorId] ?? 0) : 0,
+    });
+    if (!fit.fits && fit.wait) return 'waiting';
+    if (!fit.fits) {
       await updateRun(this.db, userId, run.id, {
         status: 'stopped_by_cap',
-        error: `Next ${step.stage} step is estimated at $${estimateUsd.toFixed(4)} but only $${remaining.toFixed(4)} remains under the caps`,
+        error: `Next ${step.stage} step can't start (${fit.reason === 'actor_minimum' ? 'Actor minimum' : 'estimate'}): ${fit.message}`,
         onlyFrom: ['running', 'pending'],
       });
       await this.checkpoint('run:stopped_by_cap');
       return 'capped';
     }
+    const maxCharge = fit.maxChargeUsd ?? remaining;
 
     await withTransaction(this.db, async (tx) => {
       for (const e of estimate) {
