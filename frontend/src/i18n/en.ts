@@ -126,8 +126,9 @@ export const en = {
   'history.empty.title': 'No past searches',
   'history.empty.body': 'Runs that search this region and sector will be listed here.',
 
-  'grid.fullscreen': 'Fullscreen',
-  'grid.fullscreen.exit': 'Exit fullscreen',
+  'grid.size': 'Matrix size',
+  'grid.size.normal': 'Normal',
+  'grid.size.full': 'Fullscreen',
 
   'leadgen.title': 'Lead Gen',
   'leadgen.intro': 'Pick a region, check the estimate, and start a run with a spend cap.',

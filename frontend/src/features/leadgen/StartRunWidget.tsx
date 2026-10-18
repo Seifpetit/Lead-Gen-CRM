@@ -5,7 +5,7 @@ import { useApi } from '../../api/context.js';
 import { KindTag } from '../../components/Evidence.js';
 import { Modal } from '../../components/Modal.js';
 import { ErrorState, LoadingState } from '../../components/states.js';
-import { Widget } from '../../components/Widget.js';
+import { Card } from '../../components/shared/Card.js';
 import { useT } from '../../i18n/index.js';
 import { describeError } from '../../lib/errors.js';
 import { formatNumber, formatPercent, formatUsd } from '../../lib/format.js';
@@ -157,7 +157,7 @@ export function StartRunWidget({
     : undefined;
 
   return (
-    <Widget title={t('start.title')} className="widget-medium" anchor="start-run">
+    <Card title={t('start.title')} className="widget-medium" anchor="start-run">
       <section aria-live="polite" className="suggestion">
         <h3>{t('start.suggestion.title')}</h3>
         {suggestion.loading && !sugg ? (
@@ -326,7 +326,7 @@ export function StartRunWidget({
           </footer>
         </Modal>
       )}
-    </Widget>
+    </Card>
   );
 }
 

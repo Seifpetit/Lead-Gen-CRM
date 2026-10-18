@@ -11,7 +11,6 @@ import { CrmPage } from './features/crm/CrmPage.js';
 import { CostsPage } from './features/leadgen/CostsPage.js';
 import { CoveragePage } from './features/leadgen/CoveragePage.js';
 import { DashboardPage } from './features/leadgen/DashboardPage.js';
-import { LeadGenShell } from './features/leadgen/LeadGenShell.js';
 import { LogsPage } from './features/leadgen/LogsPage.js';
 import { RunDetailPage } from './features/leadgen/RunDetailPage.js';
 import { I18nProvider, useT } from './i18n/index.js';
@@ -34,7 +33,7 @@ function Screens() {
       <Route element={<RequireAuth />}>
         <Route element={<Layout />}>
           <Route index element={<Navigate to="/leadgen" replace />} />
-          <Route path="/leadgen" element={<LeadGenShell />}>
+          <Route path="/leadgen">
             <Route index element={<DashboardPage />} />
             <Route path="coverage" element={<CoveragePage />} />
             <Route path="costs" element={<CostsPage />} />
