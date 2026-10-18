@@ -13,7 +13,8 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  reporter: [['list']],
+  // On GitHub the 'github' reporter turns a failure into a check annotation we can read.
+  reporter: process.env.CI ? [['list'], ['github']] : [['list']],
   use: { baseURL: FRONTEND, trace: 'retain-on-failure', screenshot: 'only-on-failure' },
   webServer: [
     {
