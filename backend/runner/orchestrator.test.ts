@@ -7,6 +7,7 @@ import { listLeads } from '../data/crmLeads.js';
 import type { Db } from '../data/db.js';
 import type { UserId } from '../data/ids.js';
 import { createRegionGrid, listCells } from '../data/regionCells.js';
+import { setRegionBounds } from '../data/regions.js';
 import { getRun, RunLimitError } from '../data/runs.js';
 import { listEvidence } from '../data/evidence.js';
 import { listRunCompanies } from '../data/runCompanies.js';
@@ -28,7 +29,7 @@ import {
   type OrchestratorDeps,
 } from './orchestrator.js';
 import { reconcileRun } from './reconcile.js';
-import { ALL_WORDINGS, suggestNextRegion } from './scheduler.js';
+import { ALL_WORDINGS, NO_HISTORY_REASON, suggestNextRegion } from './scheduler.js';
 import { signStep, verifyWebhook, webhookFor } from './webhooks.js';
 
 // Orchestrator tests against a real Postgres and a fake Apify (test/fakeProviders.ts).
@@ -571,8 +572,14 @@ describe('orchestrator: coverage and saturation', () => {
   it('suggests an explore run one time in five, and explains each choice', async () => {
     await createRegionGrid(db, 'tunis', { south: 36.7, west: 10.0, north: 36.9, east: 10.3 }, 1, 2);
     const w = world({ polls: 0 });
+    // Stand-in history with no leads: the least-covered region goes first.
+    await db.query(
+      `INSERT INTO runs (user_id, region_id, budget_cap_usd, status) VALUES ($1, 'sfax', 1, 'failed')`,
+      [user],
+    );
     let s = await suggestNextRegion(db, user, w.orchestrator.config);
     expect(s.reason).toMatch(/No region has produced leads yet/);
+    await db.query('DELETE FROM runs WHERE user_id = $1', [user]);
 
     const run = await w.orchestrator.startRun(user, {
       regionId: 'sfax',
@@ -594,6 +601,33 @@ describe('orchestrator: coverage and saturation', () => {
     s = await suggestNextRegion(db, user, w.orchestrator.config);
     expect(s.regionId).toBe('tunis');
     expect(s.reason).toMatch(/explore run/);
+  });
+});
+
+describe('orchestrator: the suggestion with no history', () => {
+  it('suggests nothing until the user has run something, instead of the first region alphabetically', async () => {
+    await createRegionGrid(db, 'tunis', { south: 36.7, west: 10.0, north: 36.9, east: 10.3 }, 1, 2);
+    const w = world();
+    const s = await suggestNextRegion(db, user, w.orchestrator.config);
+    expect(s.regionId).toBeNull();
+    expect(s.reason).toBe(NO_HISTORY_REASON);
+    expect(s.reason).toBe(
+      'Pick a region to start. We recommend a small one like Sfax for a first test.',
+    );
+    expect(s.widening).toEqual([]);
+  });
+
+  it('says "not planned yet" for a region with no cells, and keeps ranking once there is history', async () => {
+    await setRegionBounds(db, 'sousse', { south: 35.7, west: 10.5, north: 35.9, east: 10.7 });
+    const w = world();
+    await db.query(
+      `INSERT INTO runs (user_id, region_id, budget_cap_usd, status) VALUES ($1, 'sfax', 1, 'failed')`,
+      [user],
+    );
+    const s = await suggestNextRegion(db, user, w.orchestrator.config);
+    expect(s.regionId).toBe('sousse');
+    expect(s.reason).toContain('not planned yet');
+    expect(s.reason).not.toContain('?');
   });
 });
 

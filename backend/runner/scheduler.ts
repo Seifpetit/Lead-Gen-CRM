@@ -116,6 +116,13 @@ export function planRunCells(
   return plan;
 }
 
+/** "3 of 8 cells searched", or "not planned yet" for a region whose cells don't exist yet. */
+function cellsSearchedText(r: Pick<RegionStats, 'cellsSearched' | 'cellsTotal'>): string {
+  return r.cellsTotal === 0
+    ? 'not planned yet'
+    : `${r.cellsSearched} of ${r.cellsTotal} cells searched`;
+}
+
 function day(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
@@ -129,6 +136,10 @@ export function wideningSuggestions(): string[] {
     'Arabic wordings: none are configured; add them to config/sectors.ts (needs a native speaker to choose the terms)',
   ];
 }
+
+/** Shown instead of a suggestion until the user has run anything. */
+export const NO_HISTORY_REASON =
+  'Pick a region to start. We recommend a small one like Sfax for a first test.';
 
 export interface RegionSuggestion {
   /** Null when no region can be run (no bounds anywhere). */
@@ -188,6 +199,18 @@ export async function suggestNextRegion(
     };
   }
 
+  // Nothing has ever run: every region is at zero, so ranking them would just pick the first
+  // alphabetically. Suggest nothing and point at a small region for a first test.
+  if (runsSoFar === 0) {
+    return {
+      regionId: null,
+      mode: 'normal',
+      reason: NO_HISTORY_REASON,
+      widening: [],
+      ranking,
+    };
+  }
+
   const active = regions.filter((r) => r.mode === 'active');
   const leastCovered = (rs: RegionStats[]): RegionStats =>
     [...rs].sort(
@@ -217,7 +240,7 @@ export async function suggestNextRegion(
     return {
       regionId: pick.regionId,
       mode: 'normal',
-      reason: `Run ${nextRun} is an explore run (one in ${config.exploreEvery}). ${pick.name} is the least covered: ${pick.cellsSearched} of ${pick.cellsTotal || '?'} cells searched.`,
+      reason: `Run ${nextRun} is an explore run (one in ${config.exploreEvery}). ${pick.name} is the least covered: ${cellsSearchedText(pick)}.`,
       widening: [],
       ranking,
     };
@@ -229,7 +252,7 @@ export async function suggestNextRegion(
     return {
       regionId: pick.regionId,
       mode: 'normal',
-      reason: `No region has produced leads yet, so the least-covered one goes first: ${pick.name} (${pick.cellsSearched} of ${pick.cellsTotal || '?'} cells searched).`,
+      reason: `No region has produced leads yet, so the least-covered one goes first: ${pick.name} (${cellsSearchedText(pick)}).`,
       widening: [],
       ranking,
     };

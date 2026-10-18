@@ -181,9 +181,7 @@ export function StartRunWidget({
             </button>
           </>
         ) : (
-          <p className="muted">
-            {t('start.suggestion.none')} {sugg?.reason}
-          </p>
+          <p className="muted">{sugg?.reason || t('start.suggestion.none')}</p>
         )}
       </section>
 
@@ -342,7 +340,13 @@ function Coverage({ region }: { region: RegionSummary }) {
       <dl className="stats">
         <div>
           <dt>{t('start.coverage.coverage')}</dt>
-          <dd>{region.coverage === null ? unknown : formatPercent(region.coverage)}</dd>
+          <dd>
+            {region.cellsTotal === 0
+              ? t('start.coverage.notPlanned')
+              : region.coverage === null
+                ? unknown
+                : formatPercent(region.coverage)}
+          </dd>
         </div>
         <div>
           <dt>{t('start.coverage.yield')}</dt>

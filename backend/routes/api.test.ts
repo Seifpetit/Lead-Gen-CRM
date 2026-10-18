@@ -976,7 +976,10 @@ describe('regions and coverage', () => {
     expect(s.reason).toMatch(/best yield/);
     expect(s.ranking.length).toBeGreaterThan(0);
     const mine = (await call(bob, 'GET', '/api/regions/suggestion')).json();
-    expect(mine.reason).toMatch(/No region has produced leads yet/);
+    expect(mine.regionId).toBeNull();
+    expect(mine.reason).toBe(
+      'Pick a region to start. We recommend a small one like Sfax for a first test.',
+    );
   });
 
   it('gives per-cell detail', async () => {
