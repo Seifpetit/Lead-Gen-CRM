@@ -4,6 +4,7 @@ import { expireClaims, listLiveClaims } from '../data/cellClaims.js';
 import { upsertCompany } from '../data/companies.js';
 import { listLedgerForRun, runSpendByProvider } from '../data/costLedger.js';
 import { listLeads } from '../data/crmLeads.js';
+import { loadLeads, runSummaries } from '../data/views.js';
 import type { Db } from '../data/db.js';
 import type { UserId } from '../data/ids.js';
 import { createRegionGrid, listCells } from '../data/regionCells.js';
@@ -787,5 +788,85 @@ describe('orchestrator: places outside the governorate', () => {
   it('forgives a place a few hundred metres outside the simplified edge', async () => {
     const { run } = await runWith(() => ({ lat: 34.7, lng: 10.7 + 0.002 }));
     expect((await getRun(db, user, run.id))?.placesDroppedOutside).toBe(0);
+  });
+});
+
+describe('orchestrator: first-run fixes', () => {
+  async function finished(opts: FakeApifyOptions, extra: Partial<OrchestratorDeps> = {}) {
+    const w = world(opts, {}, extra);
+    const run = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectorIds: TEXTILE,
+      budgetCapUsd: 10,
+    });
+    await drive(w.orchestrator, user, run.id);
+    return { w, run };
+  }
+
+  it('keeps a company with no phone, website or email as unreachable and never scores it', async () => {
+    const { run } = await finished({ unreachable: true });
+    const companies = await listRunCompanies(db, user, run.id);
+    expect(companies.length).toBeGreaterThan(0);
+    expect(companies.every((c) => c.state === 'unreachable')).toBe(true);
+    expect(await listLeads(db, user, { runId: run.id })).toEqual([]);
+    expect((await getRun(db, user, run.id))?.status).toBe('finished');
+    // Counted as unreachable, not as leads.
+    const [summary] = await runSummaries(db, user, [run.id]);
+    expect(summary!.funnel.unreachable).toBe(companies.length);
+    expect(summary!.funnel.leads).toBe(0);
+    expect(summary!.funnel.qualified).toBeGreaterThanOrEqual(companies.length);
+  });
+
+  it('logs, per company, the search input, how many people came back and why each was rejected', async () => {
+    const logs: { data: Record<string, unknown>; message: string }[] = [];
+    const { run } = await finished({}, { log: (data, message) => logs.push({ data, message }) });
+    const people = logs.filter((l) => l.message === 'people step result');
+    expect(people.length).toBeGreaterThan(0);
+    const first = people[0]!.data as {
+      runId: string;
+      company: string;
+      input: { companyName: string; location: string };
+      returned: number;
+      kept: number;
+      rejected: unknown[];
+    };
+    expect(first.runId).toBe(run.id);
+    expect(first.input.companyName).toBe(first.company);
+    expect(first.returned).toBe(1);
+    expect(first.kept).toBe(1);
+    expect(first.rejected).toEqual([]);
+    const stored = (await listRunCompanies(db, user, run.id))[0]!.payload as {
+      peopleDiagnostics?: { returned: number };
+    };
+    expect(stored.peopleDiagnostics?.returned).toBe(1);
+  });
+
+  it('finds a decision-maker from a short company-list profile with a French filler-word title', async () => {
+    const logs: Record<string, unknown>[] = [];
+    const { run } = await finished({ sparsePeople: true }, { log: (data) => logs.push(data) });
+    const leads = await listLeads(db, user, { runId: run.id });
+    expect(leads.length).toBeGreaterThan(0);
+    expect(leads.every((l) => l.contactId)).toBe(true);
+    expect(logs.every((l) => (l.rejected as unknown[]).length === 0)).toBe(true);
+  });
+
+  it('stores the score reasons on each lead', async () => {
+    const { run } = await finished({});
+    const leads = await listLeads(db, user, { runId: run.id });
+    const loaded = await loadLeads(
+      db,
+      user,
+      leads.map((l) => l.id),
+    );
+    expect(loaded.every((l) => (l.scoreReasons?.length ?? 0) > 0)).toBe(true);
+    const stored = await db.query<{ score_reasons: { component: string; reason: string }[] }>(
+      'SELECT score_reasons FROM crm_leads WHERE user_id = $1 AND run_id = $2',
+      [user, run.id],
+    );
+    expect(stored.rows).toHaveLength(leads.length);
+    for (const row of stored.rows) {
+      expect(row.score_reasons.length).toBeGreaterThan(0);
+      expect(row.score_reasons.every((r) => r.reason !== '')).toBe(true);
+    }
   });
 });

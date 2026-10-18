@@ -1,7 +1,12 @@
 import { withTransaction, type Queryable } from './db.js';
 import { insertEvidence } from './evidence.js';
 import type { UserId } from './ids.js';
-import { normalizeCompanyName, normalizeDomain, normalizeEmail } from './normalize.js';
+import {
+  classifyPhone,
+  normalizeCompanyName,
+  normalizeDomain,
+  normalizeEmail,
+} from './normalize.js';
 import type { Sourced } from './sourced.js';
 
 /** Postgres unique_violation: a concurrent writer inserted the same key first. */
@@ -19,6 +24,10 @@ export interface CompanyRecord {
   domain: string | null;
   website: string | null;
   phone: string | null;
+  /** The phone in E.164, for matching the same business; null when it is not a usable number. */
+  phoneE164: string | null;
+  /** True when the phone carries a country code other than +216. */
+  phoneForeign: boolean;
   email: string | null;
   linkedinUrl: string | null;
   sourceProvider: string | null;
@@ -49,7 +58,7 @@ export interface CompanyInput {
   regionCellId?: string;
 }
 
-export type MatchedBy = 'google_place_id' | 'domain' | 'name_governorate' | null;
+export type MatchedBy = 'google_place_id' | 'phone' | 'domain' | 'name_governorate' | null;
 
 export interface UpsertCompanyResult {
   company: CompanyRecord;
@@ -67,6 +76,8 @@ interface Row {
   domain: string | null;
   website: string | null;
   phone: string | null;
+  phone_e164: string | null;
+  phone_foreign: boolean;
   email: string | null;
   linkedin_url: string | null;
   source_provider: string | null;
@@ -87,6 +98,8 @@ const toCompany = (r: Row): CompanyRecord => ({
   domain: r.domain,
   website: r.website,
   phone: r.phone,
+  phoneE164: r.phone_e164,
+  phoneForeign: r.phone_foreign,
   email: r.email,
   linkedinUrl: r.linkedin_url,
   sourceProvider: r.source_provider,
@@ -98,15 +111,18 @@ const toCompany = (r: Row): CompanyRecord => ({
 });
 
 /**
- * Finds the existing company in priority order: Google place ID, then normalized domain,
- * then normalized name plus governorate. A name match is skipped when both sides carry a
- * different place ID or domain: those are two businesses that share a name (e.g. branches).
+ * Finds the existing company in priority order: Google place ID, then normalized phone, then
+ * normalized website domain, then normalized name plus governorate. A name match is skipped
+ * when both sides carry a different place ID or domain: those are two businesses that share a
+ * name (e.g. branches). Phone and website are checked before the name because a shared number
+ * or site is a stronger sign of the same business than a similar name.
  */
 async function findMatch(
   db: Queryable,
   userId: UserId,
   key: {
     placeId: string | null;
+    phoneE164: string | null;
     domain: string | null;
     normalizedName: string;
     governorate: string;
@@ -118,6 +134,14 @@ async function findMatch(
       [userId, key.placeId],
     );
     if (rows[0]) return { row: rows[0], matchedBy: 'google_place_id' };
+  }
+  if (key.phoneE164) {
+    const { rows } = await db.query<Row>(
+      `SELECT * FROM companies WHERE user_id = $1 AND phone_e164 = $2
+        ORDER BY created_at LIMIT 1 FOR UPDATE`,
+      [userId, key.phoneE164],
+    );
+    if (rows[0]) return { row: rows[0], matchedBy: 'phone' };
   }
   if (key.domain) {
     const { rows } = await db.query<Row>(
@@ -152,8 +176,11 @@ export async function upsertCompany(
     const normalizedName = normalizeCompanyName(input.name.value);
     const placeId = input.googlePlaceId?.value.trim() || null;
     const domain = input.website ? normalizeDomain(input.website.value) : null;
+    const phone = input.phone ? classifyPhone(input.phone.value) : null;
+    const phoneE164 = phone?.e164 ?? null;
     let match = await findMatch(tx, userId, {
       placeId,
+      phoneE164,
       domain,
       normalizedName,
       governorate: input.governorate.value,
@@ -166,6 +193,8 @@ export async function upsertCompany(
       sector: input.sector?.value ?? null,
       website: input.website?.value.trim() ?? null,
       phone: input.phone?.value.trim() ?? null,
+      phone_e164: phoneE164,
+      phone_foreign: phone?.foreign ?? false,
       email: input.email ? normalizeEmail(input.email.value) : null,
       linkedin_url: input.linkedinUrl?.value.trim() ?? null,
       source_provider: input.sourceProvider ?? null,
@@ -186,6 +215,7 @@ export async function upsertCompany(
         await tx.query('ROLLBACK TO SAVEPOINT upsert_company');
         match = await findMatch(tx, userId, {
           placeId,
+          phoneE164,
           domain,
           normalizedName,
           governorate: input.governorate.value,
@@ -197,8 +227,9 @@ export async function upsertCompany(
       const { rows } = await tx.query<Row>(
         `INSERT INTO companies (user_id, name, normalized_name, governorate, sector, google_place_id,
                                 domain, website, phone, email, linkedin_url, source_provider, refresh_by,
-                                run_id, region_cell_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
+                                run_id, region_cell_id, phone_e164, phone_foreign)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+         RETURNING *`,
         [
           userId,
           values.name,
@@ -215,6 +246,8 @@ export async function upsertCompany(
           values.refresh_by,
           runId,
           input.regionCellId ?? null,
+          values.phone_e164,
+          values.phone_foreign,
         ],
       );
       return rows[0]!;
@@ -237,6 +270,8 @@ export async function upsertCompany(
            source_provider = COALESCE($13, c.source_provider),
            refresh_by = COALESCE($14, c.refresh_by),
            run_id = COALESCE(c.run_id, $15), region_cell_id = COALESCE(c.region_cell_id, $16),
+           phone_e164 = CASE WHEN $10 IS NULL THEN c.phone_e164 ELSE $17 END,
+           phone_foreign = CASE WHEN $10 IS NULL THEN c.phone_foreign ELSE $18 END,
            updated_at = now()
          WHERE c.user_id = $1 AND c.id = $2 RETURNING *`,
         [
@@ -256,6 +291,8 @@ export async function upsertCompany(
           values.refresh_by,
           runId,
           input.regionCellId ?? null,
+          values.phone_e164,
+          values.phone_foreign,
         ],
       );
       row = rows[0]!;

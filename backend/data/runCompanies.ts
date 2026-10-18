@@ -13,6 +13,8 @@ export const RUN_COMPANY_STATES = [
   'verified',
   'scored',
   'skipped',
+  /** Qualified, but with no phone, website or email to reach it by; kept, never scored. */
+  'unreachable',
 ] as const;
 export type RunCompanyState = (typeof RUN_COMPANY_STATES)[number];
 

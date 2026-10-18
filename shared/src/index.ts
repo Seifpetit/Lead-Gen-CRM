@@ -32,6 +32,10 @@ export interface Company {
   domain: string | null;
   website: string | null;
   phone: string | null;
+  /** The phone in E.164, when it is a usable number. */
+  phoneE164?: string | null;
+  /** True when the phone carries a country code other than +216: check it before calling. */
+  phoneForeign?: boolean;
   email: string | null;
   linkedinUrl: string | null;
   evidence: Evidence[];
@@ -71,6 +75,15 @@ export interface ScoreBreakdown {
   total: number;
 }
 
+/** Why one block of score points was given, and what it rests on. */
+export interface ScoreReason {
+  component: 'companyFit' | 'contactFit' | 'reachability';
+  points: number;
+  reason: string;
+  kind: EvidenceKind;
+  evidence: { field: string; value: string; sourceUrl: string }[];
+}
+
 /** A decision-maker with a contact channel; the company is the fallback channel. */
 export interface Lead {
   id: string;
@@ -78,6 +91,8 @@ export interface Lead {
   company: Company;
   contact: Contact | null;
   score: ScoreBreakdown;
+  /** The reasons behind the score points, as stored when the lead was scored. */
+  scoreReasons?: ScoreReason[];
   crmStage: CrmStage;
 }
 

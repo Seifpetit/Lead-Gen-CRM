@@ -95,7 +95,7 @@ import {
 } from '../stages/buildLeadCandidate.js';
 import type { CompanyClassifier, TitleClassifier } from '../stages/classifier.js';
 import { matchTitle, type TitleMatch } from '../stages/matchTitle.js';
-import { qualify, type Qualification } from '../stages/qualify.js';
+import { isReachable, qualify, type Qualification } from '../stages/qualify.js';
 import { buildQueryGrid, gridShape } from '../stages/queryGrid.js';
 import { gridSectorIds } from './plan.js';
 import { applyDismissalFeedback, score } from '../stages/score.js';
@@ -141,6 +141,8 @@ export interface OrchestratorDeps {
    * paid call and recording its result. Tests throw here to prove recovery.
    */
   checkpoint?: (label: string) => void | Promise<void>;
+  /** Structured diagnostics (e.g. why each person was kept or rejected). Defaults to silent. */
+  log?: (data: Record<string, unknown>, message: string) => void;
 }
 
 export interface AdvanceResult {
@@ -153,15 +155,30 @@ export interface AdvanceResult {
 }
 
 const STAGES: RunStage[] = ['discover', 'qualify', 'find_people', 'enrich', 'verify', 'score'];
-const TERMINAL_COMPANY: RunCompanyState[] = ['scored', 'rejected', 'review', 'skipped'];
+const TERMINAL_COMPANY: RunCompanyState[] = [
+  'scored',
+  'rejected',
+  'review',
+  'skipped',
+  'unreachable',
+];
 
 interface DiscoverPayload {
   place: DiscoveredPlace;
   querySectorId: string | null;
   qualification?: Qualification;
   people?: StoredPerson[];
+  peopleDiagnostics?: PeopleDiagnostics;
   emails?: Record<string, FoundEmail>;
   refresh?: boolean;
+}
+
+/** What the people step searched for, what came back and why each person was kept or not. */
+interface PeopleDiagnostics {
+  input: PeopleQuery;
+  returned: number;
+  kept: number;
+  rejected: { name: string; headline: string | null; reason: string }[];
 }
 
 interface StoredPerson {
@@ -983,8 +1000,9 @@ export class Orchestrator {
       linkedinUrl: payload.place.linkedinUrl?.value ?? null,
     };
     const people: StoredPerson[] = [];
+    const rejected: PeopleDiagnostics['rejected'] = [];
     for (const person of found) {
-      const role = verifyCurrentRole(person.positions, identity);
+      const role = verifyCurrentRole(person.positions, identity, person.via);
       const title = await matchTitle(
         role.position?.title ?? person.headline?.value ?? '',
         (await this.classifierCapReached(userId, run.id)) ? undefined : this.deps.titleClassifier,
@@ -1007,7 +1025,11 @@ export class Orchestrator {
                 ? { linkedinPublicId: { ...person.linkedinUrl, value: person.linkedinPublicId } }
                 : {}),
               linkedinUrl: person.linkedinUrl,
-              currentRoleVerified: { ...person.linkedinUrl, value: true, kind: 'fact' },
+              currentRoleVerified: {
+                ...person.linkedinUrl,
+                value: true,
+                kind: role.position ? 'fact' : 'estimate',
+              },
             },
             run.id,
           );
@@ -1017,14 +1039,36 @@ export class Orchestrator {
           suppressed = true;
         }
       }
+      if (!contactId) {
+        const why = suppressed
+          ? 'on the suppression list'
+          : !title.roleClass
+            ? `title not a decision-maker role (${title.method}: ${title.reasons.join('; ')})`
+            : `not verified as current (${role.reason})`;
+        rejected.push({
+          name: person.fullName.value,
+          headline: person.headline?.value ?? null,
+          reason: why,
+        });
+      }
       people.push({ person, title, role, contactId, ...(suppressed ? { suppressed } : {}) });
     }
+    const peopleDiagnostics: PeopleDiagnostics = {
+      input: input.query,
+      returned: found.length,
+      kept: people.length - rejected.length,
+      rejected,
+    };
+    this.deps.log?.(
+      { runId: run.id, company: identity.name, ...peopleDiagnostics },
+      'people step result',
+    );
     await moveRunCompany(tx, userId, {
       runId: run.id,
       companyId: input.companyId,
       from: 'qualified',
       to: 'people_found',
-      payload: { people },
+      payload: { people, peopleDiagnostics },
     });
   }
 
@@ -1260,6 +1304,8 @@ export class Orchestrator {
             }
           : {}),
       });
+      // A fit with no phone, website or email can't become a lead: kept, never scored.
+      const unreachable = q.verdict === 'qualified' && !isReachable(payload.place);
       await withTransaction(this.db, async (tx) => {
         await this.recordLlmCosts(tx, userId, run.id, rc.regionCellId, q.costs);
         if (q.method === 'classifier') {
@@ -1269,8 +1315,9 @@ export class Orchestrator {
           runId: run.id,
           companyId: rc.companyId,
           from: 'discovered',
-          to:
-            q.verdict === 'qualified'
+          to: unreachable
+            ? 'unreachable'
+            : q.verdict === 'qualified'
               ? 'qualified'
               : q.verdict === 'rejected'
                 ? 'rejected'
@@ -1287,7 +1334,7 @@ export class Orchestrator {
             run.id,
           );
         }
-        if (q.verdict === 'qualified' && rc.regionCellId) {
+        if (q.verdict === 'qualified' && !unreachable && rc.regionCellId) {
           await addCellCoverage(tx, userId, rc.regionCellId, { qualifiedCompanies: 1 });
         }
       });
@@ -1347,7 +1394,8 @@ export class Orchestrator {
         const scores = [];
         const feedback = await dismissalFeedback(tx, userId);
         for (const c of candidates) {
-          const s = applyDismissalFeedback(score(c), feedback, {
+          const raw = score(c);
+          const s = applyDismissalFeedback(raw, feedback, {
             sector: payload.qualification?.sectorId ?? null,
             roleClass: c.person
               ? (people.find((p) => p.person.linkedinUrl.value === c.person!.linkedinUrl.value)
@@ -1367,6 +1415,7 @@ export class Orchestrator {
               contactFit: s.contactFit,
               reachability: s.reachability,
             },
+            scoreReasons: [...raw.points, ...s.adjustments.map((a) => ({ ...a, evidence: [] }))],
           });
           scores.push({ contactId, total: s.total });
         }

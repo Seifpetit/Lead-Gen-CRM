@@ -45,9 +45,20 @@ const hasEnded = (p: Position) => p.endDate !== null && p.endDate.trim() !== '';
 export function verifyCurrentRole(
   positions: readonly Position[],
   company: CompanyIdentity,
+  via?: 'company_employees' | 'profile_search',
 ): RoleVerification {
   const atCompany = positions.filter((p) => sameCompany(p, company));
   if (atCompany.length === 0) {
+    // The company-employees list is the company's own current staff, and short profiles in it
+    // often carry no experience entries. Without a contradicting position, trust the list,
+    // but as an estimate in the reason rather than a verified fact.
+    if (via === 'company_employees') {
+      return {
+        current: true,
+        position: null,
+        reason: 'listed as an employee of this company (no position data to check; estimate)',
+      };
+    }
     return { current: false, position: null, reason: 'no listed position at this company' };
   }
   const open = atCompany.find((p) => !hasEnded(p));

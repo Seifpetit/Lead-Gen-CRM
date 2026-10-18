@@ -52,6 +52,10 @@ export interface FakeApifyOptions {
   undecided?: boolean;
   /** Coordinates of the i-th place found in a cell; no coordinates when omitted. */
   locationOf?: (cellKey: string, i: number) => { lat: number; lng: number } | null;
+  /** Places with no phone, website or email. */
+  unreachable?: boolean;
+  /** People from the company list with no experience entries and a French filler-word title. */
+  sparsePeople?: boolean;
 }
 
 export class FakeApify {
@@ -156,6 +160,7 @@ export function fakePlace(
   i: number,
   location: { lat: number; lng: number } | null = null,
   undecided = false,
+  unreachable = false,
 ): DiscoveredPlace {
   const id = `${cellKey.replace(/[^a-z0-9]/gi, '')}x${i}`;
   const maps = `https://maps.example.test/place/${id}`;
@@ -166,7 +171,7 @@ export function fakePlace(
     address: src(`Zone industrielle ${id}`, maps),
     category: src(undecided ? 'Atelier' : 'Usine textile', maps),
     types: undecided ? [] : ['textile'],
-    website: src(`https://fixture-${id.toLowerCase()}.example.tn`, maps),
+    website: unreachable ? null : src(`https://fixture-${id.toLowerCase()}.example.tn`, maps),
     phones: [],
     emails: [],
     linkedinUrl: src(`https://www.linkedin.com/company/fixture-${id.toLowerCase()}`, maps),
@@ -189,6 +194,7 @@ export class FakeDiscovery implements CompanyDiscovery {
         i,
         this.apify.options.locationOf?.(q.cellKey, i) ?? null,
         this.apify.options.undecided,
+        this.apify.options.unreachable,
       ),
     );
   }
@@ -226,19 +232,24 @@ export class FakePeople implements PeopleFinder {
     const person: FoundPerson = {
       via: 'company_employees',
       fullName: src(`Amine Testeur${slug.replace(/[^a-z0-9]/gi, '').slice(-6)}`, url),
-      headline: src('Directeur Logistique', url),
+      headline: src(
+        this.apify.options.sparsePeople ? 'Responsable des achats' : 'Directeur Logistique',
+        url,
+      ),
       linkedinUrl: src(url, url),
       linkedinPublicId: `${slug}-director`,
       location: src('Tunisia', url),
-      positions: [
-        {
-          title: 'Directeur Logistique',
-          companyName: q.companyName,
-          companyLinkedinUrl: q.companyLinkedinUrl,
-          startDate: '2020-01',
-          endDate: null,
-        },
-      ],
+      positions: this.apify.options.sparsePeople
+        ? []
+        : [
+            {
+              title: 'Directeur Logistique',
+              companyName: q.companyName,
+              companyLinkedinUrl: q.companyLinkedinUrl,
+              startDate: '2020-01',
+              endDate: null,
+            },
+          ],
     };
     const costs = [costEntry('apify', `${this.actor}#profile`, 1, FAKE_PROFILE_PRICE)];
     return this.apify.start(this.actor, q.companyName, [person], costs, options);

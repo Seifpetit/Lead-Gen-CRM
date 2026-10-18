@@ -13,6 +13,7 @@ import type {
   RunStage,
   RunStepCounts,
   RunSummary,
+  ScoreReason,
 } from '@lead-gen-crm/shared';
 import { RUN_STAGES } from '@lead-gen-crm/shared';
 import { getCompany } from './companies.js';
@@ -39,6 +40,7 @@ const EMPTY_FUNNEL: RunFunnel = {
   qualified: 0,
   rejected: 0,
   review: 0,
+  unreachable: 0,
   peopleFound: 0,
   enriched: 0,
   scored: 0,
@@ -62,6 +64,7 @@ async function funnels(db: Queryable, userId: UserId, runIds: string[]) {
     qualified: ['discovered', 'qualified'],
     rejected: ['discovered', 'rejected'],
     review: ['discovered', 'review'],
+    unreachable: ['discovered', 'qualified', 'unreachable'],
     people_found: ['discovered', 'qualified', 'peopleFound'],
     enriched: ['discovered', 'qualified', 'peopleFound', 'enriched'],
     verified: ['discovered', 'qualified', 'peopleFound', 'enriched'],
@@ -215,6 +218,7 @@ export async function loadLeads(db: Queryable, userId: UserId, ids: string[]): P
     score_contact_fit: number;
     score_reachability: number;
     score_total: number;
+    score_reasons: ScoreReason[];
   }>('SELECT * FROM crm_leads WHERE user_id = $1 AND id = ANY($2::uuid[])', [userId, ids]);
   const byId = new Map(rows.map((r) => [r.id, r]));
   const out: Lead[] = [];
@@ -234,6 +238,7 @@ export async function loadLeads(db: Queryable, userId: UserId, ids: string[]): P
         reachability: r.score_reachability,
         total: r.score_total,
       },
+      scoreReasons: r.score_reasons,
       crmStage: r.stage,
     });
   }
@@ -252,6 +257,8 @@ async function companyView(db: Queryable, userId: UserId, id: string): Promise<C
     domain: c.domain,
     website: c.website,
     phone: c.phone,
+    phoneE164: c.phoneE164,
+    phoneForeign: c.phoneForeign,
     email: c.email,
     linkedinUrl: c.linkedinUrl,
     evidence: await listEvidence(db, userId, { companyId: id }),

@@ -65,6 +65,19 @@ const evidenceOf = (place: DiscoveredPlace): ClassifierEvidence[] => [
     : []),
 ];
 
+/**
+ * True when the company has some way to be contacted without a person: a phone number, a
+ * website or an email. A place with none of the three can't become a lead, however well it
+ * fits the sector, so it is kept as "unreachable" and sent no further.
+ */
+export function isReachable(place: DiscoveredPlace): boolean {
+  return (
+    place.phones.some((p) => p.value.trim() !== '') ||
+    (place.website?.value.trim() ?? '') !== '' ||
+    place.emails.some((e) => e.value.trim() !== '')
+  );
+}
+
 /** Rules only; returns null when the rules can't decide. */
 export function qualifyByRules(
   place: DiscoveredPlace,
@@ -97,22 +110,53 @@ export function qualifyByRules(
       reasons: [`not a freight buyer ("${nonShipper}")`],
     };
   }
-  // Prefer the sector of the query that found the place, then the config order.
-  const sectors = [...FREIGHT_SECTORS].sort(
-    (a, b) => Number(b.id === querySectorId) - Number(a.id === querySectorId),
-  );
-  for (const sector of sectors) {
-    const word = findPhrase(nameAndCategory, sector.keywords);
-    if (word) {
-      return {
-        ...base,
-        verdict: 'qualified',
-        sectorId: sector.id,
-        reasons: [`name or category matches ${sector.name} ("${word}")`],
-      };
-    }
-  }
-  return null;
+  return matchSector(place, querySectorId, base);
+}
+
+/**
+ * When the name matches the keywords of two sectors ("Poulina Textile Food"), the category
+ * field decides: it is Google's own label for what the place is, where a name can be anything.
+ * Order of preference: a sector the category matches, then the sector of the query that found
+ * the place, then the config order.
+ */
+function matchSector(
+  place: DiscoveredPlace,
+  querySectorId: string | null,
+  base: { method: 'rules'; kind: 'fact'; evidence: ClassifierEvidence[]; costs: never[] },
+): Qualification | null {
+  const inName = padded(place.name.value);
+  const inCategory = padded(place.category?.value ?? '');
+  const matches = FREIGHT_SECTORS.map((sector, order) => ({
+    sector,
+    order,
+    byCategory: findPhrase(inCategory, sector.keywords),
+    byName: findPhrase(inName, sector.keywords),
+  })).filter((m) => m.byCategory || m.byName);
+  if (matches.length === 0) return null;
+  const rank = (m: (typeof matches)[number]) => [
+    Number(!m.byCategory),
+    Number(m.sector.id !== querySectorId),
+    m.order,
+  ];
+  matches.sort((a, b) => {
+    const [ra, rb] = [rank(a), rank(b)];
+    return ra[0]! - rb[0]! || ra[1]! - rb[1]! || ra[2]! - rb[2]!;
+  });
+  const [best, ...others] = matches;
+  const word = best!.byCategory ?? best!.byName!;
+  const where = best!.byCategory ? 'category' : 'name';
+  const conflict =
+    others.length > 0
+      ? `; also matched ${others.map((o) => o.sector.name).join(', ')}, ${
+          best!.byCategory ? 'but the category decides' : 'kept by the query sector or config order'
+        }`
+      : '';
+  return {
+    ...base,
+    verdict: 'qualified',
+    sectorId: best!.sector.id,
+    reasons: [`${where} matches ${best!.sector.name} ("${word}")${conflict}`],
+  };
 }
 
 /**

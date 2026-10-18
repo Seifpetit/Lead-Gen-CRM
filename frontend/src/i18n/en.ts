@@ -88,6 +88,7 @@ export const en = {
   'funnel.qualified': 'Qualified',
   'funnel.rejected': 'Rejected',
   'funnel.review': 'To review',
+  'funnel.unreachable': 'Unreachable',
   'funnel.peopleFound': 'People',
   'funnel.enriched': 'Enriched',
   'funnel.scored': 'Scored',
@@ -358,7 +359,14 @@ export const en = {
   'lead.score.reachability': 'Reachability',
   'lead.score.outOf': '{value} of {max}',
   'lead.score.estimate':
-    'A score is a computed estimate. The per-point reasons are not stored yet; the values it rests on are listed below.',
+    'A score is a computed estimate. Each point below says why it was given; the values it rests on are listed under Evidence.',
+  'lead.score.reasons': 'Why this score',
+  'lead.score.reasons.none': 'No per-point reasons were stored for this lead.',
+  'lead.score.reason': '{points} points: {reason}',
+  'lead.company.source': 'Source',
+  'lead.company.source.maps': 'Google Maps place',
+  'lead.company.phone.foreign':
+    'Phone with a non-Tunisian country code ({phone}); check it before calling.',
   'lead.evidence': 'Evidence behind this lead',
   'lead.evidence.person': 'About the person',
   'lead.evidence.company': 'About the company',

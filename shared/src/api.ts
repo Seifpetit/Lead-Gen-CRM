@@ -39,6 +39,8 @@ export interface RunFunnel {
   qualified: number;
   rejected: number;
   review: number;
+  /** Qualified, but with no phone, website or email: kept, never sent to the paid stages. */
+  unreachable: number;
   peopleFound: number;
   enriched: number;
   scored: number;

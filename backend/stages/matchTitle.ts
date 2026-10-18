@@ -104,6 +104,31 @@ const STAFF_WORDS = [
   'affreteur',
 ];
 
+// Filler words that sit inside French and English titles ("responsable des achats",
+// "head of logistics") and stop a dictionary phrase from matching as a whole.
+const FILLER = new Set([
+  'de',
+  'des',
+  'du',
+  'la',
+  'le',
+  'les',
+  'd',
+  'l',
+  'of',
+  'the',
+  'et',
+  'and',
+  'at',
+]);
+
+/** Drops filler words from an already-normalized title or phrase. */
+const squash = (normalized: string) =>
+  normalized
+    .split(' ')
+    .filter((t) => t !== '' && !FILLER.has(t))
+    .join(' ');
+
 const has = (padded: string, phrase: string) => padded.includes(` ${phrase} `);
 
 function seniorityOf(padded: string): Seniority | null {
@@ -115,12 +140,12 @@ function seniorityOf(padded: string): Seniority | null {
 
 // Longest variant first, so "directeur general adjoint" wins over "directeur general".
 const VARIANTS = (Object.entries(TITLE_DICTIONARY) as [RoleClass, readonly string[]][])
-  .flatMap(([roleClass, variants]) => variants.map((v) => ({ roleClass, variant: v })))
+  .flatMap(([roleClass, variants]) => variants.map((v) => ({ roleClass, variant: squash(v) })))
   .sort((a, b) => b.variant.length - a.variant.length || a.variant.localeCompare(b.variant));
 
 /** Dictionary and keyword rules only. Pure and synchronous. */
 export function matchTitleByRules(title: string): TitleMatch {
-  const padded = ` ${normalizeTitle(title)} `;
+  const padded = ` ${squash(normalizeTitle(title))} `;
   const base = { costs: [], kind: 'fact' as const };
   if (padded.trim() === '') {
     return {
@@ -161,7 +186,7 @@ export function matchTitleByRules(title: string): TitleMatch {
       RoleClass,
       readonly string[],
     ][]) {
-      const word = words.find((w) => has(padded, w));
+      const word = words.map(squash).find((w) => has(padded, w));
       if (word) {
         return {
           ...base,

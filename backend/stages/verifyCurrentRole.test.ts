@@ -53,6 +53,27 @@ describe('verifyCurrentRole', () => {
     ).toBe(false);
   });
 
+  it('trusts the company employee list when a short profile lists no position, as an estimate', () => {
+    const r = verifyCurrentRole([], company, 'company_employees');
+    expect(r).toMatchObject({ current: true, position: null });
+    expect(r.reason).toContain('estimate');
+    // Positions at other companies are not a contradiction either.
+    expect(
+      verifyCurrentRole([pos({ companyName: 'Elsewhere SA' })], company, 'company_employees')
+        .current,
+    ).toBe(true);
+  });
+
+  it('still refuses a company-list person whose position at the company ended', () => {
+    expect(
+      verifyCurrentRole([pos({ endDate: '2024-06' })], company, 'company_employees').current,
+    ).toBe(false);
+  });
+
+  it('stays strict for profile search results with no position at the company', () => {
+    expect(verifyCurrentRole([], company, 'profile_search').current).toBe(false);
+  });
+
   it('handles no positions', () => {
     expect(verifyCurrentRole([], company)).toMatchObject({ current: false, position: null });
   });

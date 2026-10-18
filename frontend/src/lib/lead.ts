@@ -67,3 +67,12 @@ export function channelHref(channel: Channel): string | null {
       : null;
   return null;
 }
+
+/**
+ * The Google Maps place page the company was found on. Name and place-ID facts are read from
+ * that page, so their source is the place URL; null when no evidence points at one.
+ */
+export function mapsSourceUrl(company: Company): string | null {
+  const found = evidenceFor(company.evidence, ['placeId', 'googlePlaceId', 'name']);
+  return found && /^https?:\/\//i.test(found.sourceUrl) ? found.sourceUrl : null;
+}
