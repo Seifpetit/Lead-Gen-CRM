@@ -9,7 +9,8 @@ export default mergeConfig(
       environment: 'jsdom',
       include: ['src/**/*.test.{ts,tsx}'],
       setupFiles: ['src/test/setup.ts'],
-      css: false,
+      // Only the app stylesheet is read, so tests can check the design tokens and the focus ring.
+      css: { include: [/src\/styles\.css/] },
     },
   }),
 );
