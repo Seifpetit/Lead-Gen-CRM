@@ -11,8 +11,10 @@ export interface GridCell {
 export interface QueryGridInput {
   regionId: string;
   bounds: Bounds;
-  /** Sectors to search; all freight sectors when omitted. */
+  /** Sectors to search; all freight sectors when omitted, none when empty. */
   sectorIds?: readonly string[];
+  /** Extra wordings typed in by the user; searched as given, with no sector. */
+  customWordings?: readonly string[];
   /** Roughly how many queries to produce before skips. Default 150. */
   targetQueries?: number;
   /** Leaf cells already stored for the region (after any splits). Generated when omitted. */
@@ -41,6 +43,28 @@ export function gridShape(bounds: Bounds, n: number): { rows: number; cols: numb
   return { rows, cols };
 }
 
+/** Longest and most extra wordings a run accepts. */
+export const MAX_CUSTOM_WORDINGS = 20;
+export const MAX_WORDING_CHARS = 80;
+
+/** Trims, collapses whitespace, strips control characters, drops empties and duplicates. */
+export function cleanWordings(wordings: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of wordings) {
+    const text = raw
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u001f\u007f]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const key = normalizeQuery(text);
+    if (key === '' || seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+  }
+  return out;
+}
+
 /**
  * Turns one region into many small searches: each French sector wording in each map cell.
  * Deterministic for the same input. Queries are ordered wording by wording across all
@@ -56,7 +80,7 @@ export function buildQueryGrid(input: QueryGridInput): QueryGrid {
   }
 
   // One entry per distinct wording; the first sector that lists it owns it.
-  const wordings: { sectorId: string; textQuery: string; normalizedQuery: string }[] = [];
+  const wordings: { sectorId: string | null; textQuery: string; normalizedQuery: string }[] = [];
   const seenWordings = new Set<string>();
   for (const sector of sectors) {
     for (const term of sector.searchTermsFr) {
@@ -65,6 +89,13 @@ export function buildQueryGrid(input: QueryGridInput): QueryGrid {
       seenWordings.add(normalizedQuery);
       wordings.push({ sectorId: sector.id, textQuery: term, normalizedQuery });
     }
+  }
+
+  for (const term of input.customWordings ?? []) {
+    const normalizedQuery = normalizeQuery(term);
+    if (normalizedQuery === '' || seenWordings.has(normalizedQuery)) continue;
+    seenWordings.add(normalizedQuery);
+    wordings.push({ sectorId: null, textQuery: term, normalizedQuery });
   }
 
   let cells: GridCell[];

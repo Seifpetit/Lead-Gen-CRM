@@ -20,6 +20,13 @@ function show(routes: Record<string, Handler>) {
 }
 
 describe('Run detail', () => {
+  it('shows how many places were dropped for lying outside the region', async () => {
+    show({ 'GET /api/runs/run-1': { body: runDetail({ placesDroppedOutside: 17 }) } });
+    expect(await screen.findByTestId('dropped-outside')).toHaveTextContent(
+      'Places outside the region, dropped before qualifying: 17',
+    );
+  });
+
   it('lists the person first, then the company as the fallback', async () => {
     show({});
     const card = await screen.findByRole('article', { name: 'Amel Fixture' });

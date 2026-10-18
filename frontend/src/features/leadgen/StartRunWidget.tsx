@@ -1,5 +1,5 @@
 import type { RegionSummary, RunPreview, RunSummary } from '@lead-gen-crm/shared';
-import { useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import { useApi } from '../../api/context.js';
 import { KindTag } from '../../components/Evidence.js';
@@ -11,8 +11,27 @@ import { describeError } from '../../lib/errors.js';
 import { formatNumber, formatPercent, formatUsd } from '../../lib/format.js';
 import { useDebounced } from '../../lib/useDebounced.js';
 import { useResource } from '../../lib/useResource.js';
+import type { StartPrefill } from './prefill.js';
 
 export const PREVIEW_DEBOUNCE_MS = 350;
+
+/** Mirrors the server's limits on typed-in wordings. */
+export const MAX_CUSTOM_WORDINGS = 20;
+export const MAX_WORDING_CHARS = 80;
+
+/** One wording per line; blank lines and repeated spaces are ignored. */
+export function parseWordings(text: string): string[] {
+  return text
+    .split('\n')
+    .map((l) => l.replace(/\s+/g, ' ').trim())
+    .filter((l) => l !== '');
+}
+
+function wordingsProblem(wordings: string[]): 'tooMany' | 'tooLong' | null {
+  if (wordings.length > MAX_CUSTOM_WORDINGS) return 'tooMany';
+  if (wordings.some((w) => w.length > MAX_WORDING_CHARS)) return 'tooLong';
+  return null;
+}
 
 function parseCap(text: string): number | null {
   const n = Number(text);
@@ -20,7 +39,14 @@ function parseCap(text: string): number | null {
 }
 
 /** Region first: coverage, the scheduler's suggestion, an estimate, a required cap, a confirm. */
-export function StartRunWidget({ onStarted }: { onStarted: () => void }) {
+export function StartRunWidget({
+  onStarted,
+  prefill,
+}: {
+  onStarted: () => void;
+  /** Set by the coverage widgets; each new object (a fresh click) is applied once. */
+  prefill?: (StartPrefill & { nonce: number }) | null;
+}) {
   const t = useT();
   const api = useApi();
   const regionId = useId();
@@ -33,28 +59,61 @@ export function StartRunWidget({ onStarted }: { onStarted: () => void }) {
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<unknown>(null);
   const [started, setStarted] = useState<RunSummary | null>(null);
+  // The search plan. null sectors = all of them; cells empty = the scheduler chooses.
+  const [sectorIds, setSectorIds] = useState<string[] | null>(null);
+  const [wordingsText, setWordingsText] = useState('');
+  const [cellKeys, setCellKeys] = useState<string[]>([]);
+  const [prefilled, setPrefilled] = useState(false);
+
+  useEffect(() => {
+    if (!prefill) return;
+    setRegion(prefill.regionId);
+    setSectorIds(prefill.sectorIds ?? null);
+    setCellKeys(prefill.cellKeys ?? []);
+    setStarted(null);
+    setPrefilled(true);
+  }, [prefill]);
 
   const regions = useResource(() => api.regions.list({ limit: 100 }));
   const suggestion = useResource(() => api.regions.suggestion());
 
   const cap = parseCap(capText);
+  const wordings = useMemo(() => parseWordings(wordingsText), [wordingsText]);
+  const problem = wordingsProblem(wordings);
+  const emptyPlan = sectorIds !== null && sectorIds.length === 0 && wordings.length === 0;
+  const planKey = JSON.stringify([sectorIds, wordings, cellKeys]);
   const debouncedRegion = useDebounced(region, PREVIEW_DEBOUNCE_MS);
   const debouncedCap = useDebounced(cap, PREVIEW_DEBOUNCE_MS);
-  const settled = debouncedRegion === region && debouncedCap === cap;
+  const debouncedPlan = useDebounced(planKey, PREVIEW_DEBOUNCE_MS);
+  const settled = debouncedRegion === region && debouncedCap === cap && debouncedPlan === planKey;
+  const planValid = problem === null && !emptyPlan;
   const preview = useResource<RunPreview>(
-    () =>
-      api.runs.preview({
+    () => {
+      const [ids, words, cells] = JSON.parse(debouncedPlan) as [
+        string[] | null,
+        string[],
+        string[],
+      ];
+      return api.runs.preview({
         regionId: debouncedRegion,
+        ...(ids !== null ? { sectorIds: ids } : {}),
+        ...(words.length > 0 ? { customWordings: words } : {}),
+        ...(cells.length > 0 ? { cellKeys: cells } : {}),
         ...(debouncedCap !== null ? { budgetCapUsd: debouncedCap } : {}),
-      }),
-    { enabled: debouncedRegion !== '', deps: [debouncedRegion, debouncedCap] },
+      });
+    },
+    {
+      enabled: debouncedRegion !== '' && planValid,
+      deps: [debouncedRegion, debouncedCap, debouncedPlan],
+    },
   );
 
   const selected: RegionSummary | undefined = regions.data?.items.find(
     (r) => r.regionId === region,
   );
   const blockers = preview.data?.blockers ?? [];
-  const previewReady = region !== '' && settled && preview.data !== null && !preview.error;
+  const previewReady =
+    region !== '' && settled && planValid && preview.data !== null && !preview.error;
   const canReview = cap !== null && previewReady && blockers.length === 0 && !preview.loading;
 
   function review(event: FormEvent) {
@@ -72,7 +131,14 @@ export function StartRunWidget({ onStarted }: { onStarted: () => void }) {
     setStartError(null);
     try {
       // The only call that starts a run: it needs the confirm made in the dialog and a cap.
-      const run = await api.runs.start({ regionId: region, budgetCapUsd: cap, confirm: true });
+      const run = await api.runs.start({
+        regionId: region,
+        ...(sectorIds !== null ? { sectorIds } : {}),
+        ...(wordings.length > 0 ? { customWordings: wordings } : {}),
+        ...(cellKeys.length > 0 ? { cellKeys } : {}),
+        budgetCapUsd: cap,
+        confirm: true,
+      });
       setStarted(run);
       setConfirming(false);
       onStarted();
@@ -91,7 +157,7 @@ export function StartRunWidget({ onStarted }: { onStarted: () => void }) {
     : undefined;
 
   return (
-    <Widget title={t('start.title')} className="widget-medium">
+    <Widget title={t('start.title')} className="widget-medium" anchor="start-run">
       <section aria-live="polite" className="suggestion">
         <h3>{t('start.suggestion.title')}</h3>
         {suggestion.loading && !sugg ? (
@@ -129,6 +195,8 @@ export function StartRunWidget({ onStarted }: { onStarted: () => void }) {
             value={region}
             onChange={(e) => {
               setRegion(e.target.value);
+              setCellKeys([]);
+              setPrefilled(false);
               setStarted(null);
             }}
             disabled={regions.loading && !regions.data}
@@ -150,6 +218,25 @@ export function StartRunWidget({ onStarted }: { onStarted: () => void }) {
         </div>
 
         {selected && <Coverage region={selected} />}
+
+        {region !== '' && (
+          <SearchPlan
+            preview={preview.data}
+            loading={preview.loading || !settled}
+            sectorIds={sectorIds}
+            setSectorIds={(ids) => {
+              setSectorIds(ids);
+              setPrefilled(false);
+            }}
+            wordingsText={wordingsText}
+            setWordingsText={setWordingsText}
+            problem={problem}
+            emptyPlan={emptyPlan}
+            cellKeys={cellKeys}
+            clearCells={() => setCellKeys([])}
+            prefilled={prefilled}
+          />
+        )}
 
         <div className="form-field">
           <label htmlFor={capId}>{t('start.cap')}</label>
@@ -204,6 +291,14 @@ export function StartRunWidget({ onStarted }: { onStarted: () => void }) {
                   })
                 : t('start.confirm.bodyNoEstimate', { region: regionName, cap: formatUsd(cap) })}
             </p>
+            {preview.data && (
+              <p data-testid="confirm-queries">
+                {t('start.confirm.queries', {
+                  queries: formatNumber(preview.data.queriesTotal),
+                  cells: formatNumber(preview.data.cells.length),
+                })}
+              </p>
+            )}
             {startError !== null && (
               <p className="form-error" role="alert">
                 {describeError(t, startError, {
@@ -322,6 +417,10 @@ function Preview({
           )}
           <dl className="stats">
             <div>
+              <dt>{t('start.preview.queries')}</dt>
+              <dd>{formatNumber(preview.queriesTotal)}</dd>
+            </div>
+            <div>
               <dt>{t('start.preview.places')}</dt>
               <dd>{formatNumber(preview.volume.places)}</dd>
             </div>
@@ -373,6 +472,161 @@ function Preview({
             </ul>
           </details>
         </div>
+      )}
+    </section>
+  );
+}
+
+function SearchPlan({
+  preview,
+  loading,
+  sectorIds,
+  setSectorIds,
+  wordingsText,
+  setWordingsText,
+  problem,
+  emptyPlan,
+  cellKeys,
+  clearCells,
+  prefilled,
+}: {
+  preview: RunPreview | null;
+  loading: boolean;
+  sectorIds: string[] | null;
+  setSectorIds: (ids: string[] | null) => void;
+  wordingsText: string;
+  setWordingsText: (text: string) => void;
+  problem: 'tooMany' | 'tooLong' | null;
+  emptyPlan: boolean;
+  cellKeys: string[];
+  clearCells: () => void;
+  prefilled: boolean;
+}) {
+  const t = useT();
+  const wordingsId = useId();
+  const sectors = preview?.sectors ?? [];
+  const allIds = sectors.map((s) => s.id);
+  const chosen = new Set(sectorIds ?? allIds);
+
+  function toggle(id: string) {
+    const next = new Set(chosen);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    // Everything ticked is the default, which the server treats as "all sectors".
+    setSectorIds(next.size === allIds.length ? null : allIds.filter((x) => next.has(x)));
+  }
+  const sectorName = (id: string | null) =>
+    id === null ? t('plan.custom') : (sectors.find((s) => s.id === id)?.name ?? id);
+
+  const byCell = new Map<string, NonNullable<RunPreview['queries']>>();
+  for (const q of preview?.queries ?? [])
+    byCell.set(q.cellKey, [...(byCell.get(q.cellKey) ?? []), q]);
+
+  return (
+    <section className="search-plan" aria-label={t('plan.title')}>
+      <h3>{t('plan.title')}</h3>
+      {prefilled && (
+        <p className="notice" role="status">
+          {t('plan.prefilled')}
+        </p>
+      )}
+      <fieldset className="plan-sectors">
+        <legend>{t('plan.sectors')}</legend>
+        <div className="plan-actions">
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => setSectorIds(null)}
+            disabled={sectorIds === null}
+          >
+            {t('plan.sectors.all')}
+          </button>
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => setSectorIds([])}
+            disabled={sectorIds !== null && sectorIds.length === 0}
+          >
+            {t('plan.sectors.none')}
+          </button>
+        </div>
+        {sectors.length === 0 ? (
+          <p className="muted">{t('plan.sectors.loading')}</p>
+        ) : (
+          <ul className="checks">
+            {sectors.map((s) => (
+              <li key={s.id}>
+                <label>
+                  <input type="checkbox" checked={chosen.has(s.id)} onChange={() => toggle(s.id)} />{' '}
+                  {s.name}
+                </label>
+              </li>
+            ))}
+          </ul>
+        )}
+      </fieldset>
+
+      <div className="form-field">
+        <label htmlFor={wordingsId}>{t('plan.wordings')}</label>
+        <textarea
+          id={wordingsId}
+          rows={3}
+          value={wordingsText}
+          onChange={(e) => setWordingsText(e.target.value)}
+          aria-describedby={`${wordingsId}-help`}
+          aria-invalid={problem !== null}
+        />
+        <small id={`${wordingsId}-help`} className={problem !== null ? 'form-error' : 'muted'}>
+          {problem === 'tooMany'
+            ? t('plan.wordings.tooMany', { max: MAX_CUSTOM_WORDINGS })
+            : problem === 'tooLong'
+              ? t('plan.wordings.tooLong', { max: MAX_WORDING_CHARS })
+              : t('plan.wordings.help', { max: MAX_CUSTOM_WORDINGS, chars: MAX_WORDING_CHARS })}
+        </small>
+      </div>
+      {emptyPlan && (
+        <p className="form-error" role="alert">
+          {t('plan.empty')}
+        </p>
+      )}
+
+      {cellKeys.length > 0 && (
+        <p className="notice" role="status">
+          {t('plan.cells', { cells: cellKeys.join(', ') })}{' '}
+          <button type="button" className="link-button" onClick={clearCells}>
+            {t('plan.cells.clear')}
+          </button>
+        </p>
+      )}
+
+      {preview && (
+        <details className={loading ? 'is-stale' : ''} open>
+          <summary>
+            {t('plan.queries', {
+              shown: formatNumber(preview.queries.length),
+              total: formatNumber(preview.queriesTotal),
+            })}
+          </summary>
+          {[...byCell.entries()].map(([cell, list]) => (
+            <div key={cell} className="plan-cell">
+              <h4>{t('plan.cell', { cell })}</h4>
+              <ul>
+                {list.map((q) => (
+                  <li key={`${q.cellKey}|${q.wording}`}>
+                    {q.wording} <span className="muted">({sectorName(q.sectorId)})</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          {preview.queriesTotal > preview.queries.length && (
+            <p className="muted">
+              {t('plan.more', {
+                count: formatNumber(preview.queriesTotal - preview.queries.length),
+              })}
+            </p>
+          )}
+        </details>
       )}
     </section>
   );

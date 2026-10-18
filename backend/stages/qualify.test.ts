@@ -102,3 +102,31 @@ describe('qualify', () => {
     });
   });
 });
+
+describe('import and export sector', () => {
+  it('qualifies an importer or exporter', () => {
+    for (const [name, category] of [
+      ['Sfax Import Export SARL', 'Société commerciale'],
+      ['Olivia Exportateur', 'Exportateur'],
+      ['Maghreb Commerce International', 'Commerce'],
+    ] as const) {
+      expect(qualifyByRules(place(name, category))).toMatchObject({
+        verdict: 'qualified',
+        sectorId: 'import-export',
+      });
+    }
+  });
+
+  it('rejects forwarders (transitaires) as competitors, even with import-export words in the name', () => {
+    for (const [name, category] of [
+      ['Sfax Transit Import Export', 'Import export'],
+      ['Transitaire Agréé Sfax', 'Transitaire en douane'],
+      ['International Freight Forwarder', 'Commerce international'],
+    ] as const) {
+      expect(qualifyByRules(place(name, category))).toMatchObject({
+        verdict: 'rejected',
+        reasons: [expect.stringContaining('freight carrier or forwarder')],
+      });
+    }
+  });
+});

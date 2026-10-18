@@ -97,7 +97,8 @@ export interface DiscoveryQuery {
   regionId: string;
   cellKey: string;
   bounds: Bounds;
-  sectorId: string;
+  /** The sector whose wording this is; null for a wording the user typed in. */
+  sectorId: string | null;
   textQuery: string;
   normalizedQuery: string;
   languageCode: 'fr' | 'en';

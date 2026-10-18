@@ -9,6 +9,8 @@ export interface SearchQueryInput {
   /** e.g. 'google_maps' */
   provider: string;
   queryText: string;
+  /** The sector the wording belongs to; null for a wording typed in. */
+  sectorId?: string | null;
   requestsUsed: number;
   resultsReturned: number;
   /** Results not seen before in this user's companies. */
@@ -17,9 +19,12 @@ export interface SearchQueryInput {
   at?: Date;
 }
 
-export interface SearchQuery extends Required<Omit<SearchQueryInput, 'at' | 'runStepId'>> {
+export interface SearchQuery extends Required<
+  Omit<SearchQueryInput, 'at' | 'runStepId' | 'sectorId'>
+> {
   id: string;
   runStepId: string | null;
+  sectorId: string | null;
   normalizedQuery: string;
   createdAt: Date;
 }
@@ -46,6 +51,7 @@ interface Row {
   provider: string;
   query_text: string;
   normalized_query: string;
+  sector_id: string | null;
   requests_used: number;
   results_returned: number;
   new_places_found: number;
@@ -60,6 +66,7 @@ const toQuery = (r: Row): SearchQuery => ({
   regionCellId: r.region_cell_id,
   provider: r.provider,
   queryText: r.query_text,
+  sectorId: r.sector_id,
   normalizedQuery: r.normalized_query,
   requestsUsed: r.requests_used,
   resultsReturned: r.results_returned,
@@ -76,8 +83,9 @@ export async function recordSearchQuery(
 ): Promise<SearchQuery | null> {
   const { rows } = await db.query<Row>(
     `INSERT INTO search_queries (user_id, run_id, run_step_id, region_cell_id, provider, query_text,
-       normalized_query, requests_used, results_returned, new_places_found, cost_usd, created_at)
-     SELECT $1, r.id, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12, now())
+       normalized_query, sector_id, requests_used, results_returned, new_places_found, cost_usd,
+       created_at)
+     SELECT $1, r.id, $3, $4, $5, $6, $7, $13, $8, $9, $10, $11, COALESCE($12, now())
        FROM runs r WHERE r.user_id = $1 AND r.id = $2
      RETURNING *`,
     [
@@ -93,6 +101,7 @@ export async function recordSearchQuery(
       input.newPlacesFound,
       input.costUsd,
       input.at ?? null,
+      input.sectorId ?? null,
     ],
   );
   return rows[0] ? toQuery(rows[0]) : null;

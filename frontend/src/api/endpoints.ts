@@ -4,6 +4,9 @@ import type {
   BudgetView,
   CostGroupBy,
   CostRow,
+  CellSummary,
+  Coverage,
+  RegionGeometry,
   CrmStage,
   Lead,
   ObjectionResult,
@@ -83,6 +86,24 @@ export function createApi(client: ApiClient) {
       list: (params: PageParams = {}) =>
         client.get<Page<RegionSummary>>('/api/regions', defined(params)),
       suggestion: () => client.get<RegionSuggestionView>('/api/regions/suggestion'),
+      geometry: () => client.get<{ items: RegionGeometry[] }>('/api/regions/geometry'),
+      /** All of a region's cells, following the pages. */
+      async cells(regionId: string): Promise<CellSummary[]> {
+        const all: CellSummary[] = [];
+        for (let offset: number | null = 0; offset !== null;) {
+          const page: Page<CellSummary> = await client.get<Page<CellSummary>>(
+            `/api/regions/${regionId}/cells`,
+            { limit: 100, offset },
+          );
+          all.push(...page.items);
+          offset = page.nextOffset;
+        }
+        return all;
+      },
+    },
+
+    coverage: {
+      get: () => client.get<Coverage>('/api/coverage'),
     },
 
     leads: {

@@ -1,4 +1,10 @@
-import type { Run, RunMode, RunPreview, RunPreviewInput, RunStage } from '@lead-gen-crm/shared';
+import type {
+  Run,
+  RunPreview,
+  RunPreviewInput,
+  RunStage,
+  StartRunInput,
+} from '@lead-gen-crm/shared';
 import { APIFY_MIN_MAX_CHARGE_USD } from '../config/pricing.js';
 import { recordApifyEvent, type ApifyState } from '../data/apifyEvents.js';
 import { claimCells, listLiveClaims, releaseClaims, renewClaims } from '../data/cellClaims.js';
@@ -22,7 +28,8 @@ import { dismissalFeedback } from '../data/views.js';
 import type { UserId } from '../data/ids.js';
 import { createRegionGrid, listCells } from '../data/regionCells.js';
 import { addCellCoverage } from '../data/regionCoverage.js';
-import { getRegionBounds } from '../data/regions.js';
+import { getRegionBounds, getRegionOutline } from '../data/regions.js';
+import { placeInOutline } from '../lib/geo.js';
 import {
   addRunCompany,
   listRunCompanies,
@@ -31,6 +38,7 @@ import {
   type RunCompanyState,
 } from '../data/runCompanies.js';
 import {
+  addDroppedPlaces,
   countRuns,
   createRunWithinLimit,
   getRun,
@@ -89,6 +97,7 @@ import type { CompanyClassifier, TitleClassifier } from '../stages/classifier.js
 import { matchTitle, type TitleMatch } from '../stages/matchTitle.js';
 import { qualify, type Qualification } from '../stages/qualify.js';
 import { buildQueryGrid, gridShape } from '../stages/queryGrid.js';
+import { gridSectorIds } from './plan.js';
 import { applyDismissalFeedback, score } from '../stages/score.js';
 import { verifyCurrentRole, type RoleVerification } from '../stages/verifyCurrentRole.js';
 import { DEFAULT_RUNNER_CONFIG, type RunnerConfig } from './config.js';
@@ -257,10 +266,7 @@ export class Orchestrator {
    * Starts a run: checks the monthly cap and the concurrent-run limit, builds the region's
    * cells if needed, claims the cells to search and plans one discovery step per query.
    */
-  async startRun(
-    userId: UserId,
-    input: { regionId: string; sectors?: string[]; budgetCapUsd: number; mode?: RunMode },
-  ): Promise<Run> {
+  async startRun(userId: UserId, input: Omit<StartRunInput, 'confirm'>): Promise<Run> {
     const now = new Date();
     const month = await getMonthlyBudget(this.db, userId, now);
     if (month.capUsd !== null && month.spentUsd >= month.capUsd) {
@@ -276,13 +282,29 @@ export class Orchestrator {
         throw new RunStartError(`Region ${input.regionId} has no map bounds yet`, 'no_bounds');
       const { rows, cols } = gridShape(bounds, this.config.cellsPerRun * 4);
       // Safe to race: cells are unique per (region, cell key).
-      await createRegionGrid(this.db, input.regionId, bounds, rows, cols);
+      await createRegionGrid(
+        this.db,
+        input.regionId,
+        bounds,
+        rows,
+        cols,
+        await getRegionOutline(this.db, input.regionId),
+      );
     }
     const mode = input.mode ?? 'normal';
     const run = await createRunWithinLimit(
       this.db,
       userId,
-      { ...input, mode },
+      {
+        regionId: input.regionId,
+        budgetCapUsd: input.budgetCapUsd,
+        mode,
+        // sectorIds omitted = every sector; [] = only the typed-in wordings.
+        sectors: input.sectorIds ?? [],
+        customOnly: input.sectorIds !== undefined && input.sectorIds.length === 0,
+        customWordings: input.customWordings ?? [],
+        cellKeys: input.cellKeys ?? [],
+      },
       this.config.maxConcurrentRunsPerUser,
     );
     await this.checkpoint('run:created');
@@ -303,7 +325,11 @@ export class Orchestrator {
       .filter((c) => c.runId === run.id)
       .map((c) => c.regionCellId);
     if (claimedIds.length === 0) {
-      const stats = await listCellStats(this.db, userId, run.region);
+      let stats = await listCellStats(this.db, userId, run.region);
+      if (run.cellKeys.length > 0) {
+        const wanted = new Set(run.cellKeys);
+        stats = stats.filter((c) => wanted.has(c.cellKey));
+      }
       // One run in `exploreEvery` goes to the least-searched cells only.
       const explore = (await countRuns(this.db, userId)) % this.config.exploreEvery === 0;
       const plan = planRunCells(stats, this.config, { mode: run.mode, now, explore });
@@ -324,7 +350,8 @@ export class Orchestrator {
         key: cellById.get(id)!.cellKey,
         bounds: cellById.get(id)!,
       })),
-      ...(run.sectors.length > 0 ? { sectorIds: run.sectors } : {}),
+      ...(gridSectorIds(run) ? { sectorIds: gridSectorIds(run)! } : {}),
+      customWordings: run.customWordings,
       exhaustedWordings: exhausted.map((e) => ({
         cellKey: cellById.get(e.regionCellId)?.cellKey ?? null,
         normalizedQuery: e.normalizedQuery,
@@ -858,7 +885,20 @@ export class Orchestrator {
   ): Promise<void> {
     const cellId = step.regionCellId;
     let newPlaces = 0;
+    let dropped = 0;
+    const outline = await getRegionOutline(tx, run.region);
     for (const place of places) {
+      // Spillage: a cell on the border also returns places from the neighbouring governorate.
+      // Drop them before anything is stored, so they never reach (or cost) the paid stages.
+      // A place with no coordinates cannot be judged and is kept.
+      if (
+        outline &&
+        place.location &&
+        !placeInOutline(place.location.lat, place.location.lng, outline)
+      ) {
+        dropped++;
+        continue;
+      }
       const refreshBy =
         place.provider === 'google_places'
           ? new Date(Date.now() + this.config.googleRefreshDays * 86_400_000)
@@ -897,6 +937,7 @@ export class Orchestrator {
         payload: { place, querySectorId: query.sectorId },
       });
     }
+    await addDroppedPlaces(tx, userId, run.id, dropped);
     if (cellId && (complete || places.length > 0)) {
       await recordSearchQuery(tx, userId, {
         runId: run.id,
@@ -904,6 +945,7 @@ export class Orchestrator {
         regionCellId: cellId,
         provider: this.deps.discovery.name,
         queryText: query.textQuery,
+        sectorId: query.sectorId,
         requestsUsed: 1,
         resultsReturned: places.length,
         newPlacesFound: newPlaces,

@@ -1,4 +1,5 @@
 import { TUNISIAN_GOVERNORATES } from '../config/regions.js';
+import { committedRegionGeometry } from '../config/regionGeometry.js';
 import { upsertCompany } from './companies.js';
 import { upsertContact } from './contacts.js';
 import { upsertLead } from './crmLeads.js';
@@ -8,9 +9,9 @@ import { createRun } from './runs.js';
 import type { Sourced } from './sourced.js';
 import { createUser, findUserByEmail } from './users.js';
 
-/** Reference data every environment needs: the region list. Safe to run repeatedly. */
+/** Reference data every environment needs: the region list with its committed OSM bounds and outlines. Safe to run repeatedly. */
 export async function seedReference(db: Queryable): Promise<void> {
-  await upsertRegions(db, TUNISIAN_GOVERNORATES);
+  await upsertRegions(db, TUNISIAN_GOVERNORATES, 'TN', committedRegionGeometry());
 }
 
 export const DEMO_EMAIL = 'demo@example.com';

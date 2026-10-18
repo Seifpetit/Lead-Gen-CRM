@@ -27,7 +27,9 @@ database driver (enforced by ESLint).
   both IDs. `(run, stage, step_key)` is unique, so a unit of work is never planned twice.
 - **Region cells** split each region into map rectangles (`createRegionGrid`); a dense cell is
   split further with `splitCell`, and `listCells(..., { leafOnly: true })` gives the cells to
-  search. Cells are shared geometry, not user data. No real governorate bounds are seeded yet.
+  search. Cells are shared geometry, not user data. Only cells that intersect the region's outline are
+  created. `regions.outline` (GeoJSON) and `bounds_source` (`osm` or `manual`) come from migration
+  004; the seed applies the committed OSM bounds and outlines except over manual bounds.
 - **Coverage** is stored per user and cell as counts (places, qualified, with decision-maker,
   with channel, leads), added to after each run. Shares are derived from the counts; `listCoverage` rolls cells up per region (the `region_coverage_rollup` view).
 - **Search queries** log every search: wording, cell, provider, requests, results, new places,

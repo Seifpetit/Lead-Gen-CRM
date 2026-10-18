@@ -6,11 +6,15 @@ interface Row {
   id: string;
   region_id: string;
   sectors: string[];
+  custom_only: boolean;
+  custom_wordings: string[];
+  cell_keys: string[];
   mode: RunMode;
   status: RunStatus;
   current_stage: RunStage | null;
   budget_cap_usd: number;
   spent_usd: number;
+  places_dropped_outside: number;
   error: string | null;
   created_at: Date;
   started_at: Date | null;
@@ -25,26 +29,65 @@ const toRun = (r: Row): Run => ({
   id: r.id,
   region: r.region_id,
   sectors: r.sectors,
+  customOnly: r.custom_only,
+  customWordings: r.custom_wordings,
+  cellKeys: r.cell_keys,
   mode: r.mode,
   status: r.status,
   currentStage: r.current_stage,
   budgetCapUsd: r.budget_cap_usd,
   spentUsd: r.spent_usd,
+  placesDroppedOutside: r.places_dropped_outside,
   createdAt: r.created_at.toISOString(),
   finishedAt: r.finished_at?.toISOString() ?? null,
 });
 
+export interface CreateRunInput {
+  regionId: string;
+  sectors?: string[];
+  customOnly?: boolean;
+  customWordings?: string[];
+  cellKeys?: string[];
+  budgetCapUsd: number;
+  mode?: RunMode;
+}
+
 export async function createRun(
   db: Queryable,
   userId: UserId,
-  input: { regionId: string; sectors?: string[]; budgetCapUsd: number; mode?: RunMode },
+  input: CreateRunInput,
 ): Promise<Run> {
   const { rows } = await db.query<Row>(
-    `INSERT INTO runs (user_id, region_id, sectors, budget_cap_usd, mode) VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO runs (user_id, region_id, sectors, custom_only, custom_wordings, cell_keys,
+                       budget_cap_usd, mode)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING *, 0 AS spent_usd`,
-    [userId, input.regionId, input.sectors ?? [], input.budgetCapUsd, input.mode ?? 'normal'],
+    [
+      userId,
+      input.regionId,
+      input.sectors ?? [],
+      input.customOnly ?? false,
+      input.customWordings ?? [],
+      input.cellKeys ?? [],
+      input.budgetCapUsd,
+      input.mode ?? 'normal',
+    ],
   );
   return toRun(rows[0]!);
+}
+
+/** Adds to the count of places a run discarded for lying outside the region's outline. */
+export async function addDroppedPlaces(
+  db: Queryable,
+  userId: UserId,
+  runId: string,
+  count: number,
+): Promise<void> {
+  if (count <= 0) return;
+  await db.query(
+    'UPDATE runs SET places_dropped_outside = places_dropped_outside + $3 WHERE user_id = $1 AND id = $2',
+    [userId, runId, count],
+  );
 }
 
 export async function getRun(db: Queryable, userId: UserId, runId: string): Promise<Run | null> {
@@ -117,7 +160,7 @@ export class RunLimitError extends Error {
 export async function createRunWithinLimit(
   db: Queryable,
   userId: UserId,
-  input: { regionId: string; sectors?: string[]; budgetCapUsd: number; mode?: RunMode },
+  input: CreateRunInput,
   maxActive: number,
 ): Promise<Run> {
   return withTransaction(db, async (tx) => {

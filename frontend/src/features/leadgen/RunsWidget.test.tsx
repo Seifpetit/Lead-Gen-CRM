@@ -55,7 +55,8 @@ describe('Runs widget', () => {
     });
     renderWith(<RunsWidget refreshKey={0} />, server);
     await screen.findByText('sfax');
-    await userEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    // The button appears one render after the rows, once the next offset is stored.
+    await userEvent.click(await screen.findByRole('button', { name: 'Show more' }));
     expect(await screen.findByText('tunis')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Show more' })).not.toBeInTheDocument();
   });
