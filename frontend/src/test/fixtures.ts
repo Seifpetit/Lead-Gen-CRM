@@ -130,6 +130,7 @@ export function run(over: Partial<RunSummary> = {}): RunSummary {
     currentStage: null,
     budgetCapUsd: 10,
     spentUsd: 3.21,
+    placesDroppedOutside: 0,
     createdAt: '2026-10-18T09:00:00.000Z',
     finishedAt: '2026-10-18T09:20:00.000Z',
     funnel: funnel(),

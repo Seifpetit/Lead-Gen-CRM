@@ -127,6 +127,9 @@ export function RunDetailPage() {
 
       <section aria-label={t('run.steps')}>
         <FunnelCounts funnel={data.funnel} />
+        <p className="muted" data-testid="dropped-outside">
+          {t('run.droppedOutside', { count: data.placesDroppedOutside })}
+        </p>
         <ul className="steps">
           {data.steps.map((s) => (
             <li key={s.stage}>

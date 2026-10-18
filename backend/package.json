@@ -10,6 +10,8 @@
     "db:migrate": "tsx --env-file-if-exists=../.env data/cli.ts migrate",
     "db:rollback": "tsx --env-file-if-exists=../.env data/cli.ts rollback",
     "db:seed": "tsx --env-file-if-exists=../.env data/cli.ts seed",
+    "regions:set-bounds": "tsx --env-file-if-exists=../.env scripts/setRegionBounds.ts",
+    "regions:fetch": "tsx --env-file-if-exists=../.env scripts/fetchRegionGeometry.ts",
     "auth:create-user": "tsx --env-file-if-exists=../.env auth/cli.ts create-user",
     "auth:disable-dev-user": "tsx --env-file-if-exists=../.env auth/cli.ts disable-dev-user",
     "auth:create-invite": "tsx --env-file-if-exists=../.env auth/cli.ts create-invite",

@@ -11,6 +11,7 @@ interface Row {
   current_stage: RunStage | null;
   budget_cap_usd: number;
   spent_usd: number;
+  places_dropped_outside: number;
   error: string | null;
   created_at: Date;
   started_at: Date | null;
@@ -30,6 +31,7 @@ const toRun = (r: Row): Run => ({
   currentStage: r.current_stage,
   budgetCapUsd: r.budget_cap_usd,
   spentUsd: r.spent_usd,
+  placesDroppedOutside: r.places_dropped_outside,
   createdAt: r.created_at.toISOString(),
   finishedAt: r.finished_at?.toISOString() ?? null,
 });
@@ -45,6 +47,20 @@ export async function createRun(
     [userId, input.regionId, input.sectors ?? [], input.budgetCapUsd, input.mode ?? 'normal'],
   );
   return toRun(rows[0]!);
+}
+
+/** Adds to the count of places a run discarded for lying outside the region's outline. */
+export async function addDroppedPlaces(
+  db: Queryable,
+  userId: UserId,
+  runId: string,
+  count: number,
+): Promise<void> {
+  if (count <= 0) return;
+  await db.query(
+    'UPDATE runs SET places_dropped_outside = places_dropped_outside + $3 WHERE user_id = $1 AND id = $2',
+    [userId, runId, count],
+  );
 }
 
 export async function getRun(db: Queryable, userId: UserId, runId: string): Promise<Run | null> {

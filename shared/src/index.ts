@@ -114,6 +114,8 @@ export interface Run {
   currentStage: RunStage | null;
   budgetCapUsd: number;
   spentUsd: number;
+  /** Discovered places that fell outside the region's outline and were discarded before qualifying. */
+  placesDroppedOutside: number;
   createdAt: string;
   finishedAt: string | null;
 }

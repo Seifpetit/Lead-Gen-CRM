@@ -48,6 +48,8 @@ export interface FakeApifyOptions {
   billedFactor?: number;
   /** Places per cell key; every wording in a cell finds the same places. */
   placesPerCell?: (cellKey: string) => number;
+  /** Coordinates of the i-th place found in a cell; no coordinates when omitted. */
+  locationOf?: (cellKey: string, i: number) => { lat: number; lng: number } | null;
 }
 
 export class FakeApify {
@@ -147,7 +149,11 @@ const src = <T>(value: T, sourceUrl: string, kind: 'fact' | 'estimate' = 'fact')
   kind,
 });
 
-export function fakePlace(cellKey: string, i: number): DiscoveredPlace {
+export function fakePlace(
+  cellKey: string,
+  i: number,
+  location: { lat: number; lng: number } | null = null,
+): DiscoveredPlace {
   const id = `${cellKey.replace(/[^a-z0-9]/gi, '')}x${i}`;
   const maps = `https://maps.example.test/place/${id}`;
   return {
@@ -161,7 +167,7 @@ export function fakePlace(cellKey: string, i: number): DiscoveredPlace {
     phones: [],
     emails: [],
     linkedinUrl: src(`https://www.linkedin.com/company/fixture-${id.toLowerCase()}`, maps),
-    location: null,
+    location,
     businessStatus: 'OPERATIONAL',
     reviewsCount: 3,
     mapsUrl: maps,
@@ -174,7 +180,9 @@ export class FakeDiscovery implements CompanyDiscovery {
 
   private placesFor(q: DiscoveryQuery): DiscoveredPlace[] {
     const n = Math.min(this.apify.options.placesPerCell?.(q.cellKey) ?? 2, q.maxPlaces);
-    return Array.from({ length: n }, (_, i) => fakePlace(q.cellKey, i));
+    return Array.from({ length: n }, (_, i) =>
+      fakePlace(q.cellKey, i, this.apify.options.locationOf?.(q.cellKey, i) ?? null),
+    );
   }
 
   estimate(q: DiscoveryQuery): CostEntry[] {
