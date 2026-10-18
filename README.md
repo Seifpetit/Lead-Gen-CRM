@@ -13,7 +13,7 @@ backend/
   lib/       Pure helpers shared by data, providers and stages (normalize, geo, sourced, cost)
   providers/ Apify and Google Places adapters, one interface per stage (no database access)
   stages/    Pure pipeline stages and the query grid (no database access)
-  runner/    Persisted, resumable run orchestrator
+  runner/    Run orchestrator: crash-safe runs, caps, claims, coverage scheduler (see its README)
   routes/    Authenticated HTTP endpoints
   auth/      Sessions and password hashing (vetted library)
   httpClient.ts

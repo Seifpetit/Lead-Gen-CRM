@@ -27,8 +27,13 @@ export type ApifyRunStatus =
 export interface ApifyUsage {
   /** Pay-per-event counts, e.g. { "place-scraped": 120 }. */
   chargedEventCounts: Record<string, number>;
-  /** Platform usage in USD as Apify reports it (not charged for pay-per-event Actors). */
+  /**
+   * What the run costs the user in USD, as Apify bills it ("represents what you actually
+   * pay"). For pay-per-event Actors this is the event charges at the user's plan tier.
+   */
   usageTotalUsd: number | null;
+  /** Times Apify restarted, migrated or resurrected the run (from run stats). */
+  restarts: number;
 }
 
 /**
@@ -38,7 +43,14 @@ export interface ApifyUsage {
  * - failed: the run ended without a dataset worth reading; costs still count.
  */
 export type ProviderJob<T> =
-  | { state: 'started' | 'running'; run: ApifyRunRef; costs: CostEntry[] }
+  | {
+      state: 'started' | 'running';
+      run: ApifyRunRef;
+      costs: CostEntry[];
+      /** Apify's status and restart count when known (a poll of a running run). */
+      status?: ApifyRunStatus;
+      restarts?: number;
+    }
   | {
       state: 'succeeded';
       run: ApifyRunRef | null;
@@ -52,11 +64,22 @@ export type ProviderJob<T> =
       status: string;
       costs: CostEntry[];
       usage: ApifyUsage | null;
+      /** What an aborted or timed-out run produced before it stopped (already paid for). */
+      items?: T[];
     };
 
 /** Per-call limits. maxTotalChargeUsd is passed to Apify so the run stops at that spend. */
 export interface RunOptions {
   maxTotalChargeUsd?: number;
+  /** Ad-hoc Apify webhooks for this run (the runner's own endpoint). */
+  webhooks?: ApifyWebhook[];
+}
+
+export interface ApifyWebhook {
+  eventTypes: string[];
+  requestUrl: string;
+  /** Apify payload template; {{resource}} and {{eventType}} are filled in by Apify. */
+  payloadTemplate?: string;
 }
 
 /** Shared by all stage providers: estimate before spending, collect a started run later. */

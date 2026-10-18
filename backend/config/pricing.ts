@@ -56,3 +56,15 @@ export const GOOGLE_TEXT_SEARCH_FREE_PER_MONTH: Record<PlacesTextSearchSku, numb
   enterprise: 1000,
   enterprise_atmosphere: 1000,
 };
+
+/**
+ * Lowest max-cost (maxTotalChargeUsd) each Actor accepts, from its pricing info
+ * (minimalMaxTotalChargeUsd). A step whose remaining budget is below this can't be capped and
+ * is not started.
+ */
+export const APIFY_MIN_MAX_CHARGE_USD: Record<string, number> = {
+  'compass/crawler-google-places': 0.5,
+  'harvestapi/linkedin-company-employees': 0.05,
+  'harvestapi/linkedin-profile-search': 0.1,
+  'crustapi/email-finder-verifier': 0,
+};

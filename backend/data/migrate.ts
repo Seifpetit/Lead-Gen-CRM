@@ -1,6 +1,7 @@
 import { withTransaction, type Queryable } from './db.js';
 import { migration as m001 } from './migrations/001_initial.js';
 import { migration as m002 } from './migrations/002_auth.js';
+import { migration as m003 } from './migrations/003_orchestrator.js';
 
 export interface Migration {
   id: string;
@@ -9,7 +10,7 @@ export interface Migration {
 }
 
 /** All migrations, oldest first. Append new ones; never edit an applied one. */
-export const MIGRATIONS: readonly Migration[] = [m001, m002];
+export const MIGRATIONS: readonly Migration[] = [m001, m002, m003];
 
 const ENSURE_TABLE = `
   CREATE TABLE IF NOT EXISTS schema_migrations (

@@ -4,6 +4,7 @@ import { insertEvidence } from './evidence.js';
 import type { UserId } from './ids.js';
 import { normalizeEmail, normalizeLinkedinId } from './normalize.js';
 import type { Sourced } from './sourced.js';
+import { isUniqueViolation } from './companies.js';
 import { assertNotSuppressed } from './suppressionList.js';
 
 export interface ContactRecord {
@@ -95,14 +96,16 @@ export async function upsertContact(
     const linkedinId = input.linkedinPublicId
       ? normalizeLinkedinId(input.linkedinPublicId.value)
       : null;
-    const existing = linkedinId
-      ? (
-          await tx.query<Row>(
-            'SELECT * FROM contacts WHERE user_id = $1 AND linkedin_public_id = $2 FOR UPDATE',
-            [userId, linkedinId],
-          )
-        ).rows[0]
-      : undefined;
+    const findExisting = async () =>
+      linkedinId
+        ? (
+            await tx.query<Row>(
+              'SELECT * FROM contacts WHERE user_id = $1 AND linkedin_public_id = $2 FOR UPDATE',
+              [userId, linkedinId],
+            )
+          ).rows[0]
+        : undefined;
+    let existing = await findExisting();
 
     const values = {
       full_name: input.fullName.value.trim(),
@@ -120,8 +123,21 @@ export async function upsertContact(
       linkedinPublicId: linkedinId,
     });
 
-    let row: Row;
+    let row: Row | undefined;
     if (!existing) {
+      // A concurrent run may insert the same LinkedIn ID first: merge into it instead.
+      await tx.query('SAVEPOINT upsert_contact');
+      try {
+        row = await insertContact();
+        await tx.query('RELEASE SAVEPOINT upsert_contact');
+      } catch (err) {
+        if (!isUniqueViolation(err)) throw err;
+        await tx.query('ROLLBACK TO SAVEPOINT upsert_contact');
+        existing = await findExisting();
+        if (!existing) throw err;
+      }
+    }
+    async function insertContact(): Promise<Row> {
       const { rows } = await tx.query<Row>(
         `INSERT INTO contacts (user_id, company_id, full_name, title, role_class, linkedin_public_id,
                                linkedin_url, email, phone, current_role_verified, run_id)
@@ -140,8 +156,9 @@ export async function upsertContact(
           runId,
         ],
       );
-      row = rows[0]!;
-    } else {
+      return rows[0]!;
+    }
+    if (!row) {
       const { rows } = await tx.query<Row>(
         `UPDATE contacts SET
            company_id = $3, full_name = $4, title = COALESCE($5, title),
@@ -152,7 +169,7 @@ export async function upsertContact(
          WHERE user_id = $1 AND id = $2 RETURNING *`,
         [
           userId,
-          existing.id,
+          existing!.id,
           input.companyId,
           values.full_name,
           values.title,
@@ -168,11 +185,12 @@ export async function upsertContact(
     }
 
     const target = { contactId: row.id };
+    const created = row.id !== existing?.id;
     for (const [field, sourced] of Object.entries(input)) {
       if (field === 'companyId' || sourced === undefined) continue;
       await insertEvidence(tx, userId, target, field, sourced as Sourced<unknown>, runId);
     }
-    return { contact: toContact(row), created: !existing };
+    return { contact: toContact(row), created };
   });
 }
 
@@ -198,4 +216,57 @@ export async function listContactsForCompany(
     [userId, companyId],
   );
   return rows.map(toContact);
+}
+
+/**
+ * Companies in a region whose newest contact was last updated before `olderThan`: the
+ * maintenance run re-checks these people.
+ */
+export async function listCompaniesWithStaleContacts(
+  db: Queryable,
+  userId: UserId,
+  regionId: string,
+  olderThan: Date,
+): Promise<string[]> {
+  const { rows } = await db.query<{ company_id: string }>(
+    `SELECT p.company_id FROM contacts p JOIN companies c ON c.id = p.company_id
+      WHERE p.user_id = $1 AND c.governorate = $2
+      GROUP BY p.company_id HAVING max(p.updated_at) < $3
+      ORDER BY p.company_id`,
+    [userId, regionId, olderThan],
+  );
+  return rows.map((r) => r.company_id);
+}
+
+/**
+ * Sets a contact's email (with its evidence), after the suppression check. Throws
+ * SuppressedContactError when the address or the person is suppressed.
+ */
+export async function setContactEmail(
+  db: Queryable,
+  userId: UserId,
+  contactId: string,
+  email: Sourced<string>,
+  runId: string | null,
+): Promise<ContactRecord | null> {
+  return withTransaction(db, async (tx) => {
+    const { rows: found } = await tx.query<Row>(
+      'SELECT * FROM contacts WHERE user_id = $1 AND id = $2 FOR UPDATE',
+      [userId, contactId],
+    );
+    const existing = found[0];
+    if (!existing) return null;
+    const value = normalizeEmail(email.value);
+    await assertNotSuppressed(tx, {
+      email: value,
+      phone: existing.phone,
+      linkedinPublicId: existing.linkedin_public_id,
+    });
+    const { rows } = await tx.query<Row>(
+      'UPDATE contacts SET email = $3, updated_at = now() WHERE user_id = $1 AND id = $2 RETURNING *',
+      [userId, contactId, value],
+    );
+    await insertEvidence(tx, userId, { contactId }, 'email', email, runId);
+    return toContact(rows[0]!);
+  });
 }

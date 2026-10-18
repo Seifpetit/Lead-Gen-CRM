@@ -4,6 +4,11 @@ import type { UserId } from './ids.js';
 import { normalizeCompanyName, normalizeDomain, normalizeEmail } from './normalize.js';
 import type { Sourced } from './sourced.js';
 
+/** Postgres unique_violation: a concurrent writer inserted the same key first. */
+export function isUniqueViolation(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { code?: string }).code === '23505';
+}
+
 export interface CompanyRecord {
   id: string;
   name: string;
@@ -147,7 +152,7 @@ export async function upsertCompany(
     const normalizedName = normalizeCompanyName(input.name.value);
     const placeId = input.googlePlaceId?.value.trim() || null;
     const domain = input.website ? normalizeDomain(input.website.value) : null;
-    const match = await findMatch(tx, userId, {
+    let match = await findMatch(tx, userId, {
       placeId,
       domain,
       normalizedName,
@@ -168,7 +173,27 @@ export async function upsertCompany(
     };
 
     let row: Row;
+    // Another transaction may insert the same company between our lookup and our insert. The
+    // unique indexes reject the second insert; we then merge into the winner instead of failing.
+    let inserted: Row | null = null;
     if (!match) {
+      await tx.query('SAVEPOINT upsert_company');
+      try {
+        inserted = await insertCompany();
+        await tx.query('RELEASE SAVEPOINT upsert_company');
+      } catch (err) {
+        if (!isUniqueViolation(err)) throw err;
+        await tx.query('ROLLBACK TO SAVEPOINT upsert_company');
+        match = await findMatch(tx, userId, {
+          placeId,
+          domain,
+          normalizedName,
+          governorate: input.governorate.value,
+        });
+        if (!match) throw err;
+      }
+    }
+    async function insertCompany(): Promise<Row> {
       const { rows } = await tx.query<Row>(
         `INSERT INTO companies (user_id, name, normalized_name, governorate, sector, google_place_id,
                                 domain, website, phone, email, linkedin_url, source_provider, refresh_by,
@@ -192,8 +217,12 @@ export async function upsertCompany(
           input.regionCellId ?? null,
         ],
       );
-      row = rows[0]!;
+      return rows[0]!;
+    }
+    if (inserted) {
+      row = inserted;
     } else {
+      match = match!;
       // Identifiers fill only when empty and not already owned by another company.
       const { rows } = await tx.query<Row>(
         `UPDATE companies c SET
@@ -280,4 +309,23 @@ export async function listCompaniesDueForRefresh(
     [userId, now],
   );
   return rows.map(toCompany);
+}
+
+/** Records the company's sector (with its evidence) without touching other fields. */
+export async function setCompanySector(
+  db: Queryable,
+  userId: UserId,
+  companyId: string,
+  sector: Sourced<string>,
+  runId: string | null,
+): Promise<boolean> {
+  return withTransaction(db, async (tx) => {
+    const res = await tx.query(
+      'UPDATE companies SET sector = $3, updated_at = now() WHERE user_id = $1 AND id = $2',
+      [userId, companyId, sector.value],
+    );
+    if (res.rowCount === 0) return false;
+    await insertEvidence(tx, userId, { companyId }, 'sector', sector, runId);
+    return true;
+  });
 }

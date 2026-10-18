@@ -192,10 +192,25 @@ describe('GoogleMapsApifyDiscovery', () => {
 
   it('returns a failed run with the costs Apify charged', async () => {
     const run = fixture<{ data: object }>('apify-run-maps.json');
-    const { provider } = client([[/actor-runs/, { data: { ...run.data, status: 'TIMED-OUT' } }]]);
+    const { provider } = client([[/actor-runs/, { data: { ...run.data, status: 'FAILED' } }]]);
     const job = await provider.collect({ actorId: GOOGLE_MAPS_ACTOR, runId: 'x', datasetId: 'y' });
-    expect(job).toMatchObject({ state: 'failed', status: 'TIMED-OUT' });
+    expect(job).toMatchObject({ state: 'failed', status: 'FAILED' });
     expect(job.costs).toHaveLength(3);
+  });
+
+  it('reads what a run stopped by its max cost produced before it stopped', async () => {
+    const run = fixture<{ data: object }>('apify-run-maps.json');
+    const { provider } = client([
+      [/actor-runs/, { data: { ...run.data, status: 'ABORTED' } }],
+      [/datasets\/fixtureMapsDataset001/, fixture('maps-dataset.json')],
+    ]);
+    const job = await provider.collect({
+      actorId: GOOGLE_MAPS_ACTOR,
+      runId: 'fixtureMapsRun001',
+      datasetId: 'fixtureMapsDataset001',
+    });
+    expect(job).toMatchObject({ state: 'failed', status: 'ABORTED' });
+    if (job.state === 'failed') expect(job.items).toHaveLength(6);
   });
 
   it('estimates a query before spending: places plus contact enrichment', () => {
@@ -472,7 +487,7 @@ describe('costsFromUsage', () => {
       costsFromUsage({
         ref: { actorId: 'someone/else', runId: 'r', datasetId: 'd' },
         status: 'SUCCEEDED',
-        usage: { chargedEventCounts: { mystery: 3 }, usageTotalUsd: null },
+        usage: { chargedEventCounts: { mystery: 3 }, usageTotalUsd: null, restarts: 0 },
         reportedPrices: {},
       }),
     ).toThrow(/No price/);

@@ -302,15 +302,18 @@ export async function remainingBudget(
   userId: UserId,
   runId: string,
   now: Date = new Date(),
+  /** Spend already promised to unsettled steps (see runSteps.reservedHeadroom). */
+  reserved: { runUsd: number; userUsd: number } = { runUsd: 0, userUsd: 0 },
 ): Promise<number> {
   const { rows } = await db.query<{ budget_cap_usd: number }>(
     'SELECT budget_cap_usd FROM runs WHERE user_id = $1 AND id = $2',
     [userId, runId],
   );
   if (!rows[0]) throw new CostError('Run not found for this user');
-  const runLeft = rows[0].budget_cap_usd - (await sumRun(db, runId));
+  const runLeft = rows[0].budget_cap_usd - (await sumRun(db, runId)) - reserved.runUsd;
   const cap = await monthCap(db, userId, now);
-  const monthLeft = cap === null ? Infinity : cap - (await monthSpend(db, userId, now));
+  const monthLeft =
+    cap === null ? Infinity : cap - (await monthSpend(db, userId, now)) - reserved.userUsd;
   return Math.max(0, Math.min(runLeft, monthLeft));
 }
 
@@ -374,4 +377,51 @@ export async function costPerLeadForCell(
     [userId, regionCellId],
   );
   return perLead(rows[0]!.spent, rows[0]!.leads);
+}
+
+/**
+ * Replaces a step's estimates with what the provider reported, in one transaction: every
+ * estimate of the step not yet reversed gets its opposite row, then each actual is appended
+ * with reconciled_at. Run within the transaction that applies the step's result, so a crash
+ * leaves the estimates in place and a retry settles them exactly once.
+ */
+export async function settleStepCosts(
+  db: Queryable,
+  userId: UserId,
+  input: {
+    runId: string;
+    runStepId: string;
+    regionCellId?: string | null;
+    actuals: Omit<CostEntryInput, 'runId' | 'runStepId' | 'regionCellId' | 'kind'>[];
+  },
+): Promise<{ reversed: number; actuals: CostEntry[]; stoppedByCap: boolean }> {
+  return withTransaction(db, async (tx) => {
+    const { rows } = await tx.query<{ id: string }>(
+      `SELECT e.id FROM cost_ledger e
+        WHERE e.user_id = $1 AND e.run_step_id = $2 AND e.kind = 'estimated'
+          AND e.corrects_id IS NULL
+          AND NOT EXISTS (SELECT 1 FROM cost_ledger c WHERE c.corrects_id = e.id)
+        ORDER BY e.id`,
+      [userId, input.runStepId],
+    );
+    let stoppedByCap = false;
+    for (const r of rows)
+      stoppedByCap = (await correctCost(tx, userId, r.id)).stoppedByCap || stoppedByCap;
+    const actuals: CostEntry[] = [];
+    for (const a of input.actuals) {
+      if (a.units === 0) continue;
+      const run = await lockRun(tx, userId, input.runId);
+      const entry = await insertEntry(tx, userId, {
+        ...a,
+        runId: input.runId,
+        runStepId: input.runStepId,
+        regionCellId: input.regionCellId ?? null,
+        kind: 'actual',
+        reconciledAt: new Date(),
+      });
+      stoppedByCap = (await settle(tx, userId, run, entry)).stoppedByCap || stoppedByCap;
+      actuals.push(entry);
+    }
+    return { reversed: rows.length, actuals, stoppedByCap };
+  });
 }
