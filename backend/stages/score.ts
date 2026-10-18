@@ -220,3 +220,79 @@ export function score(candidate: LeadCandidate): ScoreResult {
     points,
   };
 }
+
+// ---------------------------------------------------------------------------------------
+// Feedback from the user's own dismissals
+
+/** How many leads the user has dismissed, by company sector and by contact role class. */
+export interface DismissalFeedback {
+  bySector: Readonly<Record<string, number>>;
+  byRoleClass: Readonly<Record<string, number>>;
+}
+
+/** Points taken off per dismissed lead in the same sector or role class, and the most taken. */
+export const FEEDBACK_PENALTY = {
+  sector: { perDismissal: 2, max: 10 },
+  roleClass: { perDismissal: 3, max: 9 },
+} as const;
+
+export interface FeedbackAdjustment {
+  component: 'companyFit' | 'contactFit';
+  points: number;
+  reason: string;
+  /** What the user dismissed is a signal about their taste, not a fact about the lead. */
+  kind: 'estimate';
+}
+
+export interface AdjustedScore extends ScoreBreakdown {
+  adjustments: FeedbackAdjustment[];
+}
+
+/**
+ * Lowers fit for leads that look like ones the user dismissed (same sector, same role class).
+ * Never below zero. Pure: the caller reads the dismissal counts.
+ */
+export function applyDismissalFeedback(
+  s: ScoreBreakdown,
+  feedback: DismissalFeedback,
+  lead: { sector: string | null; roleClass: string | null },
+): AdjustedScore {
+  const adjustments: FeedbackAdjustment[] = [];
+  let companyFit = s.companyFit;
+  let contactFit = s.contactFit;
+  const sectorCount = lead.sector ? (feedback.bySector[lead.sector] ?? 0) : 0;
+  if (sectorCount > 0) {
+    const p = FEEDBACK_PENALTY.sector;
+    const points = -Math.min(companyFit, p.max, sectorCount * p.perDismissal);
+    if (points < 0) {
+      companyFit += points;
+      adjustments.push({
+        component: 'companyFit',
+        points,
+        reason: `${sectorCount} lead(s) in sector ${lead.sector} were dismissed`,
+        kind: 'estimate',
+      });
+    }
+  }
+  const roleCount = lead.roleClass ? (feedback.byRoleClass[lead.roleClass] ?? 0) : 0;
+  if (roleCount > 0) {
+    const p = FEEDBACK_PENALTY.roleClass;
+    const points = -Math.min(contactFit, p.max, roleCount * p.perDismissal);
+    if (points < 0) {
+      contactFit += points;
+      adjustments.push({
+        component: 'contactFit',
+        points,
+        reason: `${roleCount} lead(s) with role ${lead.roleClass} were dismissed`,
+        kind: 'estimate',
+      });
+    }
+  }
+  return {
+    companyFit,
+    contactFit,
+    reachability: s.reachability,
+    total: companyFit + contactFit + s.reachability,
+    adjustments,
+  };
+}

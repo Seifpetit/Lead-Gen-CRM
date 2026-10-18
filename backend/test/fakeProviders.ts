@@ -195,11 +195,13 @@ export class FakeDiscovery implements CompanyDiscovery {
 }
 
 export class FakePeople implements PeopleFinder {
-  readonly name = COMPANY_EMPLOYEES_ACTOR;
+  // Named like the real LinkedinPeopleFinder, which wraps two Actors.
+  readonly name = 'linkedin';
+  private readonly actor = COMPANY_EMPLOYEES_ACTOR;
   constructor(private readonly apify: FakeApify) {}
 
   estimate(q: PeopleQuery): CostEntry[] {
-    return [costEntry('apify', `${this.name}#profile`, q.maxPeople, FAKE_PROFILE_PRICE)];
+    return [costEntry('apify', `${this.actor}#profile`, q.maxPeople, FAKE_PROFILE_PRICE)];
   }
 
   async findPeople(q: PeopleQuery, options?: RunOptions) {
@@ -222,8 +224,8 @@ export class FakePeople implements PeopleFinder {
         },
       ],
     };
-    const costs = [costEntry('apify', `${this.name}#profile`, 1, FAKE_PROFILE_PRICE)];
-    return this.apify.start(this.name, q.companyName, [person], costs, options);
+    const costs = [costEntry('apify', `${this.actor}#profile`, 1, FAKE_PROFILE_PRICE)];
+    return this.apify.start(this.actor, q.companyName, [person], costs, options);
   }
 
   async collect(run: ApifyRunRef) {

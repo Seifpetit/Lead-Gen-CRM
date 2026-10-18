@@ -9,6 +9,18 @@ const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   /** 'invite': sign-up needs a one-time invite code (or an admin creates the user). 'open': anyone. */
   SIGNUP_MODE: z.enum(['invite', 'open']).default('invite'),
+  /**
+   * Starting a paid run through the API. Off by default: nothing spends Apify money until the
+   * pilot pass and the owner's go-ahead.
+   */
+  PAID_RUNS_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  /** Shared secret Apify's webhooks are signed with. Without it the webhook endpoint is closed. */
+  APIFY_WEBHOOK_SECRET: z.string().min(16).optional(),
+  /** Public base URL of this server (https), where Apify can reach /api/webhooks/apify. */
+  PUBLIC_URL: z.string().url().optional(),
   /** A session ends after this many hours without a request. */
   SESSION_IDLE_HOURS: z.coerce.number().positive().default(12),
   /** A session ends this many days after sign-in, however active. */
