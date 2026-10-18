@@ -2,6 +2,7 @@ import { writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { TUNISIAN_GOVERNORATES } from '../config/regions.js';
 import { parseGovernorate, type NominatimResult } from '../lib/nominatim.js';
+import { renderBoundsFile, renderOutlinesFile, type RegionFiles } from '../lib/regionFiles.js';
 
 // Fetches each governorate's bounding box and simplified outline from OpenStreetMap through
 // Nominatim and rewrites config/regionBounds.ts and config/regionOutlines.json.
@@ -32,6 +33,10 @@ const { default: existing } = await import('../config/regionOutlines.json', {
 const { REGION_BOUNDS } = await import('../config/regionBounds.js');
 const bounds: Record<string, unknown> = { ...REGION_BOUNDS };
 const outlines: Record<string, unknown> = { ...existing.outlines };
+// Derived regions keep their note until the region is fetched from OpenStreetMap after all.
+const derived: RegionFiles['derived'] = {
+  ...((existing as { derived?: RegionFiles['derived'] }).derived ?? {}),
+};
 const failures: string[] = [];
 
 /** Wordings tried in turn: OSM names a governorate differently from place to place. */
@@ -69,6 +74,7 @@ for (const g of targets) {
       const geometry = parseGovernorate((await res.json()) as NominatimResult[], TOLERANCE_DEG);
       bounds[g.id] = geometry.bounds;
       outlines[g.id] = geometry.outline;
+      delete derived[g.id];
       console.log(`${g.id}: ${geometry.osmRef} (query: ${q})`);
       done = true;
       break;
@@ -82,32 +88,15 @@ for (const g of targets) {
   }
 }
 
-const date = new Date().toISOString().slice(0, 10);
-await writeFile(
-  `${configDir}regionOutlines.json`,
-  JSON.stringify({
-    source: 'OpenStreetMap contributors (ODbL) via nominatim.openstreetmap.org',
-    fetchedAt: date,
-    toleranceDeg: TOLERANCE_DEG,
-    outlines,
-  }),
-);
-await writeFile(
-  `${configDir}regionBounds.ts`,
-  `import type { Bounds } from '../lib/geo.js';
-import type { GovernorateId } from './regions.js';
-
-/**
- * Bounding box of each governorate, from OpenStreetMap (Nominatim \`boundingbox\` of the
- * governorate relation). Written by \`npm run regions:fetch\`; do not edit by hand (use
- * \`npm run regions:set-bounds\` for a manual fix, which the seed then leaves alone).
- *
- * Source: OpenStreetMap contributors, ODbL, via nominatim.openstreetmap.org.
- * Fetched: ${date}.
- */
-export const REGION_BOUNDS: Partial<Record<GovernorateId, Bounds>> = ${JSON.stringify(bounds)};
-`,
-);
+const files: RegionFiles = {
+  fetchedAt: new Date().toISOString().slice(0, 10),
+  toleranceDeg: TOLERANCE_DEG,
+  bounds: bounds as RegionFiles['bounds'],
+  outlines,
+  derived,
+};
+await writeFile(`${configDir}regionOutlines.json`, renderOutlinesFile(files));
+await writeFile(`${configDir}regionBounds.ts`, renderBoundsFile(files));
 if (failures.length > 0) {
   console.error(`failed: ${failures.join(', ')}; re-run with those ids`);
   process.exitCode = 1;
