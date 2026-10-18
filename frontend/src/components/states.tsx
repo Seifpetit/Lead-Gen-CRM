@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { useT } from '../i18n/index.js';
 import { describeError } from '../lib/errors.js';
 import type { StringKey } from '../i18n/index.js';
@@ -34,11 +33,4 @@ export function ErrorState({
   );
 }
 
-export function EmptyState({ title, children }: { title: string; children?: ReactNode }) {
-  return (
-    <div className="state state-empty">
-      <p className="state-title">{title}</p>
-      {children && <div className="state-body">{children}</div>}
-    </div>
-  );
-}
+export { EmptyState } from './shared/EmptyState.js';

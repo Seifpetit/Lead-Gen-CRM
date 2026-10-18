@@ -1,7 +1,8 @@
 import type { ApifyEventView, ApifyLogRun, ApifyState, ApifyStepView } from '@lead-gen-crm/shared';
 import { useApi } from '../../api/context.js';
 import { EmptyState, ErrorState, LoadingState } from '../../components/states.js';
-import { Widget } from '../../components/Widget.js';
+import { Card } from '../../components/shared/Card.js';
+import { LogList } from '../../components/shared/LogList.js';
 import { useT } from '../../i18n/index.js';
 import { formatDateTime } from '../../lib/format.js';
 import { useResource } from '../../lib/useResource.js';
@@ -29,7 +30,7 @@ export function ApifyLogWidget({ refreshKey }: { refreshKey: number }) {
   const regionOf = new Map(data?.runs.map((r) => [r.run.id, r.run.region]));
 
   return (
-    <Widget
+    <Card
       title={t('apify.title')}
       className="widget-medium"
       actions={
@@ -64,15 +65,14 @@ export function ApifyLogWidget({ refreshKey }: { refreshKey: number }) {
             ))}
           </ul>
           <h3>{t('apify.recent')}</h3>
-          {data.recent.items.length === 0 ? (
-            <p className="muted">{t('apify.noEvents')}</p>
-          ) : (
-            <ol className="events" aria-label={t('apify.recent')}>
-              {data.recent.items.map((event) => (
-                <EventRow key={event.id} event={event} region={regionOf.get(event.runId)} />
-              ))}
-            </ol>
-          )}
+          <LogList
+            label={t('apify.recent')}
+            emptyText={t('apify.noEvents')}
+            items={data.recent.items.map((event) => ({
+              id: event.id,
+              content: <EventRow event={event} region={regionOf.get(event.runId)} />,
+            }))}
+          />
           <p className="muted small">
             {t('apify.polling', { seconds: APIFY_LOG_POLL_MS / 1000 })}
             {log.updatedAt &&
@@ -80,7 +80,7 @@ export function ApifyLogWidget({ refreshKey }: { refreshKey: number }) {
           </p>
         </>
       )}
-    </Widget>
+    </Card>
   );
 }
 
@@ -131,11 +131,11 @@ function StepLog({ step }: { step: ApifyStepView }) {
 export function EventRow({ event, region }: { event: ApifyEventView; region: string | undefined }) {
   const t = useT();
   return (
-    <li>
+    <>
       <StateBadge state={event.state} /> {region && <span>{region} · </span>}
       <time dateTime={event.occurredAt}>{formatDateTime(event.occurredAt)}</time>
       {event.message ? ` · ${event.message}` : ''}
       <span className="visually-hidden"> {t('apify.recent')}</span>
-    </li>
+    </>
   );
 }
