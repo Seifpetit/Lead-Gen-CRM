@@ -2,19 +2,23 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { listApifyEventsForRun } from '../data/apifyEvents.js';
 import { expireClaims, listLiveClaims } from '../data/cellClaims.js';
 import { upsertCompany } from '../data/companies.js';
-import { listLedgerForRun } from '../data/costLedger.js';
+import { listLedgerForRun, runSpendByProvider } from '../data/costLedger.js';
 import { listLeads } from '../data/crmLeads.js';
 import type { Db } from '../data/db.js';
 import type { UserId } from '../data/ids.js';
 import { createRegionGrid, listCells } from '../data/regionCells.js';
 import { getRun, RunLimitError } from '../data/runs.js';
+import { listEvidence } from '../data/evidence.js';
 import { listRunCompanies } from '../data/runCompanies.js';
 import { listSteps } from '../data/runSteps.js';
 import { listCellStats, listRegionStats } from '../data/saturation.js';
 import { makeUser, openTestDb, resetData } from '../data/testDb.js';
 import { setMonthlyCap } from '../data/userBudget.js';
 import type { Bounds } from '../lib/geo.js';
+import { AnthropicClassifier } from '../providers/anthropicClassifier.js';
 import { GOOGLE_MAPS_ACTOR } from '../providers/googleMapsApify.js';
+import type { RequestOptions } from '../httpClient.js';
+import type { HttpJson } from '../providers/http.js';
 import { fakePlace, fakeProviders, type FakeApifyOptions } from '../test/fakeProviders.js';
 import type { RunnerConfig } from './config.js';
 import {
@@ -590,6 +594,90 @@ describe('orchestrator: coverage and saturation', () => {
     s = await suggestNextRegion(db, user, w.orchestrator.config);
     expect(s.regionId).toBe('tunis');
     expect(s.reason).toMatch(/explore run/);
+  });
+});
+
+describe('orchestrator: the Claude classifier', () => {
+  /** Answers every company "qualified" and bills 500 input and 40 output tokens per call. */
+  function fakeClaude() {
+    const calls: unknown[] = [];
+    const http: HttpJson = async <T>(_url: string, options: RequestOptions = {}) => {
+      calls.push(options.body);
+      return {
+        model: 'claude-haiku-5-5',
+        content: [
+          {
+            type: 'text',
+            text: '{"verdict":"qualified","reasons":["makes goods"],"fields":["name"]}',
+          },
+        ],
+        usage: { input_tokens: 500, output_tokens: 40 },
+      } as T;
+    };
+    const claude = new AnthropicClassifier('sk-ant-test', { model: 'claude-haiku-5-5', http });
+    return { calls, claude };
+  }
+  const qualifications = async (runId: string) =>
+    (await listRunCompanies(db, user, runId)).map(
+      (rc) =>
+        (rc.payload as { qualification?: { verdict: string; reasons: string[] } }).qualification,
+    );
+
+  it('decides what the rules cannot, bills it to the ledger as anthropic, and keeps the evidence', async () => {
+    const { calls, claude } = fakeClaude();
+    const w = world({ undecided: true }, {}, { companyClassifier: claude });
+    const run = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectorIds: TEXTILE,
+      budgetCapUsd: 10,
+    });
+    await drive(w.orchestrator, user, run.id);
+    expect(calls.length).toBeGreaterThan(0);
+    const spent = await runSpendByProvider(db, user, run.id, 'anthropic');
+    // 500 x $1/M + 40 x $5/M per call.
+    expect(spent).toBeCloseTo(calls.length * 0.0007, 6);
+    const rows = await listLedgerForRun(db, user, run.id);
+    expect(rows.filter((e) => e.provider === 'anthropic').every((e) => e.kind === 'actual')).toBe(
+      true,
+    );
+    const companies = await listRunCompanies(db, user, run.id);
+    const evidence = await listEvidence(db, user, { companyId: companies[0]!.companyId });
+    expect(evidence.find((e) => e.field === 'classifier_name')?.kind).toBe('estimate');
+    expect(evidence.find((e) => e.field === 'classifier_verdict')?.value).toMatch(/^qualified:/);
+  });
+
+  it('stops calling the classifier once its spend cap for the run is reached', async () => {
+    const { calls, claude } = fakeClaude();
+    // Each call bills $0.0007: the second reaches the $0.001 cap.
+    const w = world(
+      { undecided: true },
+      { classifierRunCapUsd: 0.001 },
+      { companyClassifier: claude },
+    );
+    const run = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectorIds: TEXTILE,
+      budgetCapUsd: 10,
+    });
+    await drive(w.orchestrator, user, run.id);
+    expect(calls).toHaveLength(2);
+    const q = await qualifications(run.id);
+    expect(q.filter((x) => x?.verdict === 'qualified')).toHaveLength(2);
+    const skipped = q.filter((x) => x?.verdict === 'review');
+    expect(skipped.length).toBeGreaterThan(0);
+    expect(skipped[0]!.reasons[0]).toContain('classifier spend cap');
+  });
+
+  it('is not used at all when no classifier is configured', async () => {
+    const w = world({ undecided: true });
+    const run = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectorIds: TEXTILE,
+      budgetCapUsd: 10,
+    });
+    await drive(w.orchestrator, user, run.id);
+    expect(await runSpendByProvider(db, user, run.id, 'anthropic')).toBe(0);
+    expect((await qualifications(run.id)).every((x) => x?.verdict === 'review')).toBe(true);
   });
 });
 

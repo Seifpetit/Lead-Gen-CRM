@@ -29,6 +29,8 @@ export interface RunnerConfig {
   maxInFlightSteps: number;
   /** Days before Google-sourced company fields must be refreshed (Google storage terms). */
   googleRefreshDays: number;
+  /** Most the Claude classifier may spend on one run (USD). Past it, undecided items go to review. */
+  classifierRunCapUsd: number;
   /** Ad-hoc Apify webhooks, when the server is reachable from Apify. Polling runs either way. */
   webhook: { url: string; secret: string } | null;
 }
@@ -48,5 +50,6 @@ export const DEFAULT_RUNNER_CONFIG: RunnerConfig = {
   maxChargeHeadroom: 1.25,
   maxInFlightSteps: 4,
   googleRefreshDays: 30,
+  classifierRunCapUsd: 0.5,
   webhook: null,
 };

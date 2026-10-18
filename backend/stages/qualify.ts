@@ -121,7 +121,12 @@ export function qualifyByRules(
  */
 export async function qualify(
   place: DiscoveredPlace,
-  options: { querySectorId?: string | null; classifier?: CompanyClassifier } = {},
+  options: {
+    querySectorId?: string | null;
+    classifier?: CompanyClassifier;
+    /** Why a classifier that exists was not used (for example its spend cap); shown as the reason. */
+    classifierSkipped?: string;
+  } = {},
 ): Promise<Qualification> {
   const byRules = qualifyByRules(place, options.querySectorId ?? null);
   if (byRules) return byRules;
@@ -131,7 +136,7 @@ export async function qualify(
       sectorId: options.querySectorId ?? null,
       method: 'none',
       kind: 'estimate',
-      reasons: ['no rule matched and no classifier configured'],
+      reasons: [options.classifierSkipped ?? 'no rule matched and no classifier configured'],
       evidence: evidenceOf(place),
       costs: [],
     };
@@ -142,6 +147,7 @@ export async function qualify(
     types: place.types,
     website: place.website?.value ?? null,
     address: place.address?.value ?? null,
+    querySectorId: options.querySectorId ?? null,
     sourceUrl: place.name.sourceUrl,
   };
   const c = await options.classifier.classifyCompany(facts);
