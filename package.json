@@ -18,6 +18,9 @@
     "test": "vitest run",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
+    "db:migrate": "npm run db:migrate -w backend",
+    "db:rollback": "npm run db:rollback -w backend",
+    "db:seed": "npm run db:seed -w backend",
     "dev:backend": "npm run dev -w backend",
     "dev:frontend": "npm run dev -w frontend"
   },
