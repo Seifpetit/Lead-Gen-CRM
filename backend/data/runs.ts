@@ -141,6 +141,15 @@ export async function touchRun(db: Queryable, userId: UserId, runId: string): Pr
   ]);
 }
 
+/** Runs that are pending or running now. */
+export async function countActiveRuns(db: Queryable, userId: UserId): Promise<number> {
+  const { rows } = await db.query<{ n: number }>(
+    "SELECT count(*)::integer AS n FROM runs WHERE user_id = $1 AND status IN ('pending', 'running')",
+    [userId],
+  );
+  return rows[0]!.n;
+}
+
 /** How many runs the user has ever started: the scheduler sends every fifth one exploring. */
 export async function countRuns(db: Queryable, userId: UserId): Promise<number> {
   const { rows } = await db.query<{ n: number }>(

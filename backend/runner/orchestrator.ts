@@ -1,6 +1,5 @@
-import type { Run, RunMode, RunStage } from '@lead-gen-crm/shared';
+import type { Run, RunMode, RunPreview, RunPreviewInput, RunStage } from '@lead-gen-crm/shared';
 import { APIFY_MIN_MAX_CHARGE_USD } from '../config/pricing.js';
-import { TITLE_DICTIONARY } from '../config/titles.js';
 import { recordApifyEvent, type ApifyState } from '../data/apifyEvents.js';
 import { claimCells, listLiveClaims, releaseClaims, renewClaims } from '../data/cellClaims.js';
 import { getCompany, setCompanySector, upsertCompany } from '../data/companies.js';
@@ -13,6 +12,7 @@ import { recordCost, remainingBudget, settleStepCosts } from '../data/costLedger
 import { upsertLead } from '../data/crmLeads.js';
 import { withTransaction, type Db, type Queryable } from '../data/db.js';
 import { listEvidence } from '../data/evidence.js';
+import { dismissalFeedback } from '../data/views.js';
 import type { UserId } from '../data/ids.js';
 import { createRegionGrid, listCells } from '../data/regionCells.js';
 import { addCellCoverage } from '../data/regionCoverage.js';
@@ -83,16 +83,23 @@ import type { CompanyClassifier, TitleClassifier } from '../stages/classifier.js
 import { matchTitle, type TitleMatch } from '../stages/matchTitle.js';
 import { qualify, type Qualification } from '../stages/qualify.js';
 import { buildQueryGrid, gridShape } from '../stages/queryGrid.js';
-import { score } from '../stages/score.js';
+import { applyDismissalFeedback, score } from '../stages/score.js';
 import { verifyCurrentRole, type RoleVerification } from '../stages/verifyCurrentRole.js';
 import { DEFAULT_RUNNER_CONFIG, type RunnerConfig } from './config.js';
 import { actualCosts, maxChargeFor, sumUsd } from './costs.js';
 import { reviveDates } from './json.js';
+import { titleKeywords } from './keywords.js';
+import { previewRun } from './preview.js';
 import { planRunCells, ALL_WORDINGS } from './scheduler.js';
 import { webhookFor } from './webhooks.js';
 
+export type RunStartErrorCode = 'monthly_cap_reached' | 'no_bounds' | 'no_free_cells';
+
 export class RunStartError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    public readonly code: RunStartErrorCode = 'no_bounds',
+  ) {
     super(message);
     this.name = 'RunStartError';
   }
@@ -161,16 +168,6 @@ interface PeopleStepInput {
   query: PeopleQuery;
 }
 
-/** Title words for the LinkedIn filters: round-robin across role classes, at most 50. */
-export function titleKeywords(limit = 50): string[] {
-  const lists = Object.values(TITLE_DICTIONARY).map((l) => l.filter((v) => v.length > 3));
-  const out: string[] = [];
-  for (let i = 0; out.length < limit && lists.some((l) => i < l.length); i++) {
-    for (const l of lists) if (i < l.length && out.length < limit) out.push(l[i]!);
-  }
-  return out;
-}
-
 function splitName(full: string): { first: string; last: string } | null {
   const parts = full.trim().split(/\s+/);
   if (parts.length < 2) return null;
@@ -209,6 +206,45 @@ export class Orchestrator {
   }
 
   // -------------------------------------------------------------------------------------
+  // Preview and stop
+
+  /** Estimated volume and cost of a run, and what would block starting it. Spends nothing. */
+  preview(userId: UserId, input: RunPreviewInput): Promise<RunPreview> {
+    return previewRun(
+      {
+        db: this.db,
+        discovery: this.deps.discovery,
+        people: this.deps.people,
+        emails: this.deps.emails,
+        config: this.config,
+      },
+      userId,
+      input,
+    );
+  }
+
+  /**
+   * Stops a run that is pending or running. Steps not yet started never start. Apify runs
+   * already out can't be aborted from here (the adapters only start and read runs); they are
+   * collected and settled on later passes, and their max cost bounds what they can spend.
+   * Returns null when the run isn't the user's; `stopped` is false when it was already over.
+   */
+  async stopRun(userId: UserId, runId: string): Promise<{ run: Run; stopped: boolean } | null> {
+    const run = await getRun(this.db, userId, runId);
+    if (!run) return null;
+    const updated = await updateRun(this.db, userId, runId, {
+      status: 'cancelled',
+      error: 'Stopped by the user',
+      onlyFrom: ['pending', 'running'],
+    });
+    if (!updated) return { run, stopped: false };
+    await this.checkpoint('run:cancelled');
+    // Releases the claims when nothing is out with Apify, otherwise when the last step lands.
+    await this.advance(userId, runId);
+    return { run: (await getRun(this.db, userId, runId))!, stopped: true };
+  }
+
+  // -------------------------------------------------------------------------------------
   // Starting a run
 
   /**
@@ -224,12 +260,14 @@ export class Orchestrator {
     if (month.capUsd !== null && month.spentUsd >= month.capUsd) {
       throw new RunStartError(
         `Monthly cap reached: $${month.spentUsd.toFixed(2)} of $${month.capUsd.toFixed(2)} spent`,
+        'monthly_cap_reached',
       );
     }
     const cells = await listCells(this.db, input.regionId, { leafOnly: true });
     if (cells.length === 0) {
       const bounds = await getRegionBounds(this.db, input.regionId);
-      if (!bounds) throw new RunStartError(`Region ${input.regionId} has no map bounds yet`);
+      if (!bounds)
+        throw new RunStartError(`Region ${input.regionId} has no map bounds yet`, 'no_bounds');
       const { rows, cols } = gridShape(bounds, this.config.cellsPerRun * 4);
       // Safe to race: cells are unique per (region, cell key).
       await createRegionGrid(this.db, input.regionId, bounds, rows, cols);
@@ -305,8 +343,9 @@ export class Orchestrator {
     await this.checkpoint('run:planned');
   }
 
+  /** Everything but Google Places (a plain HTTP request) runs as an Apify Actor run. */
   private isApify(p: { name: string }): boolean {
-    return p.name.includes('/');
+    return !p.name.startsWith('google-places');
   }
 
   /** Maintenance: companies whose contacts are older than staleContactDays get re-checked. */
@@ -1196,8 +1235,15 @@ export class Orchestrator {
       });
       await withTransaction(this.db, async (tx) => {
         const scores = [];
+        const feedback = await dismissalFeedback(tx, userId);
         for (const c of candidates) {
-          const s = score(c);
+          const s = applyDismissalFeedback(score(c), feedback, {
+            sector: payload.qualification?.sectorId ?? null,
+            roleClass: c.person
+              ? (people.find((p) => p.person.linkedinUrl.value === c.person!.linkedinUrl.value)
+                  ?.title.roleClass ?? null)
+              : null,
+          });
           const contactId = c.person
             ? (people.find((p) => p.person.linkedinUrl.value === c.person!.linkedinUrl.value)
                 ?.contactId ?? null)
@@ -1334,4 +1380,4 @@ export class Orchestrator {
   }
 }
 
-export { normalizeQuery, STAGES };
+export { normalizeQuery, STAGES, titleKeywords };

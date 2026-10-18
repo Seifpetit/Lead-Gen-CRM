@@ -8,6 +8,7 @@ import type { Db } from '../data/db.js';
 import type { UserId } from '../data/ids.js';
 import { createRun } from '../data/runs.js';
 import { openTestDb, resetData } from '../data/testDb.js';
+import { testRunner } from '../test/testRunner.js';
 import { SESSION_COOKIE } from './plugin.js';
 import { AuthService, DEFAULT_POLICY, type AuthPolicy } from './service.js';
 
@@ -37,7 +38,12 @@ async function start(policy: Partial<AuthPolicy> = {}): Promise<void> {
     },
   });
   auth = new AuthService(db, { ...DEFAULT_POLICY, ...policy }, () => now);
-  app = await buildApp({ db, auth, logger: { level: 'trace', redact: LOG_REDACT, stream } });
+  app = await buildApp({
+    db,
+    auth,
+    runner: testRunner(db).runner,
+    logger: { level: 'trace', redact: LOG_REDACT, stream },
+  });
 }
 
 beforeEach(async () => {
