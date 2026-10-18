@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { useApi } from '../../api/context.js';
 import { EmptyState, ErrorState, LoadingState } from '../../components/states.js';
-import { Widget } from '../../components/Widget.js';
+import { Card } from '../../components/shared/Card.js';
 import { useT } from '../../i18n/index.js';
 import { formatDateTime } from '../../lib/format.js';
 import { useResource } from '../../lib/useResource.js';
@@ -48,7 +48,7 @@ export function RunsWidget({ refreshKey }: { refreshKey: number }) {
   const runs = [...(first.data?.items ?? []), ...more];
 
   return (
-    <Widget title={t('runs.title')} className="widget-medium">
+    <Card title={t('runs.title')} className="widget-medium">
       {first.loading && !first.data ? (
         <LoadingState />
       ) : first.error && !first.data ? (
@@ -119,6 +119,6 @@ export function RunsWidget({ refreshKey }: { refreshKey: number }) {
           )}
         </>
       )}
-    </Widget>
+    </Card>
   );
 }

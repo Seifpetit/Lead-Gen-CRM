@@ -2,8 +2,12 @@ import type { RunFunnel, RunSummary } from '@lead-gen-crm/shared';
 import { useCallback, useState } from 'react';
 import { Link } from 'react-router';
 import { useApi } from '../../api/context.js';
-import { ErrorState, LoadingState } from '../../components/states.js';
-import { Widget } from '../../components/Widget.js';
+import { LogList } from '../../components/shared/LogList.js';
+import { ProgressTrack } from '../../components/shared/ProgressTrack.js';
+import { SectionTitle } from '../../components/shared/SectionTitle.js';
+import { StatTile } from '../../components/shared/StatTile.js';
+import { EmptyState, ErrorState, LoadingState } from '../../components/states.js';
+import { Card } from '../../components/shared/Card.js';
 import { useT } from '../../i18n/index.js';
 import { formatNumber, formatUsd } from '../../lib/format.js';
 import { useResource } from '../../lib/useResource.js';
@@ -39,9 +43,9 @@ export function DashboardPage() {
 
   return (
     <main id="main" className="page">
-      <h1>{t('side.dashboard')}</h1>
+      <SectionTitle level={1}>{t('side.dashboard')}</SectionTitle>
       <div className="dash-cards">
-        <Widget
+        <Card
           title={t('dash.create.title', { active: activeRuns.length, max: MAX_ACTIVE_RUNS })}
           className="run-card"
         >
@@ -52,7 +56,7 @@ export function DashboardPage() {
           ) : (
             <>
               {activeRuns.length === 0 ? (
-                <p className="muted">{t('dash.noActive')}</p>
+                <EmptyState title={t('dash.noActive')} />
               ) : (
                 <ul className="active-list">
                   {activeRuns.map((run) => (
@@ -76,7 +80,7 @@ export function DashboardPage() {
               </button>
             </>
           )}
-        </Widget>
+        </Card>
         <ResultsCard runs={all.data?.items ?? []} loading={all.loading && !all.data} />
       </div>
 
@@ -105,65 +109,54 @@ export function DashboardPage() {
 function ResultsCard({ runs, loading }: { runs: RunSummary[]; loading: boolean }) {
   const t = useT();
   return (
-    <Widget title={t('dash.results.title')} className="results-card">
+    <Card title={t('dash.results.title')} className="results-card">
       {loading ? (
         <LoadingState />
       ) : (
         <dl className="funnel results-counts">
-          <div>
-            <dt>{t('dash.results.companies')}</dt>
-            <dd>{formatNumber(total(runs, 'discovered'))}</dd>
-          </div>
-          <div>
-            <dt>{t('dash.results.people')}</dt>
-            <dd>{formatNumber(total(runs, 'peopleFound'))}</dd>
-          </div>
-          <div>
-            <dt>{t('dash.results.channels')}</dt>
-            <dd>{formatNumber(total(runs, 'enriched'))}</dd>
-          </div>
+          <StatTile
+            label={t('dash.results.companies')}
+            value={formatNumber(total(runs, 'discovered'))}
+          />
+          <StatTile
+            label={t('dash.results.people')}
+            value={formatNumber(total(runs, 'peopleFound'))}
+          />
+          <StatTile
+            label={t('dash.results.channels')}
+            value={formatNumber(total(runs, 'enriched'))}
+          />
         </dl>
       )}
       <Link className="button" to="/crm">
         {t('dash.results.open')}
       </Link>
-    </Widget>
+    </Card>
   );
 }
 
 /** One active run: spend against its cap from Start to End, and its latest events. */
 function ActiveRun({ run, refreshKey }: { run: RunSummary; refreshKey: number }) {
   const t = useT();
-  const share = run.budgetCapUsd > 0 ? Math.min(1, run.spentUsd / run.budgetCapUsd) : 0;
+  const share = run.budgetCapUsd > 0 ? run.spentUsd / run.budgetCapUsd : 0;
+  const spent = t('money.spentOfCap', {
+    spent: formatUsd(run.spentUsd),
+    cap: formatUsd(run.budgetCapUsd),
+  });
   return (
     <section className="active-run" aria-label={t('dash.progress.label', { region: run.region })}>
-      <h2>{t('dash.runActive', { region: run.region })}</h2>
-      <div className="progress-scale">
-        <span>{t('dash.progress.start')}</span>
-        <span className="progress-checkpoints">{t('dash.progress.checkpoints')}</span>
-        <span>{t('dash.progress.end')}</span>
-      </div>
-      <div
-        className="progress-track"
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(share * 100)}
-        aria-valuetext={t('money.spentOfCap', {
-          spent: formatUsd(run.spentUsd),
-          cap: formatUsd(run.budgetCapUsd),
-        })}
-      >
-        <div className="progress-fill" style={{ width: `${share * 100}%` }} />
-        {CHECKPOINTS.map((c) => (
-          <span key={c} className="progress-tick" style={{ left: `${c * 100}%` }} />
-        ))}
-      </div>
+      <SectionTitle level={2}>{t('dash.runActive', { region: run.region })}</SectionTitle>
+      <ProgressTrack
+        value={share}
+        label={t('dash.progress.label', { region: run.region })}
+        valueText={spent}
+        checkpoints={CHECKPOINTS}
+        startLabel={t('dash.progress.start')}
+        endLabel={t('dash.progress.end')}
+        checkpointsLabel={t('dash.progress.checkpoints')}
+      />
       <p className="muted small">
-        {t('money.spentOfCap', {
-          spent: formatUsd(run.spentUsd),
-          cap: formatUsd(run.budgetCapUsd),
-        })}
+        {spent}
         {run.currentStage && ` · ${t(`stage.${run.currentStage}`)}`}
       </p>
       <RunLogBox run={run} refreshKey={refreshKey} />
@@ -182,24 +175,22 @@ function RunLogBox({ run, refreshKey }: { run: RunSummary; refreshKey: number })
   const events = (log.data?.recent.items ?? []).filter((e) => e.runId === run.id).slice(0, 8);
   return (
     <div className="log-box">
-      <div className="log-box-head">
-        <h3>{t('dash.logs.title')}</h3>
-        <a href="/leadgen/logs" target="_blank" rel="noopener noreferrer">
-          {t('dash.logs.newWindow')}
-        </a>
-      </div>
+      <SectionTitle level={3}>{t('dash.logs.title')}</SectionTitle>
       {log.error !== null && !log.data ? (
         <ErrorState error={log.error} onRetry={log.reload} />
       ) : !log.data ? (
         <LoadingState />
-      ) : events.length === 0 ? (
-        <p className="muted">{t('apify.noEvents')}</p>
       ) : (
-        <ol className="events" aria-label={t('dash.logs.title')}>
-          {events.map((event) => (
-            <EventRow key={event.id} event={event} region={run.region} />
-          ))}
-        </ol>
+        <LogList
+          label={t('dash.logs.title')}
+          emptyText={t('apify.noEvents')}
+          newWindowHref="/leadgen/logs"
+          newWindowLabel={t('dash.logs.newWindow')}
+          items={events.map((event) => ({
+            id: event.id,
+            content: <EventRow event={event} region={run.region} />,
+          }))}
+        />
       )}
     </div>
   );
