@@ -131,6 +131,7 @@ export const en = {
   'start.coverage.saturated': 'Saturated',
   'start.coverage.noBounds': 'No map area is set for this region yet, so it cannot be searched.',
   'start.coverage.unknown': 'Not enough history',
+  'start.coverage.notPlanned': 'Not planned yet',
   'start.cap': 'Spend cap (USD)',
   'start.cap.help': 'The run stops before spending more than this. Required.',
   'start.cap.invalid': 'Enter a spend cap above zero.',

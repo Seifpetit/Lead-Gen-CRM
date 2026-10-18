@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
-import { dashboardRoutes, preview, run } from '../../test/fixtures.js';
+import { dashboardRoutes, page, preview, region, run } from '../../test/fixtures.js';
 import { fakeServer } from '../../test/fakeServer.js';
 import { renderWith } from '../../test/render.js';
 import { parseWordings, StartRunWidget } from './StartRunWidget.js';
@@ -155,6 +155,41 @@ describe('Start a run', () => {
     await pickRegion(user);
     expect(await screen.findByRole('button', { name: 'Try again' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Review and start' })).toBeDisabled();
+  });
+});
+
+describe('Start a run: suggestion and coverage with no history', () => {
+  it('shows the first-test message and no Use button when nothing is suggested', async () => {
+    const server = fakeServer({
+      ...dashboardRoutes(),
+      'GET /api/regions/suggestion': {
+        regionId: null,
+        mode: 'normal',
+        reason: 'Pick a region to start. We recommend a small one like Sfax for a first test.',
+        widening: [],
+        ranking: [],
+      },
+    });
+    renderWith(<StartRunWidget onStarted={() => {}} />, server);
+    expect(
+      await screen.findByText(
+        'Pick a region to start. We recommend a small one like Sfax for a first test.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Use / })).not.toBeInTheDocument();
+  });
+
+  it('says "Not planned yet" for a region with no cells', async () => {
+    const server = fakeServer({
+      ...dashboardRoutes(),
+      'GET /api/regions': page([region({ cellsTotal: 0, cellsSearched: 0, coverage: null })]),
+      'POST /api/runs/preview': { body: preview() },
+    });
+    renderWith(<StartRunWidget onStarted={() => {}} />, server);
+    const user = userEvent.setup();
+    await pickRegion(user, 'Sfax');
+    const box = await screen.findByRole('region', { name: 'Coverage in Sfax' });
+    expect(within(box).getByText('Not planned yet')).toBeInTheDocument();
   });
 });
 
