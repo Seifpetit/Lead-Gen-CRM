@@ -2,13 +2,14 @@ import type {
   CellDetail,
   CellSummary,
   Page,
+  RegionGeometry,
   RegionSuggestionView,
   RegionSummary,
 } from '@lead-gen-crm/shared';
 import type { FastifyInstance } from 'fastify';
 import { currentUser } from '../auth/plugin.js';
 import { listCoverage } from '../data/regionCoverage.js';
-import { listRegions } from '../data/regions.js';
+import { listRegions, listRegionShapes } from '../data/regions.js';
 import { listCellStats, listExhaustedQueries, listRegionStats } from '../data/saturation.js';
 import { cellQueries, regionQueryTotals } from '../data/views.js';
 import { suggestNextRegion } from '../runner/scheduler.js';
@@ -61,6 +62,11 @@ export async function regionRoutes(app: FastifyInstance, deps: RouteDeps): Promi
       };
     });
     return toPage(all.slice(page.offset, page.offset + page.limit), all.length, page);
+  });
+
+  // Reference geometry shared by all users (no user data), for drawing the coverage map.
+  app.get('/api/regions/geometry', async (): Promise<{ items: RegionGeometry[] }> => {
+    return { items: await listRegionShapes(db) };
   });
 
   app.get('/api/regions/suggestion', async (request): Promise<RegionSuggestionView> => {

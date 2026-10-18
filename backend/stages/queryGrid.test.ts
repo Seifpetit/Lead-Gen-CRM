@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FREIGHT_SECTORS } from '../config/sectors.js';
-import { buildQueryGrid, gridShape } from './queryGrid.js';
+import { buildQueryGrid, cleanWordings, gridShape } from './queryGrid.js';
 
 // Illustrative bounds around Sfax; real governorate bounds aren't seeded yet.
 const SFAX = { south: 34.4, west: 10.2, north: 35.2, east: 11.1 };
@@ -97,5 +97,45 @@ describe('buildQueryGrid', () => {
       rows: 1,
       cols: 4,
     });
+  });
+});
+
+describe('typed-in wordings', () => {
+  const bounds = { south: 34, west: 10, north: 35, east: 11 };
+
+  it('adds them with no sector, after the sector wordings, once each', () => {
+    const grid = buildQueryGrid({
+      regionId: 'sfax',
+      bounds,
+      sectorIds: ['textile'],
+      customWordings: ['entrepôt frigorifique', 'Entrepot  Frigorifique', 'usine textile'],
+    });
+    const wordings = [...new Set(grid.queries.map((q) => q.textQuery))];
+    // "usine textile" is already textile's; the second spelling of the custom one is a duplicate.
+    expect(wordings).toEqual(['usine textile', 'confection', 'entrepôt frigorifique']);
+    expect(
+      grid.queries
+        .filter((q) => q.sectorId === null)
+        .every((q) => q.textQuery === 'entrepôt frigorifique'),
+    ).toBe(true);
+  });
+
+  it('searches only the typed-in wordings for an empty sector list', () => {
+    const grid = buildQueryGrid({
+      regionId: 'sfax',
+      bounds,
+      sectorIds: [],
+      customWordings: ['entrepôt'],
+    });
+    expect(grid.queries.every((q) => q.sectorId === null && q.textQuery === 'entrepôt')).toBe(true);
+    expect(grid.queries.length).toBeGreaterThan(0);
+  });
+
+  it('cleans, trims and deduplicates wordings', () => {
+    expect(cleanWordings(['  a\tb  ', 'A B', '', '   ', 'c\u0000d', 'é', 'E'])).toEqual([
+      'a b',
+      'c d',
+      'é',
+    ]);
   });
 });

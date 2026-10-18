@@ -6,6 +6,9 @@ interface Row {
   id: string;
   region_id: string;
   sectors: string[];
+  custom_only: boolean;
+  custom_wordings: string[];
+  cell_keys: string[];
   mode: RunMode;
   status: RunStatus;
   current_stage: RunStage | null;
@@ -26,6 +29,9 @@ const toRun = (r: Row): Run => ({
   id: r.id,
   region: r.region_id,
   sectors: r.sectors,
+  customOnly: r.custom_only,
+  customWordings: r.custom_wordings,
+  cellKeys: r.cell_keys,
   mode: r.mode,
   status: r.status,
   currentStage: r.current_stage,
@@ -36,15 +42,36 @@ const toRun = (r: Row): Run => ({
   finishedAt: r.finished_at?.toISOString() ?? null,
 });
 
+export interface CreateRunInput {
+  regionId: string;
+  sectors?: string[];
+  customOnly?: boolean;
+  customWordings?: string[];
+  cellKeys?: string[];
+  budgetCapUsd: number;
+  mode?: RunMode;
+}
+
 export async function createRun(
   db: Queryable,
   userId: UserId,
-  input: { regionId: string; sectors?: string[]; budgetCapUsd: number; mode?: RunMode },
+  input: CreateRunInput,
 ): Promise<Run> {
   const { rows } = await db.query<Row>(
-    `INSERT INTO runs (user_id, region_id, sectors, budget_cap_usd, mode) VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO runs (user_id, region_id, sectors, custom_only, custom_wordings, cell_keys,
+                       budget_cap_usd, mode)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING *, 0 AS spent_usd`,
-    [userId, input.regionId, input.sectors ?? [], input.budgetCapUsd, input.mode ?? 'normal'],
+    [
+      userId,
+      input.regionId,
+      input.sectors ?? [],
+      input.customOnly ?? false,
+      input.customWordings ?? [],
+      input.cellKeys ?? [],
+      input.budgetCapUsd,
+      input.mode ?? 'normal',
+    ],
   );
   return toRun(rows[0]!);
 }
@@ -133,7 +160,7 @@ export class RunLimitError extends Error {
 export async function createRunWithinLimit(
   db: Queryable,
   userId: UserId,
-  input: { regionId: string; sectors?: string[]; budgetCapUsd: number; mode?: RunMode },
+  input: CreateRunInput,
   maxActive: number,
 ): Promise<Run> {
   return withTransaction(db, async (tx) => {

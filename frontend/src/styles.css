@@ -717,3 +717,130 @@ progress {
     transition: none !important;
   }
 }
+
+/* Search plan, coverage grid and coverage map */
+.widget-wide {
+  grid-column: 1 / -1;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  border: 0;
+  padding: 0;
+  margin: 8px 0;
+}
+.search-plan {
+  border-top: 1px solid var(--border);
+  margin-top: 12px;
+  padding-top: 8px;
+}
+.plan-cell {
+  margin: 8px 0 0;
+  font-weight: 600;
+}
+.plan-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+}
+.legend.vertical {
+  flex-direction: column;
+}
+.swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+}
+.grid-scroll {
+  overflow-x: auto;
+}
+.coverage-grid {
+  border-collapse: collapse;
+  width: 100%;
+}
+.coverage-grid th,
+.coverage-grid td {
+  padding: 4px;
+  text-align: left;
+}
+.grid-cell {
+  width: 100%;
+  min-width: 56px;
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.grid-not_searched,
+.cell-never {
+  background: #d9dbe0;
+}
+.grid-yielding,
+.cell-leads {
+  background: #7ccf8e;
+}
+.grid-saturated,
+.cell-saturated {
+  background: #6a9bd8;
+}
+.cell-claimed {
+  background: #f2d45c;
+}
+.cell-searched {
+  background: #bfe6e0;
+}
+.coverage-map {
+  width: 100%;
+  height: auto;
+  max-height: 520px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.region-shape {
+  fill: #eef0f4;
+  stroke: #6b7280;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+}
+.region-shape:hover,
+.region-shape:focus {
+  fill: #dfe4ee;
+}
+.map-cell {
+  stroke: #4b5563;
+  stroke-width: 0.5;
+  vector-effect: non-scaling-stroke;
+  fill-opacity: 0.85;
+  cursor: pointer;
+}
+.map-cell.is-selected {
+  stroke: #111827;
+  stroke-width: 2.5;
+}
+.cell-stats {
+  margin-top: 8px;
+}

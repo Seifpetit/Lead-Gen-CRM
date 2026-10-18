@@ -93,7 +93,7 @@ describe('orchestrator: a full run', () => {
     const w = world();
     const run = await w.orchestrator.startRun(user, {
       regionId: 'sfax',
-      sectors: TEXTILE,
+      sectorIds: TEXTILE,
       budgetCapUsd: 10,
     });
     expect(run.status).toBe('running');
@@ -130,7 +130,7 @@ describe('orchestrator: a full run', () => {
     const w = world();
     const run = await w.orchestrator.startRun(user, {
       regionId: 'sfax',
-      sectors: TEXTILE,
+      sectorIds: TEXTILE,
       budgetCapUsd: 10,
     });
     await drive(w.orchestrator, user, run.id);
@@ -145,7 +145,7 @@ describe('orchestrator: a full run', () => {
     const w = world({ polls: 3 });
     const run = await w.orchestrator.startRun(user, {
       regionId: 'sfax',
-      sectors: TEXTILE,
+      sectorIds: TEXTILE,
       budgetCapUsd: 10,
     });
     await w.orchestrator.advance(user, run.id); // starts discover steps
@@ -160,7 +160,7 @@ describe('orchestrator: a full run', () => {
     const w = world({}, { webhook: { url: 'https://runner.example.test/apify', secret } });
     const run = await w.orchestrator.startRun(user, {
       regionId: 'sfax',
-      sectors: TEXTILE,
+      sectorIds: TEXTILE,
       budgetCapUsd: 10,
     });
     await w.orchestrator.advance(user, run.id);
@@ -199,7 +199,7 @@ describe('orchestrator: crash safety', () => {
     const w = world({}, {}, { checkpoint: (l) => void labels.push(l) });
     const run = await w.orchestrator.startRun(user, {
       regionId: 'sfax',
-      sectors: TEXTILE,
+      sectorIds: TEXTILE,
       budgetCapUsd: 10,
     });
     await drive(w.orchestrator, user, run.id);
@@ -251,7 +251,7 @@ describe('orchestrator: crash safety', () => {
         runId = (
           await w.orchestrator.startRun(user, {
             regionId: 'sfax',
-            sectors: TEXTILE,
+            sectorIds: TEXTILE,
             budgetCapUsd: 10,
           })
         ).id;
@@ -299,7 +299,7 @@ describe('orchestrator: crash safety', () => {
     const w = world({ polls: 2 });
     const run = await w.orchestrator.startRun(user, {
       regionId: 'sfax',
-      sectors: TEXTILE,
+      sectorIds: TEXTILE,
       budgetCapUsd: 10,
     });
     await w.orchestrator.advance(user, run.id); // four runs started, then the process "dies"
@@ -320,7 +320,7 @@ describe('orchestrator: money', () => {
     // $0.70: room for one Google Maps run with its $0.50 max cost, not two.
     const run = await w.orchestrator.startRun(user, {
       regionId: 'sfax',
-      sectors: TEXTILE,
+      sectorIds: TEXTILE,
       budgetCapUsd: 0.7,
     });
     const end = await drive(w.orchestrator, user, run.id);
@@ -339,14 +339,14 @@ describe('orchestrator: money', () => {
     const w = world();
     const run = await w.orchestrator.startRun(user, {
       regionId: 'sfax',
-      sectors: TEXTILE,
+      sectorIds: TEXTILE,
       budgetCapUsd: 10,
     });
     expect((await drive(w.orchestrator, user, run.id)).status).toBe('stopped_by_cap');
     expect(w.apify.startsFor(GOOGLE_MAPS_ACTOR)).toHaveLength(1);
     await setMonthlyCap(db, user, new Date(), 0.001);
     await expect(
-      w.orchestrator.startRun(user, { regionId: 'sfax', sectors: TEXTILE, budgetCapUsd: 10 }),
+      w.orchestrator.startRun(user, { regionId: 'sfax', sectorIds: TEXTILE, budgetCapUsd: 10 }),
     ).rejects.toBeInstanceOf(RunStartError);
   });
 
@@ -362,7 +362,7 @@ describe('orchestrator: money', () => {
     const w = world({ polls: 5 });
     const starts = await Promise.allSettled(
       ['sfax', 'tunis', 'sousse'].map((regionId) =>
-        w.orchestrator.startRun(user, { regionId, sectors: TEXTILE, budgetCapUsd: 10 }),
+        w.orchestrator.startRun(user, { regionId, sectorIds: TEXTILE, budgetCapUsd: 10 }),
       ),
     );
     expect(starts.filter((s) => s.status === 'fulfilled')).toHaveLength(2);
@@ -378,7 +378,11 @@ describe('orchestrator: money', () => {
     );
     const three = world({}, { maxConcurrentRunsPerUser: 3 });
     await expect(
-      three.orchestrator.startRun(user, { regionId: 'nabeul', sectors: TEXTILE, budgetCapUsd: 10 }),
+      three.orchestrator.startRun(user, {
+        regionId: 'nabeul',
+        sectorIds: TEXTILE,
+        budgetCapUsd: 10,
+      }),
     ).resolves.toMatchObject({ status: 'running' });
   });
 
@@ -386,7 +390,7 @@ describe('orchestrator: money', () => {
     const w = world({ billedFactor: 0.5 });
     const run = await w.orchestrator.startRun(user, {
       regionId: 'sfax',
-      sectors: TEXTILE,
+      sectorIds: TEXTILE,
       budgetCapUsd: 10,
     });
     await drive(w.orchestrator, user, run.id);
@@ -406,8 +410,8 @@ describe('orchestrator: concurrency', () => {
   it('lets two runs split the cells, never share one, and frees a dead run’s cells', async () => {
     const w = world({ polls: 2 });
     const [a, b] = await Promise.all([
-      w.orchestrator.startRun(user, { regionId: 'sfax', sectors: TEXTILE, budgetCapUsd: 10 }),
-      w.orchestrator.startRun(user, { regionId: 'sfax', sectors: TEXTILE, budgetCapUsd: 10 }),
+      w.orchestrator.startRun(user, { regionId: 'sfax', sectorIds: TEXTILE, budgetCapUsd: 10 }),
+      w.orchestrator.startRun(user, { regionId: 'sfax', sectorIds: TEXTILE, budgetCapUsd: 10 }),
     ]);
     const claims = await listLiveClaims(db, user);
     const cells = await listCells(db, 'sfax', { leafOnly: true });
@@ -427,7 +431,7 @@ describe('orchestrator: concurrency', () => {
     await expireClaims(db, user, holder);
     const c = await w.orchestrator.startRun(user, {
       regionId: 'sfax',
-      sectors: TEXTILE,
+      sectorIds: TEXTILE,
       budgetCapUsd: 10,
     });
     expect(c.status).toBe('running');
@@ -448,12 +452,12 @@ describe('orchestrator: concurrency', () => {
     // Started one after the other so each claims its own cell; then both run at once.
     const a = await fake.orchestrator.startRun(user, {
       regionId: 'sfax',
-      sectors: TEXTILE,
+      sectorIds: TEXTILE,
       budgetCapUsd: 10,
     });
     const b = await fake.orchestrator.startRun(user, {
       regionId: 'sfax',
-      sectors: TEXTILE,
+      sectorIds: TEXTILE,
       budgetCapUsd: 10,
     });
     expect(b.status).toBe('running');
@@ -568,7 +572,7 @@ describe('orchestrator: coverage and saturation', () => {
 
     const run = await w.orchestrator.startRun(user, {
       regionId: 'sfax',
-      sectors: TEXTILE,
+      sectorIds: TEXTILE,
       budgetCapUsd: 10,
     });
     await drive(w.orchestrator, user, run.id);
@@ -614,7 +618,7 @@ describe('orchestrator: places outside the governorate', () => {
     const w = world({ locationOf });
     const run = await w.orchestrator.startRun(user, {
       regionId: 'sfax',
-      sectors: TEXTILE,
+      sectorIds: TEXTILE,
       budgetCapUsd: 10,
     });
     await drive(w.orchestrator, user, run.id);
