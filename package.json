@@ -21,9 +21,11 @@
     "db:migrate": "npm run db:migrate -w backend",
     "db:rollback": "npm run db:rollback -w backend",
     "db:seed": "npm run db:seed -w backend",
-    "dev:backend": "npm run dev -w backend",
-    "dev:frontend": "npm run dev -w frontend",
+    "build:shared": "tsc -b shared",
+    "dev:backend": "npm run build:shared && npm run dev -w backend",
+    "dev:frontend": "npm run build:shared && npm run dev -w frontend",
     "auth:create-user": "npm run auth:create-user -w backend --",
+    "auth:disable-dev-user": "npm run auth:disable-dev-user -w backend",
     "auth:create-invite": "npm run auth:create-invite -w backend"
   },
   "devDependencies": {

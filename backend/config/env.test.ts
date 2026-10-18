@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EnvError, loadEnv } from './env.js';
+import { EnvError, loadDevAdminLogin, loadEnv } from './env.js';
 
 const valid = {
   APIFY_TOKEN: 'apify_api_secret',
@@ -16,6 +16,8 @@ describe('loadEnv', () => {
       SIGNUP_MODE: 'invite',
       SESSION_IDLE_HOURS: 12,
       SESSION_MAX_DAYS: 7,
+      HOST: '127.0.0.1',
+      DEV_ADMIN_LOGIN: false,
     });
   });
 
@@ -60,5 +62,37 @@ describe('loadEnv API settings', () => {
       expect(String(err)).toContain('APIFY_WEBHOOK_SECRET is invalid');
       expect(String(err)).not.toContain('short');
     }
+  });
+});
+
+describe('DEV_ADMIN_LOGIN guards', () => {
+  const dev = { ...valid, DEV_ADMIN_LOGIN: 'true' };
+
+  it('starts on a loopback host in development, with a localhost PUBLIC_URL, or on ::1', () => {
+    expect(loadEnv(dev).DEV_ADMIN_LOGIN).toBe(true);
+    expect(loadEnv({ ...dev, PUBLIC_URL: 'http://localhost:3000' }).DEV_ADMIN_LOGIN).toBe(true);
+    expect(loadEnv({ ...dev, HOST: '::1' }).DEV_ADMIN_LOGIN).toBe(true);
+  });
+
+  it.each([
+    ['NODE_ENV is production', { NODE_ENV: 'production' }],
+    ['HOST is not a loopback address', { HOST: '0.0.0.0' }],
+    ['PUBLIC_URL is not a localhost URL', { PUBLIC_URL: 'https://app.example.com' }],
+  ])('refuses to start when %s', (message, extra) => {
+    expect(() => loadEnv({ ...dev, ...extra })).toThrow(message);
+  });
+
+  it('does not restrict anything while the flag is off', () => {
+    expect(loadEnv({ ...valid, NODE_ENV: 'production', HOST: '0.0.0.0' }).DEV_ADMIN_LOGIN).toBe(
+      false,
+    );
+  });
+
+  it('applies the same guards to the admin CLI', () => {
+    expect(loadDevAdminLogin({ DEV_ADMIN_LOGIN: 'true' })).toBe(true);
+    expect(loadDevAdminLogin({})).toBe(false);
+    expect(() => loadDevAdminLogin({ DEV_ADMIN_LOGIN: 'true', NODE_ENV: 'production' })).toThrow(
+      'NODE_ENV is production',
+    );
   });
 });

@@ -204,7 +204,11 @@ describe('sign-up', () => {
   it('tells the sign-in screen what sign-up allows without a session', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/auth/config' });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ signupMode: 'invite', minPasswordLength: 12 });
+    expect(res.json()).toEqual({
+      signupMode: 'invite',
+      minPasswordLength: 12,
+      devAdminLogin: false,
+    });
   });
 
   it('is invite-only by default', async () => {

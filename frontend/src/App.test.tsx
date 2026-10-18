@@ -8,7 +8,9 @@ import { renderApp } from './test/render.js';
 const signedIn = {
   ...dashboardRoutes(),
   'GET /api/auth/me': { body: { id: 'u1', email: 'seif@example.test' } },
-  'GET /api/auth/config': { body: { signupMode: 'invite', minPasswordLength: 12 } },
+  'GET /api/auth/config': {
+    body: { signupMode: 'invite', minPasswordLength: 12, devAdminLogin: false },
+  },
 };
 
 describe('App', () => {

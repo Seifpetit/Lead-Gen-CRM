@@ -19,6 +19,7 @@ const auth = new AuthService(db, {
   signupMode: env.SIGNUP_MODE,
   sessionIdleMs: env.SESSION_IDLE_HOURS * 3_600_000,
   sessionMaxMs: env.SESSION_MAX_DAYS * 86_400_000,
+  devAdminLogin: env.DEV_ADMIN_LOGIN,
 });
 
 // Building the providers makes no request; only a started run calls Apify.
@@ -58,4 +59,9 @@ if (env.PAID_RUNS_ENABLED) {
     runner.pollAll().catch((err) => app.log.error({ err }, 'poll failed'));
   }, 30_000).unref();
 }
-await app.listen({ port: env.PORT, host: '127.0.0.1' });
+if (env.DEV_ADMIN_LOGIN) {
+  app.log.warn(
+    'DEV_ADMIN_LOGIN is ON: the login test/test is accepted. Local development only; never deploy this.',
+  );
+}
+await app.listen({ port: env.PORT, host: env.HOST });

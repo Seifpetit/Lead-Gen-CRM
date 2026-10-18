@@ -14,6 +14,8 @@ export interface AuthConfig {
   /** invite: sign-up needs an invite code; open: anyone may sign up. */
   signupMode: 'invite' | 'open';
   minPasswordLength: number;
+  /** Local development only: the sign-in and sign-up forms accept `test` / `test`. */
+  devAdminLogin: boolean;
 }
 
 /** Every list endpoint takes ?limit (1 to 100, default 50) and ?offset. */
