@@ -34,14 +34,16 @@ test('sign in, run, watch, open the result, and work a lead through the CRM', as
   const side = page.getByRole('navigation', { name: 'Lead Gen sections' });
   await expect(side.getByRole('link')).toHaveText(['Dashboard', 'Coverage', 'Costs', 'Logs']);
 
-  // Clean start: no active run, no runs yet.
-  await expect(page.getByText('No active run')).toBeVisible();
+  // Clean start: no leads and no runs yet.
+  await expect(page.getByText('No leads yet. Create a run to find your first ones.')).toBeVisible();
   const runs = page.getByRole('region', { name: 'Runs' });
   await expect(runs.getByText('No runs yet')).toBeVisible();
 
   // Preview: Create run opens the flow; region first, nothing is spent or started.
-  await page.getByRole('button', { name: 'Create run' }).click();
-  const start = page.getByRole('region', { name: 'Start a run' });
+  await page.getByRole('button', { name: 'Create run' }).first().click();
+  const start = page.getByRole('dialog', { name: 'Create run' }).getByRole('region', {
+    name: 'Start a run',
+  });
   await start.getByLabel('Region').selectOption({ label: 'Sfax' });
   const estimate = start.getByRole('region', { name: 'Estimate' });
   await expect(estimate.getByText('Estimated cost')).toBeVisible();
@@ -57,10 +59,11 @@ test('sign in, run, watch, open the result, and work a lead through the CRM', as
   const dialog = page.getByRole('dialog', { name: 'Confirm this run' });
   await expect(dialog).toContainText('It will not spend more than $5.00');
   await dialog.getByRole('button', { name: 'Confirm and start run' }).click();
-  await expect(start.getByText(/Run started in sfax/)).toBeVisible();
+  // A toast confirms it and the dialog closes.
+  await expect(page.getByText('Run started in sfax.')).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 
   // The dashboard shows it as active, with its progress bar.
-  await expect(page.getByRole('region', { name: 'Create run (1/2)' })).toBeVisible();
   await expect(page.getByRole('progressbar')).toBeVisible();
   await expect(runs.getByRole('row', { name: /sfax/ }).getByText('Running')).toBeVisible();
 
@@ -87,8 +90,15 @@ test('sign in, run, watch, open the result, and work a lead through the CRM', as
   const costs = page.getByRole('region', { name: 'Costs' });
   await expect(costs.getByRole('table')).toBeVisible();
 
-  // Open the result from the dashboard.
+  // The leads it found are listed on the dashboard; one opens on its own page, and Back returns.
   await side.getByRole('link', { name: 'Dashboard' }).click();
+  const leads = page.getByRole('table', { name: 'Recent leads' });
+  await expect(leads).toBeVisible();
+  await leads.getByRole('row').nth(1).getByRole('link').first().click();
+  await expect(page.getByRole('navigation', { name: 'You are here' })).toBeVisible();
+  await expect(page.getByRole('article')).toBeVisible();
+  await page.getByRole('button', { name: 'Back' }).click();
+  await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible();
 
   // Open the result: people first, every field tagged.
   await runs.getByRole('link', { name: 'Open run for sfax' }).click();
@@ -131,7 +141,8 @@ test('sign in, run, watch, open the result, and work a lead through the CRM', as
   await expect(cardIn('Opted out')).toBeVisible();
   await expect(cardIn('Opted out').getByLabel(/Move .* to another stage/)).toHaveCount(0);
 
-  // Sign out ends the session.
+  // Sign out ends the session; it is in the profile menu.
+  await page.getByRole('button', { name: new RegExp(EMAIL) }).click();
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
   await page.goto('/leadgen');

@@ -11,6 +11,8 @@ import { CrmPage } from './features/crm/CrmPage.js';
 import { CostsPage } from './features/leadgen/CostsPage.js';
 import { CoveragePage } from './features/leadgen/CoveragePage.js';
 import { DashboardPage } from './features/leadgen/DashboardPage.js';
+import { LeadPage } from './features/leadgen/LeadPage.js';
+import { HelpPage, SettingsPage } from './features/leadgen/InfoPages.js';
 import { LogsPage } from './features/leadgen/LogsPage.js';
 import { RunDetailPage } from './features/leadgen/RunDetailPage.js';
 import { I18nProvider, useT } from './i18n/index.js';
@@ -39,6 +41,9 @@ function Screens() {
             <Route path="costs" element={<CostsPage />} />
             <Route path="logs" element={<LogsPage />} />
             <Route path="runs/:runId" element={<RunDetailPage />} />
+            <Route path="runs/:runId/leads/:leadId" element={<LeadPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+            <Route path="help" element={<HelpPage />} />
           </Route>
           <Route path="/crm" element={<CrmPage />} />
           <Route path="*" element={<NotFound />} />

@@ -4,6 +4,9 @@ import { useT } from '../i18n/index.js';
 const FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+/** Open modals, innermost last: only the innermost one reacts to the keyboard. */
+const openModals: object[] = [];
+
 /**
  * A modal dialog: focus moves in, Tab stays inside, Escape closes, focus returns to the control
  * that opened it. Content behind it is inert while it is open.
@@ -11,10 +14,13 @@ const FOCUSABLE =
 export function Modal({
   title,
   onClose,
+  wide = false,
   children,
 }: {
   title: string;
   onClose: () => void;
+  /** Room for a form instead of a question. */
+  wide?: boolean;
   children: ReactNode;
 }) {
   const t = useT();
@@ -31,7 +37,10 @@ export function Modal({
       node?.querySelector<HTMLElement>(FOCUSABLE);
     (first ?? node)?.focus();
 
+    const self = {};
+    openModals.push(self);
     const onKey = (event: KeyboardEvent) => {
+      if (openModals[openModals.length - 1] !== self) return;
       if (event.key === 'Escape') {
         event.stopPropagation();
         closeRef.current();
@@ -56,6 +65,7 @@ export function Modal({
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
+      openModals.splice(openModals.indexOf(self), 1);
       opener?.focus?.();
     };
   }, []);
@@ -64,7 +74,7 @@ export function Modal({
     <div className="modal-backdrop">
       <div
         ref={panel}
-        className="modal"
+        className={wide ? 'modal modal-wide' : 'modal'}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

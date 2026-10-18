@@ -1,7 +1,7 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
-import { dashboardRoutes, funnel, page, run } from '../../test/fixtures.js';
+import { dashboardRoutes, page, run } from '../../test/fixtures.js';
 import { fakeServer } from '../../test/fakeServer.js';
 import { renderApp } from '../../test/render.js';
 
@@ -40,7 +40,7 @@ const activeRun = run({
 });
 
 describe('Lead Gen sidebar and pages', () => {
-  it('has the four sections in the sidebar, with the profile at the bottom', async () => {
+  it('has the four sections in the sidebar, with the profile at the top', async () => {
     renderApp(fakeServer(signedIn), '/leadgen');
     const side = await screen.findByRole('navigation', { name: 'Lead Gen sections' });
     expect(
@@ -52,17 +52,18 @@ describe('Lead Gen sidebar and pages', () => {
       'aria-current',
       'page',
     );
-    const profile = screen.getByText('seif@example.test').closest('.sidebar-profile');
-    expect(profile).not.toBeNull();
-    expect(within(profile as HTMLElement).getByRole('button', { name: 'Sign out' })).toBeVisible();
+    expect(
+      within(side.closest('aside')!).getByRole('button', { name: /seif@example.test/ }),
+    ).toBeVisible();
   });
 
   it('renders the Dashboard, with no active run', async () => {
     renderApp(fakeServer(signedIn), '/leadgen');
     expect(await screen.findByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible();
-    expect(await screen.findByRole('region', { name: 'Create run (0/2)' })).toBeVisible();
-    expect(await screen.findByText('No active run')).toBeVisible();
-    expect(screen.getByRole('region', { name: 'Results' })).toBeVisible();
+    expect(await screen.findByRole('region', { name: 'Recent leads' })).toBeVisible();
+    for (const button of screen.getAllByRole('button', { name: 'Create run' })) {
+      expect(button).toBeEnabled();
+    }
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
 
@@ -87,14 +88,6 @@ describe('Lead Gen sidebar and pages', () => {
     expect(screen.getByRole('button', { name: 'Refresh now' })).toBeVisible();
   });
 
-  it('opens the start-run flow from Create run', async () => {
-    renderApp(fakeServer(signedIn), '/leadgen');
-    expect(screen.queryByRole('region', { name: 'Start a run' })).not.toBeInTheDocument();
-    await userEvent.click(await screen.findByRole('button', { name: 'Create run' }));
-    expect(await screen.findByRole('region', { name: 'Start a run' })).toBeVisible();
-    expect(await screen.findByLabelText('Region')).toBeVisible();
-  });
-
   it('shows the active run, its spend progress with checkpoints and its logs', async () => {
     const server = fakeServer({
       ...signedIn,
@@ -102,7 +95,6 @@ describe('Lead Gen sidebar and pages', () => {
         req.query.has('status') ? page([activeRun]) : page([activeRun, run()]),
     });
     renderApp(server, '/leadgen');
-    expect(await screen.findByRole('region', { name: 'Create run (1/2)' })).toBeVisible();
     const link = await screen.findAllByRole('link', { name: 'Run active: sfax' });
     expect(link[0]).toHaveAttribute('href', '/leadgen/runs/run-live');
     const bar = await screen.findByRole('progressbar');
@@ -114,28 +106,10 @@ describe('Lead Gen sidebar and pages', () => {
     expect(popout).toHaveAttribute('target', '_blank');
   });
 
-  it('sums the results across runs and links to the leads', async () => {
-    const server = fakeServer({
-      ...signedIn,
-      'GET /api/runs': (req) =>
-        req.query.has('status')
-          ? page([])
-          : page([
-              run({ id: 'a', funnel: funnel({ discovered: 40, peopleFound: 9, enriched: 8 }) }),
-              run({ id: 'b', funnel: funnel({ discovered: 10, peopleFound: 1, enriched: 2 }) }),
-            ]),
-    });
-    renderApp(server, '/leadgen');
-    const card = await screen.findByRole('region', { name: 'Results' });
-    const counts = await within(card).findByText('50');
-    expect(counts.closest('div')).toHaveTextContent('Companies discovered');
-    expect(within(card).getByText('Contact channels (email)').closest('div')).toHaveTextContent(
-      '10',
-    );
-    expect(within(card).getByRole('link', { name: 'Open recent discoveries' })).toHaveAttribute(
-      'href',
-      '/crm',
-    );
+  it('has Settings and Help pages', async () => {
+    renderApp(fakeServer(signedIn), '/leadgen/help');
+    expect(await screen.findByRole('heading', { name: 'Help', level: 1 })).toBeVisible();
+    expect(screen.getByText('What is the spend cap?')).toBeVisible();
   });
 
   it('opens the planning and lists past searches when a coverage square is clicked', async () => {

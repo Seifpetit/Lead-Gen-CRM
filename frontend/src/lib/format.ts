@@ -95,3 +95,22 @@ export function formatDuration(seconds: number | null | undefined): string {
   if (m < 60) return `${m}m ${String(s % 60).padStart(2, '0')}s`;
   return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
 }
+
+/** "18 Oct 2026" in UTC; the day a lead was found. */
+export function formatDay(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeZone: 'UTC' }).format(d);
+}
+
+/** "18 Oct" in UTC, for chart axes; takes a YYYY-MM-DD day. */
+export function formatShortDay(day: string): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return day;
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+  }).format(d);
+}
