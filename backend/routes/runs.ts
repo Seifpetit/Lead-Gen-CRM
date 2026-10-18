@@ -14,34 +14,68 @@ import {
   runSummaries,
 } from '../data/views.js';
 import { RunStartError } from '../runner/orchestrator.js';
+import { cleanWordings, MAX_CUSTOM_WORDINGS, MAX_WORDING_CHARS } from '../stages/queryGrid.js';
 import type { RouteDeps } from './deps.js';
 import { ApiError, body, csvList, notFound, PageQuery, query, toPage, uuidParam } from './http.js';
 
 /** The most a single run may be allowed to spend; a typo guard, not a budget. */
 export const MAX_RUN_CAP_USD = 10_000;
 
+/** Most cells a run can be restricted to. */
+const MAX_CELL_KEYS = 100;
+
 const SECTOR_IDS = FREIGHT_SECTORS.map((s) => s.id) as [string, ...string[]];
 
+// The search plan: what to search beyond the region. All of it is optional.
+const Wording = z
+  .string()
+  // eslint-disable-next-line no-control-regex
+  .transform((w) =>
+    w
+      .replace(/[\u0000-\u001f\u007f]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim(),
+  )
+  .pipe(z.string().min(1).max(MAX_WORDING_CHARS));
+const PlanFields = {
+  regionId: z.string().min(1).max(60),
+  sectorIds: z.array(z.enum(SECTOR_IDS)).max(SECTOR_IDS.length).optional(),
+  customWordings: z.array(Wording).max(MAX_CUSTOM_WORDINGS).optional(),
+  cellKeys: z.array(z.string().min(1).max(100)).max(MAX_CELL_KEYS).optional(),
+  mode: z.enum(RUN_MODES).optional(),
+};
+
+/** No sectors and no wordings would search nothing. */
+function nonEmptyPlan(v: {
+  sectorIds?: string[] | undefined;
+  customWordings?: string[] | undefined;
+}) {
+  return !(v.sectorIds?.length === 0 && (v.customWordings?.length ?? 0) === 0);
+}
+const EMPTY_PLAN = { message: 'Pick a sector or add a wording', path: ['sectorIds'] };
+
 const PreviewBody = z
-  .object({
-    regionId: z.string().min(1).max(60),
-    sectors: z.array(z.enum(SECTOR_IDS)).max(SECTOR_IDS.length).optional(),
-    budgetCapUsd: z.number().positive().max(MAX_RUN_CAP_USD).optional(),
-    mode: z.enum(RUN_MODES).optional(),
-  })
-  .strict();
+  .object({ ...PlanFields, budgetCapUsd: z.number().positive().max(MAX_RUN_CAP_USD).optional() })
+  .strict()
+  .refine(nonEmptyPlan, EMPTY_PLAN);
 
 const StartBody = z
   .object({
-    regionId: z.string().min(1).max(60),
-    sectors: z.array(z.enum(SECTOR_IDS)).max(SECTOR_IDS.length).optional(),
+    ...PlanFields,
     budgetCapUsd: z.number().positive().max(MAX_RUN_CAP_USD),
-    mode: z.enum(RUN_MODES).optional(),
     confirm: z.literal(true),
   })
-  .strict();
+  .strict()
+  .refine(nonEmptyPlan, EMPTY_PLAN);
 
 const ListQuery = PageQuery.extend({ status: csvList(z.enum(RUN_STATUSES)) });
+
+/** Drops duplicate wordings (accents and case ignored), keeping the first as typed. */
+function tidy<T extends { customWordings?: string[] | undefined }>(input: T): T {
+  return input.customWordings
+    ? { ...input, customWordings: cleanWordings(input.customWordings) }
+    : input;
+}
 
 /** Input types without exactOptionalPropertyTypes noise: drop undefined keys. */
 function defined<T extends object>(o: T): { [K in keyof T]: Exclude<T[K], undefined> } {
@@ -71,7 +105,7 @@ export async function runRoutes(app: FastifyInstance, deps: RouteDeps): Promise<
   app.post('/api/runs/preview', async (request): Promise<RunPreview> => {
     const input = body(PreviewBody, request);
     await requireRegion(deps, input.regionId);
-    return runner.preview(currentUser(request).id, defined(input));
+    return runner.preview(currentUser(request).id, defined(tidy(input)));
   });
 
   app.post('/api/runs', async (request, reply): Promise<RunSummary> => {
@@ -85,7 +119,7 @@ export async function runRoutes(app: FastifyInstance, deps: RouteDeps): Promise<
       );
     }
     await requireRegion(deps, input.regionId);
-    const { confirm: _confirm, ...start } = input;
+    const { confirm: _confirm, ...start } = tidy(input);
 
     const preview = await runner.preview(user, defined(start));
     if (preview.blockers.length > 0) throw blocked(preview.blockers);

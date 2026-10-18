@@ -94,3 +94,37 @@ export async function getRegionOutline(db: Queryable, regionId: string): Promise
   const bounds = await getRegionBounds(db, regionId);
   return bounds ? outlineFromBounds(bounds) : null;
 }
+
+export interface RegionShape {
+  regionId: string;
+  name: string;
+  bounds: Bounds | null;
+  outline: Outline | null;
+  outlineSource: 'osm' | 'bounds' | null;
+}
+
+/** Every region's bounds and drawn shape (stored outline, else its bounds as a rectangle). */
+export async function listRegionShapes(db: Queryable): Promise<RegionShape[]> {
+  const { rows } = await db.query<{
+    id: string;
+    name: string;
+    south: number | null;
+    west: number | null;
+    north: number | null;
+    east: number | null;
+    outline: Outline | null;
+  }>('SELECT id, name, south, west, north, east, outline FROM regions ORDER BY name');
+  return rows.map((r) => {
+    const bounds: Bounds | null =
+      r.south === null || r.west === null || r.north === null || r.east === null
+        ? null
+        : { south: r.south, west: r.west, north: r.north, east: r.east };
+    return {
+      regionId: r.id,
+      name: r.name,
+      bounds,
+      outline: r.outline ?? (bounds ? outlineFromBounds(bounds) : null),
+      outlineSource: r.outline ? 'osm' : bounds ? 'bounds' : null,
+    };
+  });
+}

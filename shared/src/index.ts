@@ -108,6 +108,12 @@ export interface Run {
   id: string;
   region: string;
   sectors: string[];
+  /** Search only the extra wordings, no sector wordings (sectors is then empty). */
+  customOnly: boolean;
+  /** Extra search wordings typed in when the run was started. */
+  customWordings: string[];
+  /** Cells the run was restricted to; empty means the scheduler chose. */
+  cellKeys: string[];
   /** normal: search for new places; maintenance: slow re-runs of a saturated region. */
   mode: RunMode;
   status: RunStatus;

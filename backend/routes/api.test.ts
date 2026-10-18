@@ -114,7 +114,7 @@ async function drive(user: UserId, runId: string): Promise<void> {
 async function seedRun(user: UserId, regionId = 'sfax'): Promise<string> {
   const run = await world.runner.startRun(user, {
     regionId,
-    sectors: ['textile'],
+    sectorIds: ['textile'],
     budgetCapUsd: 10,
   });
   await drive(user, run.id);
@@ -192,6 +192,8 @@ const CASES: RouteCase[] = [
   { method: 'GET', pattern: '/api/runs/:id/costs', url: (i) => `/api/runs/${i.run}/costs` },
   { method: 'GET', pattern: '/api/regions', url: () => '/api/regions' },
   { method: 'GET', pattern: '/api/regions/suggestion', url: () => '/api/regions/suggestion' },
+  { method: 'GET', pattern: '/api/regions/geometry', url: () => '/api/regions/geometry' },
+  { method: 'GET', pattern: '/api/coverage', url: () => '/api/coverage' },
   {
     method: 'GET',
     pattern: '/api/regions/:regionId/cells',
@@ -370,7 +372,7 @@ describe('POST /api/runs/preview', () => {
   it('estimates volume and cost for a region', async () => {
     const res = await call(alice, 'POST', '/api/runs/preview', {
       regionId: 'tunis',
-      sectors: ['textile'],
+      sectorIds: ['textile'],
       budgetCapUsd: 10,
     });
     expect(res.statusCode).toBe(200);
@@ -383,7 +385,8 @@ describe('POST /api/runs/preview', () => {
       limits: { budgetCapUsd: 10, maxActiveRuns: 2, activeRuns: 0, monthCapUsd: null },
       blockers: [],
     });
-    expect(p.queries).toBeGreaterThan(0);
+    expect(p.queriesTotal).toBeGreaterThan(0);
+    expect(p.queries.length).toBeGreaterThan(0);
     expect(p.cells).toHaveLength(2);
     expect(p.cost.totalUsd).toBeGreaterThan(0);
     expect(p.cost.upperBoundUsd).toBeGreaterThanOrEqual(p.cost.discoverUsd);
@@ -423,10 +426,110 @@ describe('POST /api/runs/preview', () => {
     expect(none.blockers.map((b: { code: string }) => b.code)).toContain('no_bounds');
   });
 
+  describe('the search plan', () => {
+    const preview = async (over: Record<string, unknown>) =>
+      (await call(alice, 'POST', '/api/runs/preview', { regionId: 'tunis', ...over })).json();
+
+    it('lists the actual queries per cell and the sector list', async () => {
+      const p = await preview({ sectorIds: ['textile'] });
+      // 2 cells x 2 textile wordings.
+      expect(p.queriesTotal).toBe(4);
+      expect(p.queries).toHaveLength(4);
+      expect(p.queries[0]).toEqual({
+        wording: expect.any(String),
+        sectorId: 'textile',
+        cellKey: expect.any(String),
+      });
+      expect(new Set(p.queries.map((q: { cellKey: string }) => q.cellKey))).toEqual(
+        new Set(p.cells.map((c: { cellKey: string }) => c.cellKey)),
+      );
+      expect(p.sectors).toHaveLength(15);
+      expect(p.sectors.find((s: { id: string }) => s.id === 'import-export')).toMatchObject({
+        name: 'Import and export',
+        wordings: ['import export', "société d'import", 'exportateur', 'commerce international'],
+      });
+    });
+
+    it('shows the first 50 queries and the total', async () => {
+      const p = await preview({});
+      expect(p.queriesTotal).toBeGreaterThan(50);
+      expect(p.queries).toHaveLength(50);
+    });
+
+    it('adds typed-in wordings, cleaned and deduplicated, with no sector', async () => {
+      const base = await preview({ sectorIds: ['textile'] });
+      const p = await preview({
+        sectorIds: ['textile'],
+        customWordings: [
+          '  Entrepôt   frigorifique ',
+          'entrepot frigorifique',
+          'ENTREPÔT FRIGORIFIQUE',
+          'usine textile',
+        ],
+      });
+      // One new wording ('usine textile' already belongs to textile): 2 cells x 1 more.
+      expect(p.queriesTotal).toBe(base.queriesTotal + 2);
+      const custom = p.queries.filter((q: { sectorId: unknown }) => q.sectorId === null);
+      expect(custom.map((q: { wording: string }) => q.wording)).toEqual([
+        'Entrepôt frigorifique',
+        'Entrepôt frigorifique',
+      ]);
+    });
+
+    it('searches only typed-in wordings when no sector is picked, and refuses an empty plan', async () => {
+      const p = await preview({ sectorIds: [], customWordings: ['entrepôt frigorifique'] });
+      expect(p.queriesTotal).toBe(2);
+      expect(p.queries.every((q: { sectorId: unknown }) => q.sectorId === null)).toBe(true);
+      const res = await call(alice, 'POST', '/api/runs/preview', {
+        regionId: 'tunis',
+        sectorIds: [],
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().issues.some((i: { path: string }) => i.path === 'sectorIds')).toBe(true);
+    });
+
+    it('restricts the run to chosen cells', async () => {
+      const all = await preview({ sectorIds: ['textile'] });
+      const one = all.cells[0].cellKey;
+      const p = await preview({ sectorIds: ['textile'], cellKeys: [one] });
+      expect(p.cells.map((c: { cellKey: string }) => c.cellKey)).toEqual([one]);
+      expect(p.queriesTotal).toBe(2);
+      const none = await preview({ sectorIds: ['textile'], cellKeys: ['r9c9'] });
+      expect(none.blockers.map((b: { code: string }) => b.code)).toContain('no_free_cells');
+    });
+
+    it('limits and validates wordings', async () => {
+      const twenty = Array.from({ length: 20 }, (_, i) => `mot ${i}`);
+      expect(
+        (
+          await call(alice, 'POST', '/api/runs/preview', {
+            regionId: 'tunis',
+            customWordings: twenty,
+          })
+        ).statusCode,
+      ).toBe(200);
+      for (const customWordings of [[...twenty, 'mot 21'], ['x'.repeat(81)], ['   '], ['']]) {
+        const res = await call(alice, 'POST', '/api/runs/preview', {
+          regionId: 'tunis',
+          customWordings,
+        });
+        expect(res.statusCode, JSON.stringify(customWordings)).toBe(400);
+      }
+      expect(
+        (
+          await call(alice, 'POST', '/api/runs/preview', {
+            regionId: 'tunis',
+            customWordings: ['x'.repeat(80)],
+          })
+        ).statusCode,
+      ).toBe(200);
+    });
+  });
+
   it('validates its input', async () => {
     for (const [payload, field] of [
       [{}, 'regionId'],
-      [{ regionId: 'sfax', sectors: ['nonsense'] }, 'sectors.0'],
+      [{ regionId: 'sfax', sectorIds: ['nonsense'] }, 'sectorIds.0'],
       [{ regionId: 'sfax', budgetCapUsd: -1 }, 'budgetCapUsd'],
       [{ regionId: 'sfax', budgetCapUsd: 'ten' }, 'budgetCapUsd'],
       [{ regionId: 'sfax', mode: 'turbo' }, 'mode'],
@@ -447,7 +550,7 @@ describe('POST /api/runs', () => {
   const start = (who: Who, over: Record<string, unknown> = {}) =>
     call(who, 'POST', '/api/runs', {
       regionId: 'tunis',
-      sectors: ['textile'],
+      sectorIds: ['textile'],
       budgetCapUsd: 5,
       confirm: true,
       ...over,
@@ -546,6 +649,145 @@ describe('POST /api/runs', () => {
     expect(none.statusCode).toBe(422);
     expect(none.json().error).toBe('no_bounds');
     expect((await start(alice, { regionId: 'atlantis' })).statusCode).toBe(404);
+  });
+});
+
+describe('POST /api/runs with a search plan', () => {
+  const start = (over: Record<string, unknown>) =>
+    call(alice, 'POST', '/api/runs', {
+      regionId: 'tunis',
+      budgetCapUsd: 5,
+      confirm: true,
+      ...over,
+    });
+
+  it('stores the plan and plans the typed-in wordings', async () => {
+    const res = await start({
+      sectorIds: ['textile'],
+      customWordings: ['Entrepôt frigorifique', 'entrepot frigorifique'],
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({
+      sectors: ['textile'],
+      customOnly: false,
+      customWordings: ['Entrepôt frigorifique'],
+      cellKeys: [],
+    });
+    const steps = (await listSteps(db, alice.id, res.json().id)).filter(
+      (s) => s.stage === 'discover',
+    );
+    // 2 cells x (2 textile wordings + 1 typed in).
+    expect(steps).toHaveLength(6);
+    expect(steps.filter((s) => s.stepKey.endsWith('|entrepot frigorifique'))).toHaveLength(2);
+  });
+
+  it('searches only the typed-in wordings when no sector is picked', async () => {
+    const res = await start({ sectorIds: [], customWordings: ['entrepôt frigorifique'] });
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({ sectors: [], customOnly: true });
+    const steps = (await listSteps(db, alice.id, res.json().id)).filter(
+      (s) => s.stage === 'discover',
+    );
+    expect(steps).toHaveLength(2);
+  });
+
+  it('claims only the chosen cells', async () => {
+    const preview = (
+      await call(alice, 'POST', '/api/runs/preview', { regionId: 'tunis', sectorIds: ['textile'] })
+    ).json();
+    const wanted = preview.cells[1].cellKey;
+    const res = await start({ sectorIds: ['textile'], cellKeys: [wanted] });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().cellKeys).toEqual([wanted]);
+    expect((await listLiveClaims(db, alice.id)).length).toBe(1);
+    const steps = (await listSteps(db, alice.id, res.json().id)).filter(
+      (s) => s.stage === 'discover',
+    );
+    expect(steps.every((s) => s.stepKey.startsWith(`${wanted}|`))).toBe(true);
+  });
+
+  it('still needs a cap and a confirm, and an empty plan is refused', async () => {
+    expect((await start({ confirm: false })).statusCode).toBe(400);
+    expect((await start({ budgetCapUsd: undefined })).statusCode).toBe(400);
+    expect((await start({ sectorIds: [] })).statusCode).toBe(400);
+  });
+});
+
+describe('GET /api/coverage', () => {
+  const coverage = async (who: Who) => (await call(who, 'GET', '/api/coverage')).json();
+  const entry = (
+    c: { entries: { regionId: string; sectorId: string | null }[] },
+    r: string,
+    s: string | null,
+  ) => c.entries.find((e) => e.regionId === r && e.sectorId === s);
+
+  it('reports queries, new places, leads, spend, cost per lead and a state per region and sector', async () => {
+    const c = await coverage(alice);
+    expect(c.regions).toHaveLength(24);
+    expect(c.sectors).toHaveLength(15);
+    const textile = entry(c, 'sfax', 'textile');
+    // 2 cells x 2 textile wordings.
+    expect(textile).toMatchObject({ queriesRun: 4, leads: 4, newPlaces: 4 });
+    expect(['yielding', 'saturated']).toContain(textile.state);
+    expect(textile.spendUsd).toBeGreaterThan(0);
+    expect(textile.costPerLeadUsd).toBeCloseTo(textile.spendUsd / 4, 5);
+    expect(entry(c, 'sfax', 'wholesale')).toMatchObject({
+      queriesRun: 0,
+      leads: 0,
+      spendUsd: 0,
+      costPerLeadUsd: null,
+      state: 'not_searched',
+    });
+    expect(entry(c, 'tunis', 'textile')).toMatchObject({ state: 'not_searched' });
+  });
+
+  it('adds up to the ledger: the sector spends of a region are its total spend', async () => {
+    const c = await coverage(alice);
+    const total = c.entries
+      .filter((e: { regionId: string }) => e.regionId === 'sfax')
+      .reduce((n: number, e: { spendUsd: number }) => n + e.spendUsd, 0);
+    const sfax = (await call(alice, 'GET', '/api/regions'))
+      .json()
+      .items.find((r: { regionId: string }) => r.regionId === 'sfax');
+    expect(total).toBeCloseTo(sfax.spendUsd, 5);
+  });
+
+  it('marks a sector saturated once every wording is exhausted in every cell', async () => {
+    const cells = await listCells(db, 'sfax', { leafOnly: true });
+    for (const cell of cells) {
+      for (const w of ['usine textile', 'confection']) {
+        await db.query(
+          'INSERT INTO exhausted_queries (user_id, region_cell_id, normalized_query) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+          [alice.id, cell.id, w],
+        );
+      }
+    }
+    expect(entry(await coverage(alice), 'sfax', 'textile').state).toBe('saturated');
+  });
+
+  it("shows another user none of Alice's history", async () => {
+    const c = await coverage(bob);
+    expect(
+      c.entries.every(
+        (e: { state: string; spendUsd: number; queriesRun: number }) =>
+          e.state === 'not_searched' && e.spendUsd === 0 && e.queriesRun === 0,
+      ),
+    ).toBe(true);
+    expect(entry(c, 'sfax', 'textile')).toMatchObject({ leads: 0 });
+  });
+});
+
+describe('GET /api/regions/geometry', () => {
+  it('gives each region its bounds and outline, shared by all users', async () => {
+    const g = (await call(alice, 'GET', '/api/regions/geometry')).json();
+    expect(g.items).toHaveLength(24);
+    const sfax = g.items.find((r: { regionId: string }) => r.regionId === 'sfax');
+    expect(sfax.bounds).toMatchObject({ south: 34.6, north: 34.9 });
+    // No stored outline in the test database: the bounds are drawn as a rectangle.
+    expect(sfax).toMatchObject({ outlineSource: 'bounds', outline: { type: 'Polygon' } });
+    const gabes = g.items.find((r: { regionId: string }) => r.regionId === 'gabes');
+    expect(gabes).toMatchObject({ bounds: null, outline: null, outlineSource: null });
+    expect((await call(bob, 'GET', '/api/regions/geometry')).json()).toEqual(g);
   });
 });
 
@@ -1129,7 +1371,7 @@ describe('POST /api/webhooks/apify', () => {
     app = await mkApp();
     const run = await world.runner.startRun(alice.id, {
       regionId: 'tunis',
-      sectors: ['textile'],
+      sectorIds: ['textile'],
       budgetCapUsd: 10,
     });
     await world.runner.advance(alice.id, run.id);

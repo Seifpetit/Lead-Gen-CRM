@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { dashboardRoutes, preview, run } from '../../test/fixtures.js';
 import { fakeServer } from '../../test/fakeServer.js';
 import { renderWith } from '../../test/render.js';
-import { StartRunWidget } from './StartRunWidget.js';
+import { parseWordings, StartRunWidget } from './StartRunWidget.js';
 
 function setup(extra = {}) {
   const server = fakeServer({
@@ -155,5 +155,103 @@ describe('Start a run', () => {
     await pickRegion(user);
     expect(await screen.findByRole('button', { name: 'Try again' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Review and start' })).toBeDisabled();
+  });
+});
+
+describe('Start a run: search plan', () => {
+  it('lists the planned searches per cell and the total', async () => {
+    const { user } = setup();
+    await pickRegion(user);
+    const plan = await screen.findByRole('region', { name: 'Search plan' });
+    expect(await within(plan).findByText('transport marchandises')).toBeInTheDocument();
+    expect(within(plan).getByText('Cell r0c0')).toBeInTheDocument();
+    expect(within(plan).getByText(/2 of 2 shown/)).toBeInTheDocument();
+  });
+
+  it('sends only the ticked sectors and the extra wordings, deduplicated by the server', async () => {
+    const { server, user } = setup();
+    await pickRegion(user);
+    const plan = await screen.findByRole('region', { name: 'Search plan' });
+    await user.click(await within(plan).findByRole('checkbox', { name: 'Road freight' }));
+    await user.type(within(plan).getByLabelText(/Extra searches/), 'camion frigorifique');
+    await waitFor(() =>
+      expect(
+        server
+          .to('POST /api/runs/preview')
+          .some(
+            (c) =>
+              JSON.stringify(c.body.sectorIds) === JSON.stringify(['import-export']) &&
+              JSON.stringify(c.body.customWordings) === JSON.stringify(['camion frigorifique']),
+          ),
+      ).toBe(true),
+    );
+  });
+
+  it('blocks the review when no sector and no wording is left', async () => {
+    const { user } = setup();
+    await pickRegion(user);
+    await user.type(screen.getByLabelText('Spend cap (USD)'), '5');
+    await user.click(await screen.findByRole('button', { name: 'No sector selected' }));
+    expect(
+      await screen.findByText('Pick at least one sector or type an extra search.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Review and start' })).toBeDisabled();
+  });
+
+  it('rejects more than 20 wordings and wordings over 80 characters', async () => {
+    const { user } = setup();
+    await pickRegion(user);
+    const box = await screen.findByLabelText(/Extra searches/);
+    await user.click(box);
+    await user.paste('x'.repeat(81));
+    expect(await screen.findByText('A line is longer than 80 characters.')).toBeInTheDocument();
+    await user.clear(box);
+    await user.paste(Array.from({ length: 21 }, (_, i) => `mot ${i}`).join('\n'));
+    expect(await screen.findByText('Too many lines: the most allowed is 20.')).toBeInTheDocument();
+  });
+
+  it('shows the final query count in the confirm dialog and sends the plan on start', async () => {
+    const { server, user } = setup({
+      'POST /api/runs': { status: 201, body: run({ id: 'run-9', status: 'running' }) },
+    });
+    await pickRegion(user);
+    await user.type(screen.getByLabelText('Spend cap (USD)'), '5');
+    await user.type(await screen.findByLabelText(/Extra searches/), 'camion frigorifique');
+    const review = screen.getByRole('button', { name: 'Review and start' });
+    await waitFor(() => expect(review).toBeEnabled());
+    await user.click(review);
+    const dialog = await screen.findByRole('dialog', { name: 'Confirm this run' });
+    expect(dialog).toHaveTextContent('2 searches across 1 map cells');
+    await user.click(within(dialog).getByRole('button', { name: 'Confirm and start run' }));
+    await screen.findByText(/Run started/);
+    expect(server.to('POST /api/runs')[0]!.body).toMatchObject({
+      regionId: 'sfax',
+      customWordings: ['camion frigorifique'],
+      confirm: true,
+    });
+  });
+
+  it('applies a prefill from the coverage views', async () => {
+    const server = fakeServer({
+      ...dashboardRoutes(),
+      'POST /api/runs/preview': { body: preview() },
+    });
+    renderWith(
+      <StartRunWidget
+        onStarted={() => {}}
+        prefill={{ regionId: 'sfax', sectorIds: ['import-export'], cellKeys: ['r0c0'], nonce: 1 }}
+      />,
+      server,
+    );
+    expect(await screen.findByText('Only these map cells: r0c0')).toBeInTheDocument();
+    expect(await screen.findByRole('checkbox', { name: 'Import and export' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Road freight' })).not.toBeChecked();
+    expect(screen.getByLabelText('Region')).toHaveValue('sfax');
+  });
+});
+
+describe('parseWordings', () => {
+  it('trims, collapses spaces and drops blank lines', () => {
+    expect(parseWordings('  a   b \n\n c ')).toEqual(['a b', 'c']);
   });
 });

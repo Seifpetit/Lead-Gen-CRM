@@ -131,6 +131,9 @@ export function run(over: Partial<RunSummary> = {}): RunSummary {
     budgetCapUsd: 10,
     spentUsd: 3.21,
     placesDroppedOutside: 0,
+    customOnly: false,
+    customWordings: [],
+    cellKeys: [],
     createdAt: '2026-10-18T09:00:00.000Z',
     finishedAt: '2026-10-18T09:20:00.000Z',
     funnel: funnel(),
@@ -180,7 +183,15 @@ export function preview(over: Partial<RunPreview> = {}): RunPreview {
     regionId: 'sfax',
     mode: 'normal',
     cells: [{ cellKey: 'r0c0', reason: 'least searched' }],
-    queries: 6,
+    queries: [
+      { wording: 'transport marchandises', sectorId: 'road-freight', cellKey: 'r0c0' },
+      { wording: 'import export', sectorId: 'import-export', cellKey: 'r0c0' },
+    ],
+    queriesTotal: 2,
+    sectors: [
+      { id: 'road-freight', name: 'Road freight', wordings: ['transport marchandises'] },
+      { id: 'import-export', name: 'Import and export', wordings: ['import export'] },
+    ],
     volume: {
       placesMax: 300,
       places: 150,
@@ -244,5 +255,7 @@ export function dashboardRoutes(): Record<string, import('./fakeServer.js').Hand
     'GET /api/costs': page([]),
     'GET /api/costs/budget': budget,
     'GET /api/leads': page([]),
+    'GET /api/coverage': { regions: [], sectors: [], entries: [] },
+    'GET /api/regions/geometry': { items: [] },
   };
 }

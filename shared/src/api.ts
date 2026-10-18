@@ -78,20 +78,43 @@ export interface StartBlocker {
   message: string;
 }
 
-export interface RunPreviewInput {
+/** What a run searches, beyond the region. All parts are optional. */
+export interface SearchPlanInput {
+  /** Sectors to search (default: all). An empty list means only `customWordings`. */
+  sectorIds?: string[];
+  /** Extra wordings (up to 20, 80 characters each), searched as typed; duplicates are dropped. */
+  customWordings?: string[];
+  /** Restrict the run to these cells of the region (default: the scheduler's choice). */
+  cellKeys?: string[];
+}
+
+export interface RunPreviewInput extends SearchPlanInput {
   regionId: string;
-  sectors?: string[];
   budgetCapUsd?: number;
   mode?: RunMode;
 }
 
-export interface StartRunInput {
+export interface StartRunInput extends SearchPlanInput {
   regionId: string;
-  sectors?: string[];
   budgetCapUsd: number;
   mode?: RunMode;
   /** Must be true: the user has seen the preview and accepts the spend up to the cap. */
   confirm: true;
+}
+
+/** One planned search: a wording in a cell. */
+export interface PlannedQuery {
+  wording: string;
+  /** The sector the wording belongs to; null for a wording typed in. */
+  sectorId: string | null;
+  cellKey: string;
+}
+
+/** A sector and the French wordings the grid searches for it. */
+export interface SectorInfo {
+  id: string;
+  name: string;
+  wordings: string[];
 }
 
 /** What a run would do and cost. Nothing is written or spent to produce it. */
@@ -100,7 +123,11 @@ export interface RunPreview {
   mode: RunMode;
   /** Cells the run would claim now, and why each was picked. */
   cells: { cellKey: string; reason: string }[];
-  queries: number;
+  /** The first 50 searches the run would make (see queriesTotal for how many in all). */
+  queries: PlannedQuery[];
+  queriesTotal: number;
+  /** Every sector the user can pick, with its wordings. */
+  sectors: SectorInfo[];
   /** Volumes are estimates from this user's history where it exists, else the plan's funnel. */
   volume: {
     placesMax: number;
@@ -318,4 +345,47 @@ export interface ApifyLog {
   attention: ApifyStepView[];
   /** Latest state changes across all runs, newest first. */
   recent: Page<ApifyEventView>;
+}
+
+// ---------------------------------------------------------------------------------------
+// Coverage by region and sector, and map geometry
+
+export type CoverageState = 'not_searched' | 'yielding' | 'saturated';
+
+/** One region x sector. Numbers come from the user's own search history and the cost ledger. */
+export interface CoverageEntry {
+  regionId: string;
+  /** Null: wordings typed in, and spend that cannot be tied to one sector. */
+  sectorId: string | null;
+  queriesRun: number;
+  /** Places not seen before in this user's companies. */
+  newPlaces: number;
+  leads: number;
+  /** From the cost ledger. Settled spend is attributed to the sector of the search or the company. */
+  spendUsd: number;
+  /** Null when there are no leads. */
+  costPerLeadUsd: number | null;
+  /** not_searched: no query yet; saturated: every cell of the region exhausted for the sector. */
+  state: CoverageState;
+}
+
+export interface Coverage {
+  regions: { regionId: string; name: string }[];
+  sectors: { id: string; name: string }[];
+  entries: CoverageEntry[];
+}
+
+/** GeoJSON [lng, lat]; a Polygon or MultiPolygon. */
+export interface MapOutline {
+  type: 'Polygon' | 'MultiPolygon';
+  coordinates: unknown;
+}
+
+/** A region's drawn shape: the OpenStreetMap outline, else its bounds as a rectangle. */
+export interface RegionGeometry {
+  regionId: string;
+  name: string;
+  bounds: { south: number; west: number; north: number; east: number } | null;
+  outline: MapOutline | null;
+  outlineSource: 'osm' | 'bounds' | null;
 }

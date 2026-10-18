@@ -1,4 +1,10 @@
-import type { RunMode, RunPreview, RunPreviewInput, StartBlocker } from '@lead-gen-crm/shared';
+import type {
+  PlannedQuery,
+  RunMode,
+  RunPreview,
+  RunPreviewInput,
+  StartBlocker,
+} from '@lead-gen-crm/shared';
 import { APIFY_MIN_MAX_CHARGE_USD } from '../config/pricing.js';
 import { listCompaniesWithStaleContacts } from '../data/contacts.js';
 import type { Queryable } from '../data/db.js';
@@ -15,6 +21,7 @@ import { buildQueryGrid, gridShape } from '../stages/queryGrid.js';
 import type { RunnerConfig } from './config.js';
 import { sumUsd } from './costs.js';
 import { titleKeywords } from './keywords.js';
+import { gridSectorIds, PLANNED_QUERIES_SHOWN, plannedQuery, sectorList } from './plan.js';
 import { planRunCells } from './scheduler.js';
 
 // A run's estimated volume and cost, computed without starting or spending anything: it
@@ -116,10 +123,15 @@ export async function previewRun(
     });
     stats = [];
   }
+  const hadCells = stats.length > 0;
+  if (input.cellKeys && input.cellKeys.length > 0) {
+    const wanted = new Set(input.cellKeys);
+    stats = stats.filter((c) => wanted.has(c.cellKey));
+  }
   // The run's own start counts as one more run for the explore rotation.
   const explore = ((await countRuns(db, userId)) + 1) % config.exploreEvery === 0;
   const plan = planRunCells(stats, config, { mode, now, explore });
-  if (stats.length > 0 && plan.cellIds.length === 0) {
+  if (hadCells && plan.cellIds.length === 0) {
     blockers.push({
       code: 'no_free_cells',
       message:
@@ -131,7 +143,12 @@ export async function previewRun(
   const chosen = stats.filter((c) => plan.cellIds.includes(c.regionCellId));
 
   // Queries those cells would produce.
+  const sectorIds = gridSectorIds({
+    ...(input.sectorIds ? { sectors: input.sectorIds } : {}),
+    customOnly: input.sectorIds !== undefined && input.sectorIds.length === 0,
+  });
   let queries = 0;
+  const planned: PlannedQuery[] = [];
   let upperBoundDiscoverUsd = 0;
   let maxPlaces = 0;
   if (chosen.length > 0 && bounds) {
@@ -142,7 +159,8 @@ export async function previewRun(
       regionId: input.regionId,
       bounds,
       cells: chosen.map((c) => ({ key: c.cellKey, bounds: c.bounds })),
-      ...(input.sectors && input.sectors.length > 0 ? { sectorIds: input.sectors } : {}),
+      ...(sectorIds ? { sectorIds } : {}),
+      ...(input.customWordings ? { customWordings: input.customWordings } : {}),
       exhaustedWordings: exhausted.map((e) => ({
         cellKey: keyById.get(e.regionCellId) ?? null,
         normalizedQuery: e.normalizedQuery,
@@ -150,6 +168,7 @@ export async function previewRun(
       maxPlacesPerQuery: config.maxPlacesPerQuery,
     });
     queries = grid.queries.length;
+    planned.push(...grid.queries.slice(0, PLANNED_QUERIES_SHOWN).map(plannedQuery));
     for (const q of grid.queries) {
       upperBoundDiscoverUsd += sumUsd(ctx.discovery.estimate(q));
       maxPlaces += q.maxPlaces;
@@ -233,7 +252,9 @@ export async function previewRun(
     regionId: input.regionId,
     mode,
     cells: chosen.map((c, i) => ({ cellKey: c.cellKey, reason: plan.reasons[i] ?? '' })),
-    queries,
+    queries: planned,
+    queriesTotal: queries,
+    sectors: sectorList(),
     volume: {
       placesMax: maxPlaces,
       places: round(places),
