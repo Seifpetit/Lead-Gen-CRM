@@ -14,6 +14,7 @@ import type {
   RunStepCounts,
   RunSummary,
   ScoreReason,
+  StepSummary,
 } from '@lead-gen-crm/shared';
 import { RUN_STAGES } from '@lead-gen-crm/shared';
 import { getCompany } from './companies.js';
@@ -444,6 +445,20 @@ export async function recentApifyEvents(
   return { items: rows.map(toEventView), total: rows[0]?.total ?? 0 };
 }
 
+/** What a step searched, read from the input it was started with. */
+function stepTarget(stage: RunStage, input: unknown): ApifyStepView['target'] {
+  const i = (input ?? {}) as {
+    textQuery?: string;
+    cellKey?: string;
+    query?: { companyName?: string };
+  };
+  return {
+    query: stage === 'discover' ? (i.textQuery ?? null) : null,
+    cell: stage === 'discover' ? (i.cellKey ?? null) : null,
+    company: stage === 'find_people' ? (i.query?.companyName ?? null) : null,
+  };
+}
+
 /** Steps with an Apify run, with their whole event history. */
 export async function apifySteps(
   db: Queryable,
@@ -459,8 +474,16 @@ export async function apifySteps(
     apify_run_id: string | null;
     apify_status: string | null;
     latest: ApifyEventView['state'] | null;
+    input: unknown;
+    summary: StepSummary | null;
+    error: string | null;
+    cost_usd: number;
+    duration_seconds: number | null;
   }>(
     `SELECT s.id, s.run_id, s.stage, s.step_key, s.actor_id, s.apify_run_id, s.apify_status,
+            s.input, s.summary, s.error,
+            COALESCE((SELECT sum(l.amount_usd) FROM cost_ledger l WHERE l.run_step_id = s.id), 0)::float AS cost_usd,
+            EXTRACT(EPOCH FROM (s.finished_at - s.started_at))::float AS duration_seconds,
             (SELECT e.state FROM apify_events e WHERE e.run_step_id = s.id
               ORDER BY e.occurred_at DESC, e.id DESC LIMIT 1) AS latest
        FROM run_steps s
@@ -489,6 +512,11 @@ export async function apifySteps(
     apifyStatus: s.apify_status,
     latestState: s.latest,
     history: events.rows.filter((e) => e.run_step_id === s.id).map(toEventView),
+    target: stepTarget(s.stage, s.input),
+    summary: s.summary,
+    costUsd: Math.round(Number(s.cost_usd) * 1e4) / 1e4,
+    durationSeconds: s.duration_seconds === null ? null : Math.round(s.duration_seconds),
+    error: s.error,
   }));
 }
 
