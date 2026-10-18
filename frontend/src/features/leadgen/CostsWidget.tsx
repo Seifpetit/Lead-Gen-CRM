@@ -3,7 +3,8 @@ import { useId, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import { useApi } from '../../api/context.js';
 import { EmptyState, ErrorState, LoadingState } from '../../components/states.js';
-import { Widget } from '../../components/Widget.js';
+import { Card } from '../../components/shared/Card.js';
+import { ToggleGroup } from '../../components/shared/ToggleGroup.js';
 import { useT, type StringKey } from '../../i18n/index.js';
 import { describeError } from '../../lib/errors.js';
 import { formatMonth, formatNumber, formatUsd } from '../../lib/format.js';
@@ -15,7 +16,6 @@ const GROUPS: CostGroupBy[] = ['month', 'run', 'region', 'provider'];
 export function CostsWidget({ refreshKey }: { refreshKey: number }) {
   const t = useT();
   const api = useApi();
-  const groupName = useId();
   const [group, setGroup] = useState<CostGroupBy>('month');
   const costs = useResource(() => api.costs.by(group, { limit: 50 }), {
     deps: [group, refreshKey],
@@ -24,24 +24,15 @@ export function CostsWidget({ refreshKey }: { refreshKey: number }) {
   const budget = useResource(() => api.costs.budget(), { deps: [refreshKey], pollMs: 30_000 });
 
   return (
-    <Widget title={t('costs.title')} className="widget-medium">
+    <Card title={t('costs.title')} className="widget-medium">
       <Budget resource={budget} onChanged={() => budget.reload()} />
 
-      <fieldset className="segmented">
-        <legend>{t('costs.groupBy')}</legend>
-        {GROUPS.map((g) => (
-          <label key={g}>
-            <input
-              type="radio"
-              name={groupName}
-              value={g}
-              checked={group === g}
-              onChange={() => setGroup(g)}
-            />
-            <span>{t(`costs.group.${g}` as StringKey)}</span>
-          </label>
-        ))}
-      </fieldset>
+      <ToggleGroup
+        label={t('costs.groupBy')}
+        value={group}
+        onChange={setGroup}
+        options={GROUPS.map((g) => ({ value: g, label: t(`costs.group.${g}` as StringKey) }))}
+      />
 
       {costs.loading && !costs.data ? (
         <LoadingState />
@@ -94,7 +85,7 @@ export function CostsWidget({ refreshKey }: { refreshKey: number }) {
           <p className="muted small">{t('costs.note')}</p>
         </>
       )}
-    </Widget>
+    </Card>
   );
 }
 

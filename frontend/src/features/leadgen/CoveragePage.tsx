@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react';
 import { useApi } from '../../api/context.js';
+import { SectionTitle } from '../../components/shared/SectionTitle.js';
 import { EmptyState, ErrorState, LoadingState } from '../../components/states.js';
-import { Widget } from '../../components/Widget.js';
+import { Card } from '../../components/shared/Card.js';
 import { useT } from '../../i18n/index.js';
 import { formatDateTime } from '../../lib/format.js';
 import { useResource } from '../../lib/useResource.js';
@@ -28,7 +29,7 @@ export function CoveragePage() {
 
   return (
     <main id="main" className="page">
-      <h1>{t('side.coverage')}</h1>
+      <SectionTitle level={1}>{t('side.coverage')}</SectionTitle>
       {planning && (
         <div className="start-panel">
           <div className="start-panel-bar">
@@ -69,7 +70,7 @@ function HistoryWidget({ picked, refreshKey }: { picked: Picked | null; refreshK
   const sectorName = coverage.data?.sectors.find((s) => s.id === sectorId)?.name ?? sectorId;
 
   return (
-    <Widget title={t('history.title')}>
+    <Card title={t('history.title')}>
       {picked === null ? (
         <p className="muted">{t('history.pick')}</p>
       ) : runs.error !== null && !runs.data ? (
@@ -107,6 +108,6 @@ function HistoryWidget({ picked, refreshKey }: { picked: Picked | null; refreshK
           )}
         </>
       )}
-    </Widget>
+    </Card>
   );
 }

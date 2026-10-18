@@ -155,9 +155,10 @@ describe('Lead Gen sidebar and pages', () => {
   it('toggles the matrix fullscreen', async () => {
     renderApp(fakeServer({ ...signedIn, 'GET /api/coverage': coverage }), '/leadgen/coverage');
     const matrix = await screen.findByRole('region', { name: 'Coverage by sector' });
-    await userEvent.click(within(matrix).getByRole('button', { name: 'Fullscreen' }));
-    expect(matrix).toHaveClass('widget-fullscreen');
-    await userEvent.click(within(matrix).getByRole('button', { name: 'Exit fullscreen' }));
-    expect(matrix).not.toHaveClass('widget-fullscreen');
+    await userEvent.click(await within(matrix).findByRole('radio', { name: 'Fullscreen' }));
+    const view = matrix.querySelector('.matrix-view')!;
+    expect(view).toHaveClass('is-fullscreen');
+    await userEvent.click(within(matrix).getByRole('radio', { name: 'Normal' }));
+    expect(view).not.toHaveClass('is-fullscreen');
   });
 });

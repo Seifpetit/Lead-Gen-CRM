@@ -1,7 +1,10 @@
 import { useId, type ReactNode } from 'react';
 
-/** A titled dashboard panel. The heading names the region for screen readers. */
-export function Widget({
+/**
+ * The one container for every dashboard widget: a titled panel with an optional action area
+ * next to the title. The heading names the region for screen readers.
+ */
+export function Card({
   title,
   actions,
   className = '',
@@ -11,7 +14,7 @@ export function Widget({
   title: string;
   actions?: ReactNode;
   className?: string;
-  /** Element id, so other widgets can scroll here. */
+  /** Element id, so other parts of the page can scroll here. */
   anchor?: string;
   children: ReactNode;
 }) {
