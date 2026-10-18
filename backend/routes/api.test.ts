@@ -228,6 +228,7 @@ const CASES: RouteCase[] = [
 ];
 /** Public routes: sign-in (tested in auth.test.ts) and the signed webhook (below). */
 const PUBLIC = [
+  'GET /api/auth/config',
   'POST /api/auth/login',
   'POST /api/auth/signup',
   'POST /api/auth/logout',
@@ -1143,7 +1144,7 @@ describe('POST /api/webhooks/apify', () => {
     for (const payload of [
       body(alice.id, step.id, 'a-different-secret'),
       { ...body(alice.id, step.id), signature: 'f'.repeat(64) },
-      { ...body(alice.id, step.id), stepId: step.id.replace(/.$/, '0') },
+      { ...body(alice.id, step.id), stepId: step.id.replace(/.$/, (c) => (c === '0' ? '1' : '0')) },
       { userId: alice.id, stepId: step.id },
       { ...body(alice.id, step.id), signature: 12345 },
       'just text',

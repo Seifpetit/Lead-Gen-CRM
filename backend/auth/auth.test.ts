@@ -201,6 +201,12 @@ describe('sign-up', () => {
   const signup = (payload: object) =>
     app.inject({ method: 'POST', url: '/api/auth/signup', payload });
 
+  it('tells the sign-in screen what sign-up allows without a session', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/auth/config' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ signupMode: 'invite', minPasswordLength: 12 });
+  });
+
   it('is invite-only by default', async () => {
     expect((await signup({ email: 'n@example.com', password: PASSWORD })).statusCode).toBe(403);
     expect(

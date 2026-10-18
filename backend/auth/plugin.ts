@@ -1,6 +1,7 @@
 import cookie from '@fastify/cookie';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
+import type { AuthConfig } from '@lead-gen-crm/shared';
 import { z } from 'zod';
 import type { UserId } from '../data/ids.js';
 import type { AuthService } from './service.js';
@@ -106,6 +107,14 @@ async function authPlugin(app: FastifyInstance, opts: { auth: AuthService }): Pr
     await auth.logout(request.cookies[SESSION_COOKIE]);
     clearSessionCookie(reply);
     return reply.code(204).send();
+  });
+
+  // Public: the sign-in screen needs it before there is a session.
+  app.get('/api/auth/config', { config: { public: true } }, async (): Promise<AuthConfig> => {
+    return {
+      signupMode: auth.policy.signupMode,
+      minPasswordLength: auth.policy.minPasswordLength,
+    };
   });
 
   app.get('/api/auth/me', async (request) => currentUser(request));

@@ -9,5 +9,7 @@ export default defineConfig({
       '@lead-gen-crm/shared': fileURLToPath(new URL('../shared/src/index.ts', import.meta.url)),
     },
   },
-  server: { proxy: { '/api': 'http://localhost:3000' } },
+  // The API checks that a request's Origin matches its Host (CSRF), so the proxy must pass the
+  // browser's Host through (changeOrigin: false) instead of rewriting it to the backend's.
+  server: { proxy: { '/api': { target: 'http://localhost:3000', changeOrigin: false } } },
 });

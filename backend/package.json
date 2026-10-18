@@ -12,7 +12,8 @@
     "db:seed": "tsx --env-file-if-exists=../.env data/cli.ts seed",
     "auth:create-user": "tsx --env-file-if-exists=../.env auth/cli.ts create-user",
     "auth:create-invite": "tsx --env-file-if-exists=../.env auth/cli.ts create-invite",
-    "fixtures:leads": "tsx test/printFixtureLeads.ts"
+    "fixtures:leads": "tsx test/printFixtureLeads.ts",
+    "e2e:server": "tsx test/e2eServer.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.3",

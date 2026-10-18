@@ -33,6 +33,7 @@ npm run db:seed             # optional placeholder demo data
 npm run auth:create-user -- you@example.com   # prompts for a password (min 12 chars)
 npm run dev:backend         # fails fast if APIFY_TOKEN or DATABASE_URL is missing
 npm run dev:frontend        # http://localhost:5173, proxies /api to :3000
+npm run e2e -w frontend     # browser smoke test with the fake Apify (see frontend/README.md)
 ```
 
 ## Checks

@@ -9,6 +9,13 @@ export interface ApiError {
   message?: string;
 }
 
+/** Public: what the sign-in screen may offer. */
+export interface AuthConfig {
+  /** invite: sign-up needs an invite code; open: anyone may sign up. */
+  signupMode: 'invite' | 'open';
+  minPasswordLength: number;
+}
+
 /** Every list endpoint takes ?limit (1 to 100, default 50) and ?offset. */
 export interface Page<T> {
   items: T[];

@@ -1,0 +1,120 @@
+import { expect, test, type Page } from '@playwright/test';
+
+// One pass through the whole journey against the fake Apify: sign in, preview and start a run,
+// watch it in the log widget, open the result, and move a lead through every CRM stage.
+
+const EMAIL = 'e2e@example.test';
+const PASSWORD = 'e2e-password-123';
+
+async function moveTo(page: Page, card: ReturnType<Page['locator']>, label: string) {
+  await card.getByLabel(/Move .* to another stage/).selectOption({ label });
+}
+
+test('sign in, run, watch, open the result, and work a lead through the CRM', async ({ page }) => {
+  // Signed out: everything leads to the sign-in screen.
+  await page.goto('/crm');
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Main' })).toHaveCount(0);
+
+  // A wrong password is refused with a clear message.
+  await page.getByLabel('Email').fill(EMAIL);
+  await page.getByLabel('Password').fill('not-the-password');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('alert')).toHaveText('Wrong email or password.');
+
+  await page.getByLabel('Password').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  // Sign-in returns to the page that was asked for: the CRM, which starts empty.
+  await expect(page.getByRole('heading', { name: 'CRM', level: 1 })).toBeVisible();
+  await expect(page.getByText('No leads in your pipeline yet')).toBeVisible();
+  const nav = page.getByRole('navigation', { name: 'Main' });
+  await expect(nav.getByRole('link')).toHaveText(['Lead Gen', 'CRM']);
+  await nav.getByRole('link', { name: 'Lead Gen' }).click();
+  await expect(page.getByRole('heading', { name: 'Lead Gen', level: 1 })).toBeVisible();
+
+  // Clean start: no runs yet.
+  const runs = page.getByRole('region', { name: 'Runs' });
+  await expect(runs.getByText('No runs yet')).toBeVisible();
+
+  // Preview: region first, nothing is spent or started.
+  const start = page.getByRole('region', { name: 'Start a run' });
+  await start.getByLabel('Region').selectOption({ label: 'Sfax' });
+  const estimate = start.getByRole('region', { name: 'Estimate' });
+  await expect(estimate.getByText('Estimated cost')).toBeVisible();
+  await expect(estimate.locator('.tag-estimate').first()).toBeVisible();
+  await expect(runs.getByText('No runs yet')).toBeVisible();
+
+  // The cap is required; then an explicit confirm.
+  const review = start.getByRole('button', { name: 'Review and start' });
+  await expect(review).toBeDisabled();
+  await start.getByLabel('Spend cap (USD)').fill('5');
+  await expect(review).toBeEnabled();
+  await review.click();
+  const dialog = page.getByRole('dialog', { name: 'Confirm this run' });
+  await expect(dialog).toContainText('It will not spend more than $5.00');
+  await dialog.getByRole('button', { name: 'Confirm and start run' }).click();
+  await expect(start.getByText(/Run started in sfax/)).toBeVisible();
+
+  // Watch it in the Apify log while it runs.
+  const log = page.getByRole('region', { name: 'Apify log' });
+  await expect(log.getByText('Run in sfax')).toBeVisible();
+  await expect(log.locator('.badge-apify-running, .badge-apify-started').first()).toBeVisible();
+  await expect(runs.getByRole('row', { name: /sfax/ }).getByText('Running')).toBeVisible();
+
+  // It finishes on its own.
+  await expect(runs.getByRole('row', { name: /sfax/ }).getByText('Finished')).toBeVisible({
+    timeout: 100_000,
+  });
+  await expect(log.locator('.badge-apify-finished').first()).toBeVisible();
+
+  // Spend shows up in the costs widget.
+  const costs = page.getByRole('region', { name: 'Costs' });
+  await expect(costs.getByRole('table')).toBeVisible();
+
+  // Open the result: people first, every field tagged.
+  await runs.getByRole('link', { name: 'Open run for sfax' }).click();
+  await expect(page.getByRole('heading', { name: 'Run in sfax' })).toBeVisible();
+  const card = page.getByRole('article').first();
+  await expect(card.getByRole('heading', { name: 'Decision-maker' })).toBeVisible();
+  await expect(card.locator('.tag-fact, .tag-estimate').first()).toBeVisible();
+  await expect(card.getByText('A score is a computed estimate')).toBeVisible();
+  const name = (await card.getByRole('heading', { level: 3 }).textContent()) ?? '';
+
+  // Into the CRM from the run.
+  await card.getByRole('button', { name: 'Confirm' }).click();
+  await expect(page.getByText('Moved to Confirmed.')).toBeVisible();
+
+  // The CRM board: the lead is in Confirmed. Walk it through every other stage.
+  await nav.getByRole('link', { name: 'CRM' }).click();
+  await page.getByRole('button', { name: /Show closed leads/ }).click();
+  const column = (title: string) => page.getByRole('region', { name: title, exact: true });
+  const cardIn = (title: string) =>
+    column(title).locator('li.card').filter({ hasText: name }).first();
+
+  await expect(cardIn('Confirmed')).toBeVisible();
+  const steps = ['Contacted (waiting)', 'Response', 'Won', 'Lost', 'Dismissed'];
+  for (const title of steps) {
+    const current = page.locator('li.card').filter({ hasText: name }).first();
+    await moveTo(page, current, title);
+    await expect(cardIn(title)).toBeVisible();
+  }
+
+  // Back to a live stage, then opt out: asks first, records the objection.
+  await moveTo(page, cardIn('Dismissed'), 'System suggested');
+  await expect(cardIn('System suggested')).toBeVisible();
+  await moveTo(page, cardIn('System suggested'), 'Opted out');
+  const optOut = page.getByRole('dialog', { name: 'Record an objection and opt out?' });
+  await optOut.getByRole('button', { name: 'Record objection and opt out' }).click();
+  await expect(optOut.getByText('Write the reason first.')).toBeVisible();
+  await optOut.getByLabel('What did they say?').fill('Asked by phone not to be contacted');
+  await optOut.getByRole('button', { name: 'Record objection and opt out' }).click();
+  await expect(optOut).toHaveCount(0);
+  await expect(cardIn('Opted out')).toBeVisible();
+  await expect(cardIn('Opted out').getByLabel(/Move .* to another stage/)).toHaveCount(0);
+
+  // Sign out ends the session.
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  await page.goto('/leadgen');
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+});
