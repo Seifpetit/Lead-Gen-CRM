@@ -8,7 +8,7 @@ import {
   recordLoginFailure,
 } from '../data/loginFailures.js';
 import { createSession, deleteSession, touchSession, type Session } from '../data/sessions.js';
-import { createUser, findUserByEmail } from '../data/users.js';
+import { createUser, deleteUserByEmail, findUserByEmail } from '../data/users.js';
 import { hashPassword, hashToken, newToken, verifyAgainstDummy, verifyPassword } from './crypto.js';
 
 const MINUTE = 60_000;
@@ -26,7 +26,13 @@ export interface AuthPolicy {
   lockoutMs: number;
   minPasswordLength: number;
   inviteTtlMs: number;
+  /** Local development shortcut: see DEV_ADMIN_LOGIN. Off unless the server was started with it. */
+  devAdminLogin: boolean;
 }
+
+/** The one reserved login the dev shortcut accepts. It is not an email address. */
+export const DEV_ADMIN_LOGIN = 'test';
+const DEV_ADMIN_PASSWORD = 'test';
 
 export const DEFAULT_POLICY: AuthPolicy = {
   signupMode: 'invite',
@@ -38,6 +44,7 @@ export const DEFAULT_POLICY: AuthPolicy = {
   lockoutMs: 15 * MINUTE,
   minPasswordLength: 12,
   inviteTtlMs: 7 * 24 * HOUR,
+  devAdminLogin: false,
 };
 
 export type LoginResult =
@@ -54,6 +61,20 @@ export class AuthService {
     readonly policy: AuthPolicy = DEFAULT_POLICY,
     private readonly now: () => Date = () => new Date(),
   ) {}
+
+  /** True only when the shortcut is on and this is the reserved login. */
+  isDevAdminLogin(email: string): boolean {
+    return this.policy.devAdminLogin && email.trim() === DEV_ADMIN_LOGIN;
+  }
+
+  /** True only when the shortcut is on and this is exactly the test/test pair. */
+  isDevAdminPair(email: string, password: string): boolean {
+    return (
+      this.policy.devAdminLogin &&
+      email.trim() === DEV_ADMIN_LOGIN &&
+      password === DEV_ADMIN_PASSWORD
+    );
+  }
 
   private async startSession(userId: UserId): Promise<{ token: string; expiresAt: Date }> {
     const now = this.now();
@@ -85,7 +106,9 @@ export class AuthService {
       }
     }
 
-    const user = await findUserByEmail(this.db, email);
+    // The reserved dev login never signs in unless the shortcut is on, even if the row remains.
+    const reserved = email.trim() === DEV_ADMIN_LOGIN && !p.devAdminLogin;
+    const user = reserved ? null : await findUserByEmail(this.db, email);
     const valid = user
       ? await verifyPassword(user.passwordHash, password)
       : await verifyAgainstDummy(password);
@@ -114,7 +137,7 @@ export class AuthService {
   }
 
   async signup(email: string, password: string, inviteCode?: string): Promise<SignupResult> {
-    if (password.length < this.policy.minPasswordLength)
+    if (password.length < this.policy.minPasswordLength && !this.isDevAdminPair(email, password))
       return { ok: false, reason: 'weak_password' };
     if (this.policy.signupMode === 'invite' && !inviteCode)
       return { ok: false, reason: 'invite_required' };
@@ -141,11 +164,16 @@ export class AuthService {
 
   /** Admin path (CLI): creates a user directly, bypassing the sign-up mode. */
   async createUserAsAdmin(email: string, password: string): Promise<UserId> {
-    if (password.length < this.policy.minPasswordLength) {
+    if (password.length < this.policy.minPasswordLength && !this.isDevAdminPair(email, password)) {
       throw new Error(`Password must be at least ${this.policy.minPasswordLength} characters`);
     }
     const user = await createUser(this.db, { email, passwordHash: await hashPassword(password) });
     return user.id;
+  }
+
+  /** Admin path (CLI): removes the dev shortcut's account. Its sessions go with it. */
+  async removeDevAdminUser(): Promise<boolean> {
+    return deleteUserByEmail(this.db, DEV_ADMIN_LOGIN);
   }
 
   /** Admin path (CLI): returns a new one-time invite code. Only its hash is stored. */

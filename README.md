@@ -31,8 +31,8 @@ npm run db:up               # local Postgres on :5432
 npm run db:migrate          # create the schema and seed regions
 npm run db:seed             # optional placeholder demo data
 npm run auth:create-user -- you@example.com   # prompts for a password (min 12 chars)
-npm run dev:backend         # fails fast if APIFY_TOKEN or DATABASE_URL is missing
-npm run dev:frontend        # http://localhost:5173, proxies /api to :3000
+npm run dev:backend         # builds shared/ first; fails fast if APIFY_TOKEN or DATABASE_URL is missing
+npm run dev:frontend        # builds shared/ first; http://localhost:5173, proxies /api to :3000
 npm run e2e -w frontend     # browser smoke test with the fake Apify (see frontend/README.md)
 ```
 
@@ -84,6 +84,14 @@ lint, typecheck and tests on every pull request and push to main.
 - **Sign-up** is invite-only by default (`SIGNUP_MODE=invite`): create users with
   `npm run auth:create-user -- <email>` or one-time codes with `npm run auth:create-invite`
   (7-day expiry, stored hashed). `SIGNUP_MODE=open` lets anyone sign up.
+- **Local dev shortcut** (`DEV_ADMIN_LOGIN=true`, default off): accepts the login `test` / `test`
+  on sign-in, sign-up and `npm run auth:create-user -- test`, skipping only the email-format and
+  12-character checks for that exact pair. It is stored like any user (argon2, same sessions,
+  rate limit and lockout), and sign-up still needs an invite code in invite mode. The server
+  refuses to start with it on if `NODE_ENV=production`, `HOST` is not `127.0.0.1`/`::1`, or
+  `PUBLIC_URL` is not a localhost URL, and logs a warning when it is on. To switch it off: set
+  `DEV_ADMIN_LOGIN=false` and run `npm run auth:disable-dev-user` (deletes the `test` user and its
+  sessions). While the flag is off, the `test` login is refused even if the row still exists.
 - **Logs** redact cookies, `Set-Cookie`, authorization headers and any `password`, `token` or
   `inviteCode` field; request bodies are never logged.
 - **CSRF:** `SameSite=Strict` cookies plus JSON-only endpoints. Behind a reverse proxy, enable

@@ -30,11 +30,24 @@ export function currentUser(request: FastifyRequest): AuthUser {
   return request.user;
 }
 
+// The email format is checked in the handlers so the dev shortcut's `test` login can pass.
 const Credentials = z.object({
-  email: z.string().trim().email().max(320),
+  email: z.string().trim().min(1).max(320),
   password: z.string().min(1).max(1024),
 });
 const Signup = Credentials.extend({ inviteCode: z.string().min(1).max(200).optional() });
+
+const EmailFormat = z.string().email();
+
+/** Sign-up: email-shaped, or the dev shortcut's exact test/test pair. */
+function validSignup(auth: AuthService, email: string, password: string): boolean {
+  return EmailFormat.safeParse(email).success || auth.isDevAdminPair(email, password);
+}
+
+/** Sign-in: email-shaped, or the reserved dev login (any password; it is checked as usual). */
+function validSignIn(auth: AuthService, email: string): boolean {
+  return EmailFormat.safeParse(email).success || auth.isDevAdminLogin(email);
+}
 
 function setSessionCookie(reply: FastifyReply, token: string, expiresAt: Date): void {
   reply.setCookie(SESSION_COOKIE, token, {
@@ -73,7 +86,9 @@ async function authPlugin(app: FastifyInstance, opts: { auth: AuthService }): Pr
 
   app.post('/api/auth/login', { config: { public: true } }, async (request, reply) => {
     const body = Credentials.safeParse(request.body);
-    if (!body.success) return reply.code(400).send({ error: 'invalid_request' });
+    if (!body.success || !validSignIn(auth, body.data.email)) {
+      return reply.code(400).send({ error: 'invalid_request' });
+    }
     const result = await auth.login(body.data.email, body.data.password, request.ip);
     if (!result.ok && result.reason === 'locked') {
       reply.header('retry-after', Math.ceil((result.retryAfterMs ?? 0) / 1000));
@@ -86,7 +101,9 @@ async function authPlugin(app: FastifyInstance, opts: { auth: AuthService }): Pr
 
   app.post('/api/auth/signup', { config: { public: true } }, async (request, reply) => {
     const body = Signup.safeParse(request.body);
-    if (!body.success) return reply.code(400).send({ error: 'invalid_request' });
+    if (!body.success || !validSignup(auth, body.data.email, body.data.password)) {
+      return reply.code(400).send({ error: 'invalid_request' });
+    }
     const { email, password, inviteCode } = body.data;
     const result = await auth.signup(email, password, inviteCode);
     if (!result.ok) {
@@ -114,6 +131,7 @@ async function authPlugin(app: FastifyInstance, opts: { auth: AuthService }): Pr
     return {
       signupMode: auth.policy.signupMode,
       minPasswordLength: auth.policy.minPasswordLength,
+      devAdminLogin: auth.policy.devAdminLogin,
     };
   });
 

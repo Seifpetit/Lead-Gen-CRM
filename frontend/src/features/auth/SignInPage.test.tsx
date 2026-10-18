@@ -7,7 +7,9 @@ import { renderApp } from '../../test/render.js';
 
 const signedOut: Record<string, Handler> = {
   'GET /api/auth/me': { status: 401, body: { error: 'unauthenticated' } },
-  'GET /api/auth/config': { body: { signupMode: 'invite', minPasswordLength: 12 } },
+  'GET /api/auth/config': {
+    body: { signupMode: 'invite', minPasswordLength: 12, devAdminLogin: false },
+  },
 };
 
 async function fill(email: string, password: string) {
@@ -66,7 +68,9 @@ describe('Sign in', () => {
     let signedIn = false;
     const server = fakeServer({
       ...dashboardRoutes(),
-      'GET /api/auth/config': { body: { signupMode: 'invite', minPasswordLength: 12 } },
+      'GET /api/auth/config': {
+        body: { signupMode: 'invite', minPasswordLength: 12, devAdminLogin: false },
+      },
       'GET /api/auth/me': () =>
         signedIn
           ? { id: 'u1', email: 'a@example.test' }
@@ -115,12 +119,41 @@ describe('Sign in', () => {
   it('shows a plain sign-up form, with no invite code, when sign-up is open', async () => {
     const server = fakeServer({
       ...signedOut,
-      'GET /api/auth/config': { body: { signupMode: 'open', minPasswordLength: 12 } },
+      'GET /api/auth/config': {
+        body: { signupMode: 'open', minPasswordLength: 12, devAdminLogin: false },
+      },
     });
     renderApp(server, '/signin');
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Create an account' }));
     await waitFor(() => expect(screen.getByText('At least 12 characters.')).toBeInTheDocument());
     expect(screen.queryByLabelText('Invite code')).not.toBeInTheDocument();
+  });
+
+  it('accepts test / test in both forms when the server enables the dev login', async () => {
+    let signedIn = false;
+    const server = fakeServer({
+      ...dashboardRoutes(),
+      'GET /api/auth/config': {
+        body: { signupMode: 'open', minPasswordLength: 12, devAdminLogin: true },
+      },
+      'GET /api/auth/me': () =>
+        signedIn
+          ? { id: 'u1', email: 'test' }
+          : { status: 401, body: { error: 'unauthenticated' } },
+      'POST /api/auth/login': () => {
+        signedIn = true;
+        return { status: 204 };
+      },
+    });
+    renderApp(server, '/signin');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Create an account' }));
+    expect(screen.getByLabelText('Email')).toHaveAttribute('type', 'text');
+    expect(screen.getByLabelText('Password')).not.toHaveAttribute('minlength');
+    await user.click(screen.getByRole('button', { name: 'Back to sign in' }));
+    await fill('test', 'test');
+    expect(await screen.findByRole('heading', { name: 'Lead Gen', level: 1 })).toBeInTheDocument();
+    expect(server.to('POST /api/auth/login')[0]!.body).toEqual({ email: 'test', password: 'test' });
   });
 });

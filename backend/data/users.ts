@@ -49,3 +49,11 @@ export async function getUser(db: Queryable, userId: UserId): Promise<User | nul
   const { rows } = await db.query<Row>('SELECT * FROM users WHERE id = $1', [userId]);
   return rows[0] ? toUser(rows[0]) : null;
 }
+
+/** Removes a user; sessions, leads and other owned rows cascade. True if a row was deleted. */
+export async function deleteUserByEmail(db: Queryable, email: string): Promise<boolean> {
+  const { rowCount } = await db.query('DELETE FROM users WHERE lower(email) = lower($1)', [
+    email.trim(),
+  ]);
+  return (rowCount ?? 0) > 0;
+}

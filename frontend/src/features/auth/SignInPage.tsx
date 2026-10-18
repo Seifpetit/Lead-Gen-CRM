@@ -43,6 +43,7 @@ export function SignInPage() {
   }
 
   const signup = config.data?.signupMode ?? null; // unknown until loaded: offer nothing
+  const devLogin = config.data?.devAdminLogin === true; // local dev shortcut: no email/length block
 
   return (
     <main id="main" className="auth-page">
@@ -50,11 +51,12 @@ export function SignInPage() {
         <h1>{mode === 'signin' ? t('auth.title') : t('auth.signup.title')}</h1>
         <p className="muted">{t('auth.subtitle')}</p>
         {mode === 'signin' ? (
-          <SignInForm />
+          <SignInForm devLogin={devLogin} />
         ) : (
           <SignUpForm
             invite={signup === 'invite'}
             minLength={config.data?.minPasswordLength ?? 12}
+            devLogin={devLogin}
           />
         )}
         {signup !== null && (
@@ -75,7 +77,7 @@ export function SignInPage() {
   );
 }
 
-function SignInForm() {
+function SignInForm({ devLogin }: { devLogin: boolean }) {
   const t = useT();
   const auth = useAuth();
   const [email, setEmail] = useState('');
@@ -107,7 +109,7 @@ function SignInForm() {
       <label className="form-field">
         <span>{t('auth.email')}</span>
         <input
-          type="email"
+          type={devLogin ? 'text' : 'email'}
           name="email"
           autoComplete="username"
           required
@@ -133,7 +135,15 @@ function SignInForm() {
   );
 }
 
-function SignUpForm({ invite, minLength }: { invite: boolean; minLength: number }) {
+function SignUpForm({
+  invite,
+  minLength,
+  devLogin,
+}: {
+  invite: boolean;
+  minLength: number;
+  devLogin: boolean;
+}) {
   const t = useT();
   const auth = useAuth();
   const [email, setEmail] = useState('');
@@ -172,7 +182,7 @@ function SignUpForm({ invite, minLength }: { invite: boolean; minLength: number 
       <label className="form-field">
         <span>{t('auth.email')}</span>
         <input
-          type="email"
+          type={devLogin ? 'text' : 'email'}
           name="email"
           autoComplete="username"
           required
@@ -188,7 +198,7 @@ function SignUpForm({ invite, minLength }: { invite: boolean; minLength: number 
           name="password"
           autoComplete="new-password"
           required
-          minLength={minLength}
+          minLength={devLogin ? undefined : minLength}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           aria-describedby="password-hint"
