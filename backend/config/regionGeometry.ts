@@ -5,7 +5,8 @@ import type { RegionGeometry } from '../data/regions.js';
 
 /** Committed bounds and simplified outlines per governorate id, ready for `upsertRegions`. */
 export function committedRegionGeometry(): Record<string, RegionGeometry> {
-  const outlines = outlinesFile.outlines as Record<string, Outline>;
+  // The JSON is typed by shape (arrays of number arrays); the fetch script writes valid outlines.
+  const outlines = outlinesFile.outlines as unknown as Record<string, Outline>;
   const out: Record<string, RegionGeometry> = {};
   for (const id of new Set([...Object.keys(REGION_BOUNDS), ...Object.keys(outlines)])) {
     const bounds: Bounds | undefined = (REGION_BOUNDS as Record<string, Bounds>)[id];

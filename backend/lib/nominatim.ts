@@ -12,6 +12,8 @@ export interface NominatimResult {
   display_name?: string;
   boundingbox?: [string, string, string, string];
   geojson?: { type: string; coordinates: unknown };
+  /** Present when the request asked for extratags=1. */
+  extratags?: { admin_level?: string };
 }
 
 export interface GovernorateGeometry {
@@ -29,13 +31,18 @@ export function parseGovernorate(
   results: readonly NominatimResult[],
   toleranceDeg: number,
 ): GovernorateGeometry {
-  const hit = results.find(
+  const candidates = results.filter(
     (r) =>
       r.osm_type === 'relation' &&
       (r.class ?? r.category) === 'boundary' &&
       r.geojson &&
       (r.geojson.type === 'Polygon' || r.geojson.type === 'MultiPolygon'),
   );
+  // A governorate is OSM admin_level 4. When the response says levels, a town or district of
+  // the same name must not be taken for it.
+  const known = candidates.filter((r) => r.extratags?.admin_level !== undefined);
+  const hit =
+    known.length > 0 ? known.find((r) => r.extratags?.admin_level === '4') : candidates[0];
   if (!hit?.geojson) throw new Error('no administrative boundary polygon in the response');
   const full = hit.geojson as unknown as Outline;
   const outline = simplifyOutline(full, toleranceDeg);

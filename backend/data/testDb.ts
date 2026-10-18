@@ -23,7 +23,8 @@ export async function openTestDb(): Promise<Db> {
   // Fresh schema for each test file.
   await migrateDown(db, Infinity);
   await migrateUp(db);
-  await seedReference(db);
+  // No committed geometry: tests set the bounds they need, so they don't depend on real data.
+  await seedReference(db, {});
   return db;
 }
 

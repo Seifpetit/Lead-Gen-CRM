@@ -43,4 +43,20 @@ describe('parseGovernorate', () => {
   ] as [string, NominatimResult[]][])('refuses %s', (_name, results) => {
     expect(() => parseGovernorate(results, 0.002)).toThrow();
   });
+
+  it('takes the admin_level 4 relation, not a town of the same name', () => {
+    const town: NominatimResult = {
+      ...sfax,
+      osm_id: 1,
+      boundingbox: ['34.5', '34.6', '10.5', '10.6'],
+      extratags: { admin_level: '8' },
+    };
+    const governorate: NominatimResult = { ...sfax, osm_id: 2, extratags: { admin_level: '4' } };
+    expect(parseGovernorate([town, governorate], 0.001).osmRef).toContain('2');
+  });
+
+  it('refuses a response whose boundaries are all below governorate level', () => {
+    const town: NominatimResult = { ...sfax, extratags: { admin_level: '8' } };
+    expect(() => parseGovernorate([town], 0.001)).toThrow(/no administrative boundary/);
+  });
 });
