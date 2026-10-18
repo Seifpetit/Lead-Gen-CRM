@@ -28,6 +28,7 @@ const apify = new ApifyClient(env.APIFY_TOKEN);
 // The Claude classifier exists only when a key is set; without one, rules decide alone.
 const classifier = createClassifier(env);
 const runner = new Orchestrator({
+  log: (data, message) => app.log.info(data, message),
   db,
   ...(classifier ? { companyClassifier: classifier, titleClassifier: classifier } : {}),
   discovery: new GoogleMapsApifyDiscovery(apify),

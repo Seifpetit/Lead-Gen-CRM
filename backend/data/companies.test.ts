@@ -52,6 +52,40 @@ describe('upsertCompany dedupe', () => {
     expect(b.company.name).toBe('TBS Logistique');
   });
 
+  it('matches on a normalized phone before the website or the name', async () => {
+    const a = await upsertCompany(
+      db,
+      user,
+      company({ phone: fact('74 123 456'), website: fact('https://one.tn') }),
+    );
+    // Different name, different website, same number written another way.
+    const b = await upsertCompany(
+      db,
+      user,
+      company({
+        name: 'Entirely Different Name',
+        phone: fact('+216 74-123-456'),
+        website: fact('https://two.tn'),
+      }),
+    );
+    expect(b).toMatchObject({ created: false, matchedBy: 'phone' });
+    expect(b.company.id).toBe(a.company.id);
+    expect(b.company.phoneE164).toBe('+21674123456');
+  });
+
+  it('stores the E.164 form and flags a number from another country', async () => {
+    const tn = await upsertCompany(db, user, company({ phone: fact('98 123 456') }));
+    expect(tn.company).toMatchObject({ phoneE164: '+21698123456', phoneForeign: false });
+    const fr = await upsertCompany(
+      db,
+      user,
+      company({ name: 'Maison Mère', phone: fact('+33 1 23 45 67 89') }),
+    );
+    expect(fr.company).toMatchObject({ phoneE164: '+33123456789', phoneForeign: true });
+    const none = await upsertCompany(db, user, company({ name: 'No Phone Co' }));
+    expect(none.company).toMatchObject({ phoneE164: null, phoneForeign: false });
+  });
+
   it('matches on normalized domain next', async () => {
     const a = await upsertCompany(db, user, company({ website: fact('https://www.tbs.tn/') }));
     const b = await upsertCompany(

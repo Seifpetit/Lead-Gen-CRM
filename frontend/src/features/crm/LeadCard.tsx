@@ -3,8 +3,8 @@ import { Link } from 'react-router';
 import { Field, KindTag } from '../../components/Evidence.js';
 import { ChannelField, companyNameField, personNameEvidence } from '../../components/LeadFields.js';
 import { useT } from '../../i18n/index.js';
-import { evidenceFor } from '../../lib/format.js';
-import { bestChannel } from '../../lib/lead.js';
+import { evidenceFor, safeHref } from '../../lib/format.js';
+import { bestChannel, mapsSourceUrl } from '../../lib/lead.js';
 import { LeadActions } from './LeadActions.js';
 
 /** A pipeline card: the person and best channel first, the company, the score, the controls. */
@@ -18,6 +18,7 @@ export function LeadCard({
   const t = useT();
   const { contact, company } = lead;
   const name = contact?.fullName ?? company.name;
+  const mapsUrl = mapsSourceUrl(company);
   return (
     <li className="card" aria-label={name}>
       <dl className="fields">
@@ -43,6 +44,16 @@ export function LeadCard({
           value={company.name}
           evidence={companyNameField(company)}
         />
+        {mapsUrl && (
+          <div className="field">
+            <dt>{t('lead.company.source')}</dt>
+            <dd>
+              <a href={safeHref(mapsUrl) ?? undefined} target="_blank" rel="noreferrer noopener">
+                {t('lead.company.source.maps')}
+              </a>
+            </dd>
+          </div>
+        )}
       </dl>
       <p className="card-meta">
         <span>

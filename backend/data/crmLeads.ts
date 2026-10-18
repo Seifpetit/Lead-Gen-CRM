@@ -1,4 +1,4 @@
-import type { CrmStage, ScoreBreakdown } from '@lead-gen-crm/shared';
+import type { CrmStage, ScoreBreakdown, ScoreReason } from '@lead-gen-crm/shared';
 import type { UserId } from './ids.js';
 import { addSuppression, type SuppressionKind } from './suppressionList.js';
 import { withTransaction, type Queryable } from './db.js';
@@ -58,12 +58,14 @@ export async function upsertLead(
     companyId: string;
     contactId: string | null;
     score: Omit<ScoreBreakdown, 'total'>;
+    /** Why each score point was given; stored with the score and refreshed with it. */
+    scoreReasons?: ScoreReason[];
   },
 ): Promise<{ lead: CrmLead; created: boolean } | null> {
   const { rows } = await db.query<Row & { created: boolean }>(
     `INSERT INTO crm_leads (user_id, run_id, company_id, contact_id,
-                            score_company_fit, score_contact_fit, score_reachability)
-     SELECT $1, $2, c.id, $4, $5, $6, $7 FROM companies c
+                            score_company_fit, score_contact_fit, score_reachability, score_reasons)
+     SELECT $1, $2, c.id, $4, $5, $6, $7, $8::jsonb FROM companies c
       WHERE c.user_id = $1 AND c.id = $3
         AND ($4::uuid IS NULL OR EXISTS
               (SELECT 1 FROM contacts p WHERE p.user_id = $1 AND p.id = $4 AND p.company_id = c.id))
@@ -71,6 +73,7 @@ export async function upsertLead(
        score_company_fit = EXCLUDED.score_company_fit,
        score_contact_fit = EXCLUDED.score_contact_fit,
        score_reachability = EXCLUDED.score_reachability,
+       score_reasons = EXCLUDED.score_reasons,
        updated_at = now()
      RETURNING *, (xmax = 0) AS created`,
     [
@@ -81,6 +84,7 @@ export async function upsertLead(
       input.score.companyFit,
       input.score.contactFit,
       input.score.reachability,
+      JSON.stringify(input.scoreReasons ?? []),
     ],
   );
   const r = rows[0];

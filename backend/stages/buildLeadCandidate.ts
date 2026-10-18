@@ -2,7 +2,7 @@ import type { RoleClass } from '@lead-gen-crm/shared';
 import type { Sourced } from '../lib/sourced.js';
 import type { EmailStatus, FoundEmail, FoundPerson } from '../providers/types.js';
 import type { TitleMatch } from './matchTitle.js';
-import { normalizePhone, type PhoneLine } from './normalizePhone.js';
+import { classifyPhone, type PhoneLine } from './normalizePhone.js';
 import type { Qualification } from './qualify.js';
 import type { RoleVerification } from './verifyCurrentRole.js';
 
@@ -34,6 +34,8 @@ export interface Channel {
   value: Sourced<string>;
   quality: ChannelQuality;
   phoneLine?: PhoneLine;
+  /** A phone number with a country code other than +216; flagged, never silently used. */
+  foreign?: boolean;
   emailStatus?: EmailStatus;
 }
 
@@ -99,25 +101,40 @@ function personChannel(p: PersonForLead): Channel {
 const channelRank = (c: Channel) =>
   c.type === 'email' ? QUALITY_RANK[c.quality] : c.type === 'phone' ? 1.5 : 4;
 
-/** Company phone (mobile before landline) first, then a website email. */
+/**
+ * Company phone (Tunisian mobile before landline) first, then a website email, then a phone
+ * number from another country, flagged as foreign because it is likely a head office or an
+ * unrelated listing.
+ */
 export function bestCompanyChannel(company: CompanyForLead): Channel | null {
   const phones = company.phones
-    .map((s) => ({ s, n: normalizePhone(s.value) }))
+    .map((s) => ({ s, n: classifyPhone(s.value) }))
     .filter((x): x is { s: Sourced<string>; n: NonNullable<typeof x.n> } => x.n !== null)
-    .filter((x) => x.n.line !== 'special')
-    .sort((a, b) => Number(a.n.line !== 'mobile') - Number(b.n.line !== 'mobile'));
-  const phone = phones[0];
-  if (phone) {
+    .filter((x) => x.n.line !== 'special');
+  const local = phones
+    .filter((x) => !x.n.foreign)
+    .sort((a, b) => Number(a.n.line !== 'mobile') - Number(b.n.line !== 'mobile'))[0];
+  if (local) {
     return {
       type: 'phone',
       owner: 'company',
-      value: { ...phone.s, value: phone.n.e164 },
+      value: { ...local.s, value: local.n.e164 },
       quality: 'listed',
-      phoneLine: phone.n.line,
+      ...(local.n.line ? { phoneLine: local.n.line } : {}),
     };
   }
   const email = company.emails[0];
   if (email) return { type: 'email', owner: 'company', value: email, quality: 'listed' };
+  const foreign = phones.find((x) => x.n.foreign);
+  if (foreign) {
+    return {
+      type: 'phone',
+      owner: 'company',
+      value: { ...foreign.s, value: foreign.n.e164 },
+      quality: 'listed',
+      foreign: true,
+    };
+  }
   return null;
 }
 

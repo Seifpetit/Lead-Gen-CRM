@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DiscoveredPlace } from '../providers/types.js';
 import { FakeCompanyClassifier } from '../test/fakeClassifiers.js';
 import { FIXED_NOW } from '../test/fixtures.js';
-import { qualify, qualifyByRules } from './qualify.js';
+import { isReachable, qualify, qualifyByRules } from './qualify.js';
 
 const src = 'https://www.google.com/maps/place/?q=place_id:x';
 const s = (value: string) => ({
@@ -128,5 +128,36 @@ describe('import and export sector', () => {
         reasons: [expect.stringContaining('freight carrier or forwarder')],
       });
     }
+  });
+});
+
+describe('a name that matches two sectors', () => {
+  it('prefers the sector the category field matches, over the query sector and the config order', () => {
+    // "textile" and "huilerie" are both in the name; Google files the place as an oil mill.
+    const p = place('Textile Huilerie Fixture', 'Huilerie');
+    for (const querySector of [null, 'textile', 'olive-oil']) {
+      expect(qualifyByRules(p, querySector)).toMatchObject({
+        verdict: 'qualified',
+        sectorId: 'olive-oil',
+      });
+    }
+    const q = qualifyByRules(p, 'textile');
+    expect(q?.reasons.join(' ')).toContain('also matched');
+  });
+
+  it('falls back to the query sector when the category settles nothing', () => {
+    const p = place('Textile Huilerie Fixture', 'Société');
+    expect(qualifyByRules(p, 'olive-oil')).toMatchObject({ sectorId: 'olive-oil' });
+    expect(qualifyByRules(p, 'textile')).toMatchObject({ sectorId: 'textile' });
+  });
+});
+
+describe('isReachable', () => {
+  it('needs a phone, a website or an email', () => {
+    expect(isReachable(place('Fixture', null))).toBe(false);
+    expect(isReachable(place('Fixture', null, { phones: [s('  ')] }))).toBe(false);
+    expect(isReachable(place('Fixture', null, { phones: [s('74 123 456')] }))).toBe(true);
+    expect(isReachable(place('Fixture', null, { website: s('https://x.tn') }))).toBe(true);
+    expect(isReachable(place('Fixture', null, { emails: [s('a@x.tn')] }))).toBe(true);
   });
 });

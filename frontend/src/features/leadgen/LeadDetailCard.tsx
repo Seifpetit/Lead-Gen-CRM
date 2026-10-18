@@ -8,8 +8,8 @@ import {
 } from '../../components/LeadFields.js';
 import { Field, KindTag } from '../../components/Evidence.js';
 import { useT } from '../../i18n/index.js';
-import { evidenceFor } from '../../lib/format.js';
-import { bestChannel, companyChannels } from '../../lib/lead.js';
+import { evidenceFor, safeHref } from '../../lib/format.js';
+import { bestChannel, companyChannels, mapsSourceUrl } from '../../lib/lead.js';
 import { LeadActions } from '../crm/LeadActions.js';
 
 const MAX = { companyFit: 50, contactFit: 30, reachability: 20 } as const;
@@ -27,6 +27,7 @@ export function LeadDetailCard({
   const channel = bestChannel(contact);
   const fallback = companyChannels(company);
   const heading = contact?.fullName ?? company.name;
+  const mapsUrl = mapsSourceUrl(company);
 
   return (
     <article className="lead-card" aria-label={heading}>
@@ -101,6 +102,21 @@ export function LeadDetailCard({
             evidence={evidenceFor(company.evidence, 'website', company.website)}
             display={company.website ? <LinkValue url={company.website} /> : null}
           />
+          {mapsUrl && (
+            <div className="field">
+              <dt>{t('lead.company.source')}</dt>
+              <dd>
+                <a href={safeHref(mapsUrl) ?? undefined} target="_blank" rel="noreferrer noopener">
+                  {t('lead.company.source.maps')}
+                </a>
+              </dd>
+            </div>
+          )}
+          {company.phoneForeign && company.phoneE164 && (
+            <p className="muted small">
+              {t('lead.company.phone.foreign', { phone: company.phoneE164 })}
+            </p>
+          )}
           {fallback.length === 0 ? (
             <Field label={t('lead.company.phone')} value={null} evidence={null} />
           ) : (
@@ -127,6 +143,22 @@ export function LeadDetailCard({
           ))}
         </ul>
         <p className="muted small">{t('lead.score.estimate')}</p>
+        <h5>{t('lead.score.reasons')}</h5>
+        {lead.scoreReasons && lead.scoreReasons.length > 0 ? (
+          <ul className="score-reasons">
+            {lead.scoreReasons.map((r, i) => (
+              <li key={i}>
+                {t('lead.score.reason', {
+                  points: r.points > 0 ? `+${r.points}` : String(r.points),
+                  reason: r.reason,
+                })}{' '}
+                <KindTag kind={r.kind} />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted small">{t('lead.score.reasons.none')}</p>
+        )}
         <details>
           <summary>{t('lead.evidence')}</summary>
           {contact && (

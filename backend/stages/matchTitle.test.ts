@@ -20,6 +20,13 @@ describe('matchTitle', () => {
     ['Logistics & Transport Manager', 'transport', 'dictionary', 'manager'],
     ['Logistics & Warehouse Lead', 'logistics', 'keywords', 'manager'],
     ['Directeur des Expéditions', 'transport', 'keywords', 'head'],
+    // Filler words between the role and its field.
+    ['Responsable des achats', 'purchasing', 'dictionary', 'manager'],
+    ['Responsable de la logistique', 'logistics', 'dictionary', 'manager'],
+    ['Responsable du transport', 'transport', 'dictionary', 'manager'],
+    ['Directeur de la Supply Chain', 'supply_chain', 'dictionary', 'head'],
+    ["Responsable de l'approvisionnement", 'purchasing', 'dictionary', 'manager'],
+    ['Head of the Logistics Department', 'logistics', 'dictionary', 'head'],
   ])('%s -> %s (%s)', (title, roleClass, method, seniority) => {
     const m = matchTitleByRules(title);
     expect(m).toMatchObject({ roleClass, method, seniority, kind: 'fact' });

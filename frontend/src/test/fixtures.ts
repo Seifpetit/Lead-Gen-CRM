@@ -113,6 +113,7 @@ export const funnel = (over: Partial<RunFunnel> = {}): RunFunnel => ({
   qualified: 12,
   rejected: 20,
   review: 4,
+  unreachable: 3,
   peopleFound: 9,
   enriched: 8,
   scored: 8,

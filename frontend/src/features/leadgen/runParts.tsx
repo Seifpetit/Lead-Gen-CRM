@@ -18,6 +18,7 @@ const FUNNEL_ORDER: (keyof RunFunnel)[] = [
   'qualified',
   'rejected',
   'review',
+  'unreachable',
   'peopleFound',
   'enriched',
   'scored',
