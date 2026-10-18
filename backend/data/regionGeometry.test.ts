@@ -30,6 +30,11 @@ const TRIANGLE: Outline = {
 
 describe('committed region geometry', () => {
   it('is applied by the seed, and the outline falls back to the bounds without one', async () => {
+    // Start from regions with no geometry, whatever the committed files hold.
+    await db.query(
+      `UPDATE regions SET south = NULL, west = NULL, north = NULL, east = NULL,
+         outline = NULL, bounds_source = NULL WHERE id IN ('tunis', 'kebili')`,
+    );
     await upsertRegions(db, TUNISIAN_GOVERNORATES, 'TN', { tunis: { bounds: BOX } });
     expect(await getRegionBounds(db, 'tunis')).toEqual(BOX);
     expect((await getRegionOutline(db, 'tunis'))?.type).toBe('Polygon');

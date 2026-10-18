@@ -10,8 +10,11 @@ import type { Sourced } from './sourced.js';
 import { createUser, findUserByEmail } from './users.js';
 
 /** Reference data every environment needs: the region list with its committed OSM bounds and outlines. Safe to run repeatedly. */
-export async function seedReference(db: Queryable): Promise<void> {
-  await upsertRegions(db, TUNISIAN_GOVERNORATES, 'TN', committedRegionGeometry());
+export async function seedReference(
+  db: Queryable,
+  geometry: Parameters<typeof upsertRegions>[3] = committedRegionGeometry(),
+): Promise<void> {
+  await upsertRegions(db, TUNISIAN_GOVERNORATES, 'TN', geometry);
 }
 
 export const DEMO_EMAIL = 'demo@example.com';

@@ -34,30 +34,51 @@ const bounds: Record<string, unknown> = { ...REGION_BOUNDS };
 const outlines: Record<string, unknown> = { ...existing.outlines };
 const failures: string[] = [];
 
-for (const [i, g] of targets.entries()) {
-  if (i > 0) await new Promise((r) => setTimeout(r, DELAY_MS));
-  const url = new URL('https://nominatim.openstreetmap.org/search');
-  url.search = new URLSearchParams({
-    q: `${g.nameFr} Governorate, Tunisia`,
-    countrycodes: 'tn',
-    featuretype: 'state',
-    format: 'jsonv2',
-    polygon_geojson: '1',
-    limit: '3',
-    'accept-language': 'fr',
-  }).toString();
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': `LeadGenCRM-region-fetch/1.0 (${contact})` },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const geometry = parseGovernorate((await res.json()) as NominatimResult[], TOLERANCE_DEG);
-    bounds[g.id] = geometry.bounds;
-    outlines[g.id] = geometry.outline;
-    console.log(`${g.id}: ${geometry.osmRef}`);
-  } catch (err) {
+/** Wordings tried in turn: OSM names a governorate differently from place to place. */
+const queriesFor = (g: { name: string; nameFr: string }): string[] => [
+  ...new Set([
+    `${g.nameFr} Governorate, Tunisia`,
+    `${g.name} Governorate, Tunisia`,
+    `Gouvernorat de ${g.nameFr}, Tunisie`,
+    `Gouvernorat de ${g.name}, Tunisie`,
+  ]),
+];
+
+let first = true;
+for (const g of targets) {
+  let lastError = 'no query tried';
+  let done = false;
+  for (const q of queriesFor(g)) {
+    if (!first) await new Promise((r) => setTimeout(r, DELAY_MS));
+    first = false;
+    const url = new URL('https://nominatim.openstreetmap.org/search');
+    url.search = new URLSearchParams({
+      q,
+      countrycodes: 'tn',
+      format: 'jsonv2',
+      polygon_geojson: '1',
+      extratags: '1',
+      limit: '5',
+      'accept-language': 'fr',
+    }).toString();
+    try {
+      const res = await fetch(url, {
+        headers: { 'User-Agent': `LeadGenCRM-region-fetch/1.0 (${contact})` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const geometry = parseGovernorate((await res.json()) as NominatimResult[], TOLERANCE_DEG);
+      bounds[g.id] = geometry.bounds;
+      outlines[g.id] = geometry.outline;
+      console.log(`${g.id}: ${geometry.osmRef} (query: ${q})`);
+      done = true;
+      break;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+  }
+  if (!done) {
     failures.push(g.id);
-    console.error(`${g.id}: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(`${g.id}: ${lastError}`);
   }
 }
 
