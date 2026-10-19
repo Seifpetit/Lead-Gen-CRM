@@ -155,3 +155,4 @@ export interface Run {
 }
 
 export * from './api.js';
+export * from './checkpoints.js';

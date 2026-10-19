@@ -1,21 +1,21 @@
 import type { Coverage, Lead, RunSummary } from '@lead-gen-crm/shared';
 import { Plus } from 'lucide-react';
 import { useCallback, useId, useMemo, useState, type CSSProperties } from 'react';
-import { Link } from 'react-router';
 import { Splitter } from '../../components/shared/Splitter.js';
 import { useApi } from '../../api/context.js';
 import { SectionTitle } from '../../components/shared/SectionTitle.js';
 import { useToast } from '../../components/shared/Toast.js';
 import { useT } from '../../i18n/index.js';
+import { useLiveRuns } from '../../lib/useLiveRuns.js';
 import { useResource } from '../../lib/useResource.js';
 import { BySectorSection, LeadsPerDaySection } from './dashboard/ChartSections.js';
 import { LeadsPanel } from './dashboard/LeadsPanel.js';
 import { RunsSection } from './dashboard/RunsSection.js';
 import { CreateRunModal } from './CreateRunModal.js';
-import { MAX_ACTIVE_RUNS, StatusBadge } from './runParts.js';
+import { LiveStrip } from './live/LiveStrip.js';
+import { MAX_ACTIVE_RUNS } from './runParts.js';
 import { useErrorToast } from './useErrorToast.js';
 
-const ACTIVE_POLL_MS = 5_000;
 const LEAD_PAGE = 100;
 /** Pages of leads read at most: enough for the charts to be true without reading without end. */
 const LEAD_PAGES = 10;
@@ -66,10 +66,8 @@ export function DashboardPage() {
   }, []);
 
   const regions = useResource(() => api.regions.list({ limit: 100 }));
-  const active = useResource(() => api.runs.list({ status: ['pending', 'running'], limit: 10 }), {
-    pollMs: ACTIVE_POLL_MS,
-    deps: [refreshKey],
-  });
+  // A run that ends has new leads and new numbers: reload everything the dashboard shows.
+  const live = useLiveRuns(refresh);
   const runs = useResource(() => api.runs.list({ limit: 100 }), {
     pollMs: 10_000,
     deps: [refreshKey],
@@ -96,13 +94,13 @@ export function DashboardPage() {
     { pollMs: 30_000, deps: [regionId, refreshKey] },
   );
   useErrorToast(leads.error);
-  useErrorToast(active.error);
+  useErrorToast(live.error);
 
   // Rounded to the minute so the charts do not redraw on every render.
   const now = Math.floor(Date.now() / 60_000) * 60_000;
   const runItems = useMemo(() => runs.data?.items ?? [], [runs.data]);
   const runStarted = useMemo(() => new Map(runItems.map((r) => [r.id, r.createdAt])), [runItems]);
-  const activeRuns = active.data?.items ?? [];
+  const activeRuns = live.runs ?? [];
   const chartLeads = leads.data?.items ?? [];
 
   function created(run: RunSummary) {
@@ -153,18 +151,7 @@ export function DashboardPage() {
           </div>
         </header>
 
-        {activeRuns.length > 0 && (
-          <p className="dp-banner" role="status">
-            {activeRuns.map((run) => (
-              <span key={run.id}>
-                <Link to={`/leadgen/runs/${run.id}`}>
-                  {t('dash.runActive', { region: run.region })}
-                </Link>{' '}
-                <StatusBadge status={run.status} />
-              </span>
-            ))}
-          </p>
-        )}
+        <LiveStrip runs={activeRuns} />
 
         <LeadsPanel
           regionId={regionId}

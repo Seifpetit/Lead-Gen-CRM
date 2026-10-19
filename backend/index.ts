@@ -27,9 +27,17 @@ const auth = new AuthService(db, {
 
 // Building the providers makes no request; only a started run calls Apify.
 const apify = new ApifyClient(env.APIFY_TOKEN);
+// Never shown in a run's log, whatever a provider's error message quotes.
+const SECRETS = [
+  env.APIFY_TOKEN,
+  env.ANTHROPIC_API_KEY,
+  env.GOOGLE_PLACES_API_KEY,
+  env.APIFY_WEBHOOK_SECRET,
+];
 // The Claude classifier exists only when a key is set; without one, rules decide alone.
 const classifier = createClassifier(env);
 const runner = new Orchestrator({
+  secrets: SECRETS,
   log: (data, message) => app.log.info(data, message),
   db,
   ...(classifier ? { companyClassifier: classifier, titleClassifier: classifier } : {}),
@@ -58,6 +66,7 @@ const app = await buildApp({
   paidRunsEnabled: env.PAID_RUNS_ENABLED,
   webhookSecret: env.APIFY_WEBHOOK_SECRET ?? null,
   noiseRetentionDays: env.NOISE_RETENTION_DAYS,
+  secrets: SECRETS,
   logger: { level: 'info', redact: LOG_REDACT },
 });
 

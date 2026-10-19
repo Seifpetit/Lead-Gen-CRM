@@ -6,12 +6,14 @@ import { coverageRoutes } from './coverage.js';
 import type { RouteDeps } from './deps.js';
 import { leadRoutes } from './leads.js';
 import { regionRoutes } from './regions.js';
+import { runLiveRoutes } from './runLive.js';
 import { runRoutes } from './runs.js';
 
 export type { RouteDeps };
 
 /** Every API route except auth (backend/auth/plugin.ts). Thin: handlers call the runner and data layer. */
 export async function registerRoutes(app: FastifyInstance, deps: RouteDeps): Promise<void> {
+  await app.register(runLiveRoutes, deps);
   await app.register(runRoutes, deps);
   await app.register(regionRoutes, deps);
   await app.register(coverageRoutes, deps);

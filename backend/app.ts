@@ -41,6 +41,8 @@ export async function buildApp(deps: {
   paidRunsEnabled?: boolean;
   webhookSecret?: string | null;
   noiseRetentionDays?: number;
+  /** API tokens and the like: hidden from run logs by value, besides the patterns. */
+  secrets?: readonly (string | null | undefined)[];
   logger?: FastifyServerOptions['logger'];
 }) {
   const app = Fastify({ logger: deps.logger ?? false, trustProxy: false });
@@ -82,6 +84,7 @@ export async function buildApp(deps: {
     paidRunsEnabled: deps.paidRunsEnabled ?? false,
     webhookSecret: deps.webhookSecret ?? null,
     noiseRetentionDays: deps.noiseRetentionDays ?? 30,
+    secrets: deps.secrets ?? [],
   });
   return app;
 }

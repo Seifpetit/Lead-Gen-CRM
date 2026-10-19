@@ -10,6 +10,7 @@ import { migration as m008 } from './migrations/008_step_summary.js';
 import { migration as m009 } from './migrations/009_crm_boards.js';
 import { migration as m010 } from './migrations/010_board_images.js';
 import { migration as m011 } from './migrations/011_company_notes_history.js';
+import { migration as m012 } from './migrations/012_run_live.js';
 
 export interface Migration {
   id: string;
@@ -30,6 +31,7 @@ export const MIGRATIONS: readonly Migration[] = [
   m009,
   m010,
   m011,
+  m012,
 ];
 
 const ENSURE_TABLE = `

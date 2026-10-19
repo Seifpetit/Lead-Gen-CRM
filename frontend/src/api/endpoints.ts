@@ -19,11 +19,13 @@ import type {
   CrmStage,
   DecisionMakerInput,
   Lead,
+  LiveRuns,
   ObjectionResult,
   Page,
   RegionSuggestionView,
   RegionSummary,
   RunDetail,
+  RunLogPage,
   RunPreview,
   RunPreviewInput,
   RunStatus,
@@ -90,6 +92,13 @@ export function createApi(client: ApiClient) {
       start: (input: StartRunInput) =>
         client.request<RunSummary>('POST', '/api/runs', { body: input }),
       stop: (id: string) => client.request<RunSummary>('POST', `/api/runs/${id}/stop`),
+      /** The runs in progress; the polling fallback for the event stream. */
+      live: () => client.get<LiveRuns>('/api/runs/live'),
+      /** Where the event stream of the runs in progress lives. */
+      streamUrl: () => client.url('/api/runs/stream'),
+      /** A run's log lines after the given id, oldest first. */
+      logs: (id: string, params: { after?: number; limit?: number } = {}) =>
+        client.get<RunLogPage>(`/api/runs/${id}/logs`, defined(params)),
     },
 
     regions: {

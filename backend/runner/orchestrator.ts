@@ -1,4 +1,5 @@
 import type {
+  LogLevel,
   NoDecisionMakerReason,
   Run,
   RunPreview,
@@ -27,12 +28,16 @@ import { upsertLead } from '../data/crmLeads.js';
 import { withTransaction, type Db, type Queryable } from '../data/db.js';
 import { insertEvidence } from '../data/evidence.js';
 import { listEvidence } from '../data/evidence.js';
-import { dismissalFeedback } from '../data/views.js';
+import { appendRunLog, appendStepLog, setLiveMessage } from '../data/runLog.js';
+import { dismissalFeedback, runFunnel } from '../data/views.js';
 import type { UserId } from '../data/ids.js';
 import { createRegionGrid, listCells } from '../data/regionCells.js';
 import { addCellCoverage } from '../data/regionCoverage.js';
 import { getRegionBounds, getRegionOutline } from '../data/regions.js';
+import { FREIGHT_SECTORS } from '../config/sectors.js';
 import { placeInOutline } from '../lib/geo.js';
+import { liveMessages, type SearchFacts } from '../lib/liveMessages.js';
+import { redactSecrets } from '../lib/redact.js';
 import {
   addRunCompany,
   listRunCompanies,
@@ -110,6 +115,7 @@ import { reviveDates } from './json.js';
 import { titleKeywords } from './keywords.js';
 import { previewRun } from './preview.js';
 import { planRunCells, ALL_WORDINGS } from './scheduler.js';
+import { RunChanges } from './changes.js';
 import { webhookFor } from './webhooks.js';
 
 export type RunStartErrorCode = 'monthly_cap_reached' | 'no_bounds' | 'no_free_cells';
@@ -147,6 +153,8 @@ export interface OrchestratorDeps {
   checkpoint?: (label: string) => void | Promise<void>;
   /** Structured diagnostics (e.g. why each person was kept or rejected). Defaults to silent. */
   log?: (data: Record<string, unknown>, message: string) => void;
+  /** Values that must never appear in a run's log, such as API tokens (patterns are hidden too). */
+  secrets?: readonly (string | null | undefined)[];
 }
 
 export interface AdvanceResult {
@@ -237,6 +245,94 @@ export class Orchestrator {
     await this.deps.checkpoint?.(label);
   }
 
+  /** Tells the live stream that something about a user's runs changed. */
+  readonly changes = new RunChanges();
+
+  /**
+   * The sentence a run shows right now: kept on the run and appended to its log. Plain words
+   * only; the technical detail goes through `note`.
+   */
+  private async say(
+    db: Queryable,
+    userId: UserId,
+    runId: string,
+    message: string,
+    level: LogLevel = 'info',
+  ): Promise<void> {
+    const text = redactSecrets(message, this.deps.secrets);
+    await setLiveMessage(db, userId, runId, text);
+    await appendRunLog(db, userId, { runId, level, message: text, secrets: this.deps.secrets });
+    this.changes.notify(userId);
+  }
+
+  /** A technical line about one step, for the full log only. */
+  private async note(
+    db: Queryable,
+    userId: UserId,
+    stepId: string,
+    message: string,
+    level: LogLevel = 'info',
+  ): Promise<void> {
+    await appendStepLog(db, userId, {
+      runStepId: stepId,
+      level,
+      message,
+      secrets: this.deps.secrets,
+    });
+    this.changes.notify(userId);
+  }
+
+  /** The region's name and the sector names a run searches, for its sentences. */
+  private async searchFacts(run: Run): Promise<SearchFacts> {
+    const { rows } = await this.db.query<{ name: string }>(
+      'SELECT name FROM regions WHERE id = $1',
+      [run.region],
+    );
+    const names = new Map(FREIGHT_SECTORS.map((s) => [s.id as string, s.name]));
+    return {
+      region: rows[0]?.name ?? run.region,
+      sectors: run.sectors.map((id) => names.get(id) ?? id),
+      customOnly: run.customOnly,
+    };
+  }
+
+  /** "3 of 12 searches done" while a stage's steps land, so the sentence keeps moving. */
+  private async sayProgress(userId: UserId, runId: string, stage: RunStage): Promise<void> {
+    if (stage !== 'discover' && stage !== 'find_people') return;
+    const run = await getRun(this.db, userId, runId);
+    if (
+      !run ||
+      run.currentStage !== stage ||
+      (run.status !== 'running' && run.status !== 'pending')
+    ) {
+      return;
+    }
+    const steps = (await listSteps(this.db, userId, runId)).filter((s) => s.stage === stage);
+    const done = steps.filter((s) => s.status === 'finished' || s.status === 'failed').length;
+    if (steps.length === 0 || done === steps.length) return;
+    if (stage === 'discover') {
+      const funnel = await runFunnel(this.db, userId, runId);
+      await this.say(
+        this.db,
+        userId,
+        runId,
+        liveMessages.searchingProgress({
+          ...(await this.searchFacts(run)),
+          done,
+          total: steps.length,
+          found: funnel.discovered,
+        }),
+      );
+    } else {
+      await this.say(
+        this.db,
+        userId,
+        runId,
+        liveMessages.peopleProgress({ done, total: steps.length }),
+      );
+    }
+  }
+
   private providerFor(stage: RunStage): StageProvider<unknown> & {
     estimate(input: never): CostEntry[];
   } {
@@ -279,6 +375,12 @@ export class Orchestrator {
       onlyFrom: ['pending', 'running'],
     });
     if (!updated) return { run, stopped: false };
+    await this.say(
+      this.db,
+      userId,
+      runId,
+      liveMessages.stopped({ leads: (await runFunnel(this.db, userId, runId)).leads }),
+    );
     await this.checkpoint('run:cancelled');
     // Releases the claims when nothing is out with Apify, otherwise when the last step lands.
     await this.advance(userId, runId);
@@ -400,6 +502,7 @@ export class Orchestrator {
       await updateRun(tx, userId, run.id, { currentStage: 'discover', onlyFrom: ['running'] });
     });
     await this.checkpoint('run:planned');
+    await this.say(this.db, userId, run.id, liveMessages.searching(await this.searchFacts(run)));
   }
 
   /** Everything but Google Places (a plain HTTP request) runs as an Apify Actor run. */
@@ -568,8 +671,26 @@ export class Orchestrator {
   }
 
   private async moveStage(userId: UserId, runId: string, from: RunStage, to: RunStage) {
-    await updateRun(this.db, userId, runId, { currentStage: to, onlyFrom: ['running'] });
+    const moved = await updateRun(this.db, userId, runId, {
+      currentStage: to,
+      onlyFrom: ['running'],
+    });
     await this.checkpoint(`stage:${from}->${to}`);
+    if (!moved) return;
+    const f = await runFunnel(this.db, userId, runId);
+    const sentence =
+      to === 'qualify'
+        ? liveMessages.checking({ found: f.discovered })
+        : to === 'find_people'
+          ? liveMessages.people({ qualified: f.qualified })
+          : to === 'enrich'
+            ? liveMessages.contacts({ people: f.peopleFound })
+            : to === 'verify'
+              ? liveMessages.verifying({ companies: f.enriched })
+              : to === 'score'
+                ? liveMessages.scoring({ companies: f.enriched })
+                : null;
+    if (sentence) await this.say(this.db, userId, runId, sentence);
   }
 
   /**
@@ -669,6 +790,14 @@ export class Orchestrator {
         error: `Next ${step.stage} step can't start (${fit.reason === 'actor_minimum' ? 'Actor minimum' : 'estimate'}): ${fit.message}`,
         onlyFrom: ['running', 'pending'],
       });
+      await this.say(
+        this.db,
+        userId,
+        run.id,
+        liveMessages.cappedOut({ leads: (await runFunnel(this.db, userId, run.id)).leads }),
+        'warn',
+      );
+      await this.note(this.db, userId, step.id, `Not started: ${fit.message}`, 'warn');
       await this.checkpoint('run:stopped_by_cap');
       return 'capped';
     }
@@ -691,6 +820,12 @@ export class Orchestrator {
       else await markStepStarted(tx, userId, step.id);
     });
     await this.checkpoint(`${step.stage}:estimated`);
+    await this.note(
+      this.db,
+      userId,
+      step.id,
+      `Started: estimated cost $${estimateUsd.toFixed(4)}, at most $${maxCharge.toFixed(2)}`,
+    );
 
     const options = {
       ...(step.actorId ? { maxTotalChargeUsd: maxCharge } : {}),
@@ -757,6 +892,13 @@ export class Orchestrator {
       state,
       ...(message ? { message } : {}),
     });
+    await appendStepLog(db, userId, {
+      runStepId: stepId,
+      level: state === 'failed' ? 'error' : state === 'restarting' ? 'warn' : 'info',
+      message: `Apify run ${state}${message ? `: ${message}` : ''}`,
+      secrets: this.deps.secrets,
+    });
+    this.changes.notify(userId);
   }
 
   /** Polls one in-flight Apify step and applies its result when it has one. */
@@ -845,6 +987,9 @@ export class Orchestrator {
           ? { apifyStatus: job.state === 'succeeded' ? 'SUCCEEDED' : job.status }
           : {}),
       });
+      if (job.state === 'failed') {
+        await this.note(tx, userId, step.id, `Step failed: provider status ${job.status}`, 'error');
+      }
       const fresh = reviveDates<{ items: unknown[] }>(output);
       await this.applyItems(
         tx,
@@ -866,7 +1011,10 @@ export class Orchestrator {
       }
       return true;
     });
-    if (applied) await this.checkpoint(`${step.stage}:applied`);
+    if (applied) {
+      await this.checkpoint(`${step.stage}:applied`);
+      await this.sayProgress(userId, run.id, step.stage);
+    }
     return applied;
   }
 
@@ -1019,6 +1167,12 @@ export class Orchestrator {
       kept: places.length - dropped - alreadyKnown - noContact,
       dropped: droppedReasons,
     });
+    await this.note(
+      tx,
+      userId,
+      step.id,
+      `Search "${query.textQuery}"${query.cellKey ? ` in area ${query.cellKey}` : ''}: ${places.length} places returned, ${newPlaces} new, ${dropped} outside the region, ${alreadyKnown} already known, ${noContact} with no contact detail, cost $${costUsd.toFixed(4)}`,
+    );
     if (cellId && (complete || places.length > 0)) {
       await recordSearchQuery(tx, userId, {
         runId: run.id,
@@ -1151,6 +1305,12 @@ export class Orchestrator {
         reasons: [...counts].map(([reason, count]) => ({ reason, count })),
       },
     });
+    await this.note(
+      tx,
+      userId,
+      stepId,
+      `People at ${identity.name}: ${found.length} returned, ${peopleDiagnostics.kept} kept as decision-makers`,
+    );
     await moveRunCompany(tx, userId, {
       runId: run.id,
       companyId: input.companyId,
@@ -1199,6 +1359,12 @@ export class Orchestrator {
           ? [{ reason: 'no_email_found', count: input.refs.length - withEmail }]
           : [],
     });
+    await this.note(
+      tx,
+      userId,
+      stepId,
+      `Emails: ${withEmail} of ${input.refs.length} looked-up addresses found`,
+    );
     for (const [companyId, emails] of perCompany) {
       await moveRunCompany(tx, userId, {
         runId: run.id,
@@ -1381,6 +1547,9 @@ export class Orchestrator {
       await flush();
     });
     await this.checkpoint('enrich:planned');
+    if (queries.length > 0) {
+      await this.say(this.db, userId, run.id, liveMessages.emails({ count: queries.length }));
+    }
     return true;
   }
 
@@ -1555,11 +1724,22 @@ export class Orchestrator {
     status: 'finished' | 'failed',
     error?: string,
   ): Promise<void> {
-    await updateRun(this.db, userId, runId, {
+    const ended = await updateRun(this.db, userId, runId, {
       status,
       ...(error ? { error } : {}),
       onlyFrom: ['running', 'pending'],
     });
+    if (ended) {
+      await this.say(
+        this.db,
+        userId,
+        runId,
+        status === 'finished'
+          ? liveMessages.done({ leads: (await runFunnel(this.db, userId, runId)).leads })
+          : liveMessages.failed({ reason: error ?? null }),
+        status === 'finished' ? 'info' : 'error',
+      );
+    }
     await releaseClaims(this.db, userId, runId);
     await this.checkpoint(`run:${status}`);
   }

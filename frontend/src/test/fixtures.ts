@@ -139,6 +139,8 @@ export function run(over: Partial<RunSummary> = {}): RunSummary {
     finishedAt: '2026-10-18T09:20:00.000Z',
     funnel: funnel(),
     error: null,
+    liveMessage: 'Done. 6 leads are ready.',
+    stageFraction: 0,
     ...over,
   };
 }
@@ -250,6 +252,7 @@ export const budget = {
 export function dashboardRoutes(): Record<string, import('./fakeServer.js').Handler> {
   return {
     'GET /api/runs': page([]),
+    'GET /api/runs/live': { runs: [] },
     'GET /api/regions': page([region(), region({ regionId: 'tunis', name: 'Tunis' })]),
     'GET /api/regions/suggestion': suggestion,
     'GET /api/apify/log': emptyApifyLog(),
