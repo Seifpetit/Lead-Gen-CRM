@@ -163,6 +163,7 @@ afterEach(async () => {
 interface Ids {
   run: string;
   lead: string;
+  card: string;
   region: string;
   cell: string;
 }
@@ -219,6 +220,30 @@ const CASES: RouteCase[] = [
     url: (i) => `/api/leads/${i.lead}/objection`,
     body: { reason: 'asked not to be contacted' },
   },
+  { method: 'GET', pattern: '/api/crm/companies', url: () => '/api/crm/companies' },
+  { method: 'GET', pattern: '/api/crm/people', url: () => '/api/crm/people' },
+  {
+    method: 'POST',
+    pattern: '/api/crm/cards/:id/move',
+    url: (i) => `/api/crm/cards/${i.card}/move`,
+    body: { stage: 'investigating' },
+  },
+  {
+    method: 'POST',
+    pattern: '/api/crm/cards/:id/decision-maker',
+    url: (i) => `/api/crm/cards/${i.card}/decision-maker`,
+    body: { fullName: 'Amel Ben Salah', email: 'amel@example.tn' },
+  },
+  {
+    method: 'POST',
+    pattern: '/api/crm/cards/:id/remove',
+    url: (i) => `/api/crm/cards/${i.card}/remove`,
+  },
+  {
+    method: 'POST',
+    pattern: '/api/crm/cards/:id/restore',
+    url: (i) => `/api/crm/cards/${i.card}/restore`,
+  },
   { method: 'GET', pattern: '/api/costs', url: () => '/api/costs' },
   { method: 'GET', pattern: '/api/costs/budget', url: () => '/api/costs/budget' },
   {
@@ -241,7 +266,8 @@ const PUBLIC = [
 async function ids(): Promise<Ids> {
   const leads = (await call(alice, 'GET', '/api/leads')).json().items;
   const cell = (await listCells(db, 'sfax', { leafOnly: true }))[0]!;
-  return { run: seededRun, lead: leads[0].id, region: 'sfax', cell: cell.id };
+  const card = (await call(alice, 'GET', '/api/crm/companies')).json().cards[0].id;
+  return { run: seededRun, lead: leads[0].id, card, region: 'sfax', cell: cell.id };
 }
 
 describe('every route', () => {
@@ -1458,5 +1484,110 @@ describe('POST /api/webhooks/apify', () => {
     expect((await listSteps(db, alice.id, run.id)).find((s) => s.id === step.id)!.status).toBe(
       'started',
     );
+  });
+});
+
+describe('crm boards', () => {
+  const post = (who: Who, url: string, payload?: unknown) => call(who, 'POST', url, payload ?? {});
+
+  it('puts every company with a lead on the Companies board, in Found', async () => {
+    const board = (await call(alice, 'GET', '/api/crm/companies')).json();
+    expect(board.stages.map((s: { key: string }) => s.key)).toEqual([
+      'found',
+      'investigating',
+      'decision_maker_identified',
+      'noise',
+    ]);
+    expect(board.stages.at(-1)).toMatchObject({ name: 'Noise', collapsedByDefault: true });
+    expect(board.cards.length).toBeGreaterThan(0);
+    for (const c of board.cards)
+      expect(c).toMatchObject({ pipeline: 'companies', stage: 'found', person: null });
+    expect((await call(alice, 'GET', '/api/crm/people')).json()).toMatchObject({ cards: [] });
+    expect((await call(bob, 'GET', '/api/crm/companies')).json().cards).toEqual([]);
+  });
+
+  it('needs a decision-maker to reach Decision-maker identified, then creates the person card', async () => {
+    const id = (await ids()).card;
+    const refused = await post(alice, `/api/crm/cards/${id}/move`, {
+      stage: 'decision_maker_identified',
+    });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error).toBe('decision_maker_required');
+
+    for (const bad of [
+      {},
+      { fullName: 'Amel' },
+      { fullName: 'Amel', email: 'nope' },
+      { email: 'a@b.tn' },
+    ]) {
+      expect((await post(alice, `/api/crm/cards/${id}/decision-maker`, bad)).statusCode).toBe(400);
+    }
+    const ok = await post(alice, `/api/crm/cards/${id}/decision-maker`, {
+      fullName: 'Amel Ben Salah',
+      title: 'Responsable logistique',
+      email: 'amel@example.tn',
+      phone: '',
+      linkedinUrl: '',
+    });
+    expect(ok.statusCode).toBe(201);
+    const { company, person } = ok.json();
+    expect(company).toMatchObject({ id, stage: 'decision_maker_identified' });
+    expect(person).toMatchObject({
+      pipeline: 'people',
+      stage: 'new',
+      company: { id: company.company.id },
+      person: { fullName: 'Amel Ben Salah', email: 'amel@example.tn' },
+    });
+    const people = (await call(alice, 'GET', '/api/crm/people')).json();
+    expect(people.cards.map((c: { id: string }) => c.id)).toEqual([person.id]);
+  });
+
+  it('moves a person through the board; Opted out needs a reason, suppresses and is final', async () => {
+    const id = (await ids()).card;
+    const { person } = (
+      await post(alice, `/api/crm/cards/${id}/decision-maker`, {
+        fullName: 'Sami',
+        email: 'sami@example.tn',
+      })
+    ).json();
+    for (const stage of ['contacted', 'replied', 'won', 'lost', 'new']) {
+      const res = await post(alice, `/api/crm/cards/${person.id}/move`, { stage });
+      expect(res.json(), stage).toMatchObject({ id: person.id, stage });
+    }
+    expect(
+      (await post(alice, `/api/crm/cards/${person.id}/move`, { stage: 'sold' })).statusCode,
+    ).toBe(400);
+    const noReason = await post(alice, `/api/crm/cards/${person.id}/move`, { stage: 'opted_out' });
+    expect(noReason.statusCode).toBe(400);
+    const done = await post(alice, `/api/crm/cards/${person.id}/move`, {
+      stage: 'opted_out',
+      reason: 'asked to stop',
+    });
+    expect(done.json()).toMatchObject({ stage: 'opted_out' });
+    const back = await post(alice, `/api/crm/cards/${person.id}/move`, { stage: 'new' });
+    expect(back.statusCode).toBe(409);
+    expect(back.json().error).toBe('opted_out_is_final');
+    expect((await post(alice, `/api/crm/cards/${person.id}/remove`)).statusCode).toBe(409);
+    // The same person cannot be added again.
+    const again = await post(alice, `/api/crm/cards/${id}/decision-maker`, {
+      fullName: 'Sami',
+      email: 'SAMI@example.tn',
+    });
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error).toBe('suppressed');
+  });
+
+  it('removes a card to Noise with days left, and restores it', async () => {
+    const id = (await ids()).card;
+    const removed = (await post(alice, `/api/crm/cards/${id}/remove`)).json();
+    expect(removed).toMatchObject({ stage: 'noise', removedFrom: 'found' });
+    const days = (Date.parse(removed.purgeAt) - Date.parse(removed.noiseAt)) / 86_400_000;
+    expect(days).toBe(30);
+    expect((await post(alice, `/api/crm/cards/${id}/restore`, { stage: 'noise' })).statusCode).toBe(
+      400,
+    );
+    const restored = (await post(alice, `/api/crm/cards/${id}/restore`)).json();
+    expect(restored).toMatchObject({ stage: 'found', noiseAt: null, purgeAt: null });
+    expect((await post(alice, `/api/crm/cards/${id}/restore`)).statusCode).toBe(409);
   });
 });

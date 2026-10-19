@@ -74,6 +74,8 @@ lint, typecheck and tests on every pull request and push to main.
   `Secure`, `SameSite=Strict`; only its SHA-256 is stored, so a database leak exposes no live
   session. A session ends after 12 hours idle or 7 days in total (`SESSION_IDLE_HOURS`,
   `SESSION_MAX_DAYS`), and logout deletes it server-side.
+- **Removed CRM cards** wait in Noise for `NOISE_RETENTION_DAYS` (default 30); a daily job in the
+  backend then deletes them and keeps a minimal marker (see `backend/routes/README.md`).
 - **Every route requires a session** unless it is explicitly marked public (only login, sign-up
   and logout are). Unknown routes return 401 too. Handlers pass `currentUser(request).id` to the
   data layer, whose functions only accept that branded `UserId`. Another user's record and a

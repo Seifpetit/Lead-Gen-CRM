@@ -3,6 +3,7 @@ import { listApifyEventsForRun } from '../data/apifyEvents.js';
 import { expireClaims, listLiveClaims } from '../data/cellClaims.js';
 import { upsertCompany } from '../data/companies.js';
 import { listLedgerForRun, runSpendByProvider } from '../data/costLedger.js';
+import { purgeNoise, removeCard } from '../data/crmBoards.js';
 import { listLeads } from '../data/crmLeads.js';
 import { apifySteps, loadLeads, runSummaries } from '../data/views.js';
 import type { Db } from '../data/db.js';
@@ -939,5 +940,58 @@ describe('orchestrator: first-run fixes', () => {
         { reason: 'no_contact', count: 1 },
       ],
     });
+  });
+});
+
+describe('orchestrator: removed CRM cards', () => {
+  it('skips a company whose Noise card was purged instead of finding it again', async () => {
+    const w = world();
+    const first = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectorIds: TEXTILE,
+      budgetCapUsd: 10,
+    });
+    await drive(w.orchestrator, user, first.id);
+    const { rows: cards } = await db.query<{ id: string; company_id: string }>(
+      "SELECT id, company_id FROM crm_cards WHERE user_id = $1 AND pipeline = 'companies' ORDER BY created_at",
+      [user],
+    );
+    expect(cards).toHaveLength(4);
+    const gone = cards[0]!;
+    const { rows: places } = await db.query<{ google_place_id: string }>(
+      'SELECT google_place_id FROM companies WHERE id = $1',
+      [gone.company_id],
+    );
+    await removeCard(db, user, gone.id);
+    await purgeNoise(db, 30, new Date(Date.now() + 31 * 86_400_000));
+    expect(
+      (await db.query('SELECT 1 FROM companies WHERE id = $1', [gone.company_id])).rows,
+    ).toEqual([]);
+
+    // Forget what the first run searched, so a second run looks at the same places again.
+    await db.query('DELETE FROM search_queries');
+    await db.query('DELETE FROM exhausted_queries');
+    const second = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectorIds: TEXTILE,
+      budgetCapUsd: 10,
+    });
+    await drive(w.orchestrator, user, second.id);
+
+    const { rows: again } = await db.query('SELECT 1 FROM companies WHERE google_place_id = $1', [
+      places[0]!.google_place_id,
+    ]);
+    expect(again).toEqual([]);
+    const { rows: n } = await db.query<{ n: number }>(
+      'SELECT count(*)::integer AS n FROM companies',
+    );
+    expect(n[0]!.n).toBe(3);
+    const discover = (await apifySteps(db, user, { runIds: [second.id] })).filter(
+      (s) => s.stage === 'discover',
+    );
+    expect(discover.length).toBeGreaterThan(0);
+    expect(discover.some((s) => s.summary!.dropped.some((d) => d.reason === 'already_known'))).toBe(
+      true,
+    );
   });
 });

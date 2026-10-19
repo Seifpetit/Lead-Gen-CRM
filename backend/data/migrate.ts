@@ -7,6 +7,7 @@ import { migration as m005 } from './migrations/005_search_plan.js';
 import { migration as m006 } from './migrations/006_anthropic_provider.js';
 import { migration as m007 } from './migrations/007_first_run_fixes.js';
 import { migration as m008 } from './migrations/008_step_summary.js';
+import { migration as m009 } from './migrations/009_crm_boards.js';
 
 export interface Migration {
   id: string;
@@ -15,7 +16,17 @@ export interface Migration {
 }
 
 /** All migrations, oldest first. Append new ones; never edit an applied one. */
-export const MIGRATIONS: readonly Migration[] = [m001, m002, m003, m004, m005, m006, m007, m008];
+export const MIGRATIONS: readonly Migration[] = [
+  m001,
+  m002,
+  m003,
+  m004,
+  m005,
+  m006,
+  m007,
+  m008,
+  m009,
+];
 
 const ENSURE_TABLE = `
   CREATE TABLE IF NOT EXISTS schema_migrations (

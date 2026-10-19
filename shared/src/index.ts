@@ -68,6 +68,19 @@ export const CRM_STAGES = [
 ] as const;
 export type CrmStage = (typeof CRM_STAGES)[number];
 
+/** The two CRM boards. Companies hold what the runs found; people are the decision-makers. */
+export const CRM_PIPELINES = ['companies', 'people'] as const;
+export type CrmPipeline = (typeof CRM_PIPELINES)[number];
+
+/** Stage keys of each board, left to right. `noise` is where removed cards wait to be purged. */
+export const BOARD_STAGES = {
+  companies: ['found', 'investigating', 'decision_maker_identified', 'noise'],
+  people: ['new', 'contacted', 'replied', 'won', 'lost', 'opted_out', 'noise'],
+} as const satisfies Record<CrmPipeline, readonly string[]>;
+export type CompanyStageKey = (typeof BOARD_STAGES.companies)[number];
+export type PersonStageKey = (typeof BOARD_STAGES.people)[number];
+export type BoardStageKey = CompanyStageKey | PersonStageKey;
+
 export interface ScoreBreakdown {
   companyFit: number; // out of 50
   contactFit: number; // out of 30

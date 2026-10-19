@@ -12,4 +12,6 @@ export interface RouteDeps {
   paidRunsEnabled: boolean;
   /** Shared secret for the Apify webhook. Without one the webhook is closed (503). */
   webhookSecret: string | null;
+  /** Days a removed CRM card stays in Noise; shown as "N days left" and used by the purge. */
+  noiseRetentionDays: number;
 }

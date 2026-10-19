@@ -16,6 +16,7 @@ describe('loadEnv', () => {
       SIGNUP_MODE: 'invite',
       SESSION_IDLE_HOURS: 12,
       SESSION_MAX_DAYS: 7,
+      NOISE_RETENTION_DAYS: 30,
       HOST: '127.0.0.1',
       DEV_ADMIN_LOGIN: false,
       CLASSIFIER_MODEL: 'claude-haiku-5-5',
@@ -49,6 +50,16 @@ describe('loadEnv API settings', () => {
     const env = loadEnv(valid);
     expect(env.PAID_RUNS_ENABLED).toBe(false);
     expect(env.APIFY_WEBHOOK_SECRET).toBeUndefined();
+  });
+
+  it('keeps removed CRM cards 30 days unless told otherwise', () => {
+    expect(loadEnv(valid).NOISE_RETENTION_DAYS).toBe(30);
+    expect(loadEnv({ ...valid, NOISE_RETENTION_DAYS: '7' }).NOISE_RETENTION_DAYS).toBe(7);
+    for (const bad of ['0', '-3', '1.5', 'soon']) {
+      expect(() => loadEnv({ ...valid, NOISE_RETENTION_DAYS: bad })).toThrow(
+        'NOISE_RETENTION_DAYS',
+      );
+    }
   });
 
   it('turns paid runs on only for the exact value true', () => {

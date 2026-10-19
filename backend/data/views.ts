@@ -292,11 +292,16 @@ export async function dismissalFeedback(
   db: Queryable,
   userId: UserId,
 ): Promise<{ bySector: Record<string, number>; byRoleClass: Record<string, number> }> {
+  // Dismissed leads, plus the markers left by purged Noise cards so the feedback outlives the cards.
   const { rows } = await db.query<{ sector: string | null; role_class: string | null; n: number }>(
-    `SELECT c.sector, p.role_class, count(*)::integer AS n
-       FROM crm_leads l JOIN companies c ON c.id = l.company_id
-       LEFT JOIN contacts p ON p.id = l.contact_id
-      WHERE l.user_id = $1 AND l.stage = 'dismissed' GROUP BY 1, 2`,
+    `SELECT sector, role_class, count(*)::integer AS n FROM (
+       SELECT c.sector, p.role_class
+         FROM crm_leads l JOIN companies c ON c.id = l.company_id
+         LEFT JOIN contacts p ON p.id = l.contact_id
+        WHERE l.user_id = $1 AND l.stage = 'dismissed'
+       UNION ALL
+       SELECT sector, role_class FROM noise_markers WHERE user_id = $1
+     ) d GROUP BY 1, 2`,
     [userId],
   );
   const bySector: Record<string, number> = {};

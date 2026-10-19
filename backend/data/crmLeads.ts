@@ -1,6 +1,7 @@
 import type { CrmStage, ScoreBreakdown, ScoreReason } from '@lead-gen-crm/shared';
 import type { UserId } from './ids.js';
 import { addSuppression, type SuppressionKind } from './suppressionList.js';
+import { ensureCompanyCard } from './crmBoards.js';
 import { withTransaction, type Queryable } from './db.js';
 
 export interface CrmLead {
@@ -88,7 +89,10 @@ export async function upsertLead(
     ],
   );
   const r = rows[0];
-  return r ? { lead: toLead(r), created: r.created } : null;
+  if (!r) return null;
+  // Every company with a lead is on the Companies board (a company already there stays put).
+  await ensureCompanyCard(db, userId, input.companyId);
+  return { lead: toLead(r), created: r.created };
 }
 
 /**
