@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import {
   boardServer,
@@ -116,31 +117,57 @@ describe('the toolbar', () => {
     expect(server.to('GET /api/crm/companies').filter((c) => c.query.get('q'))).toHaveLength(1);
   });
 
-  it('sends sector, minimum score and sort to the server', async () => {
+  it('sends sector, minimum score and sort to the server, from the Filters panel', async () => {
     const { server, user } = boardServer('companies', sample());
     await screen.findByRole('group', { name: 'Alpha Textile' });
     const board = () => server.to('GET /api/crm/companies').at(-1)!;
+    await user.click(screen.getByRole('button', { name: 'Filters' }));
+    const panel = screen.getByRole('dialog', { name: 'Filters' });
 
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Sector' }), 'Olive oil');
+    await user.click(within(panel).getByRole('radio', { name: 'Olive oil' }));
     await waitFor(() => expect(board().query.get('sector')).toBe('olive-oil'));
     expect(await screen.findByRole('group', { name: 'Beta Oil' })).toBeInTheDocument();
     expect(screen.queryByRole('group', { name: 'Alpha Textile' })).not.toBeInTheDocument();
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Sector' }), 'All sectors');
+    await user.click(within(panel).getByRole('radio', { name: 'All sectors' }));
 
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Score' }), '70 or more');
+    fireEvent.change(within(panel).getByRole('slider', { name: 'Minimum score' }), {
+      target: { value: '70' },
+    });
     await waitFor(() => expect(board().query.get('minScore')).toBe('70'));
     await waitFor(() =>
       expect(screen.queryByRole('group', { name: 'Gamma Cotton' })).not.toBeInTheDocument(),
     );
     expect(screen.getByRole('group', { name: 'Alpha Textile' })).toBeInTheDocument();
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Score' }), 'Any');
+    fireEvent.change(within(panel).getByRole('slider', { name: 'Minimum score' }), {
+      target: { value: '0' },
+    });
+    await waitFor(() => expect(board().query.get('minScore')).toBeNull());
 
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'Name');
+    await user.click(within(panel).getByRole('radio', { name: 'Name' }));
     await waitFor(() => expect(board().query.get('sort')).toBe('name'));
-    await user.click(screen.getByRole('button', { name: /Order: ascending/ }));
+    await user.click(within(panel).getByRole('radio', { name: 'Descending' }));
     await waitFor(() => expect(board().query.get('dir')).toBe('desc'));
     const order = () => drawn('Found');
     await waitFor(() => expect(order()).toEqual(['Gamma Cotton', 'Beta Oil', 'Alpha Textile']));
+  });
+
+  it('shows the filters that are on as chips and counts them on the button', async () => {
+    const { user } = boardServer('companies', sample());
+    await screen.findByRole('group', { name: 'Alpha Textile' });
+    expect(screen.queryByRole('list', { name: 'Active filters' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Filters' }));
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Filters' })).getByRole('radio', {
+        name: 'Olive oil',
+      }),
+    );
+    const chips = await screen.findByRole('list', { name: 'Active filters' });
+    expect(within(chips).getByText('Sector: Olive oil')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Filters, 1 active' })).toBeVisible();
+    await user.click(
+      within(chips).getByRole('button', { name: 'Remove filter Sector: Olive oil' }),
+    );
+    await waitFor(() => expect(screen.queryByRole('list', { name: 'Active filters' })).toBeNull());
   });
 
   it('says so, and offers to clear the filters, when nothing matches', async () => {
@@ -155,7 +182,10 @@ describe('the toolbar', () => {
   it('has no sector filter on the People board', async () => {
     boardServer('people', [personCard({ id: '1' })]);
     await screen.findByRole('group', { name: 'Amel Ben Salah' });
-    expect(screen.queryByRole('combobox', { name: 'Sector' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Filters' }));
+    const panel = screen.getByRole('dialog', { name: 'Filters' });
+    expect(within(panel).queryByRole('group', { name: 'Sector' })).not.toBeInTheDocument();
+    expect(within(panel).getByRole('slider', { name: 'Minimum score' })).toBeVisible();
   });
 });
 

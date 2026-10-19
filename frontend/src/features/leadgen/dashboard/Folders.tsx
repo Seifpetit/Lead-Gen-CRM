@@ -1,6 +1,6 @@
 import type { CrmFacets, RunSummary } from '@lead-gen-crm/shared';
 import { useT } from '../../../i18n/index.js';
-import { formatDay } from '../../../lib/format.js';
+import { runLabel } from './leadsFilters.js';
 import type { LeadsQuery } from './leadsQuery.js';
 
 /**
@@ -22,10 +22,6 @@ export function Folders({
   const t = useT();
   const open = { stage: null, sector: null, runId: null } as const;
   const none = query.stage === null && query.sector === null && query.runId === null;
-  const runLabel = (id: string | null) => {
-    const run = runs.find((r) => r.id === id);
-    return run ? `${run.region} · ${formatDay(run.createdAt)}` : t('leads.folders.earlierRun');
-  };
   const item = (key: string, label: string, count: number, active: boolean, pick: () => void) => (
     <li key={key}>
       <button
@@ -55,7 +51,7 @@ export function Folders({
         {(facets?.runs ?? []).map((r) =>
           item(
             `run-${r.id ?? 'none'}`,
-            runLabel(r.id),
+            runLabel(runs, r.id, t('leads.folders.earlierRun')),
             r.count,
             r.id !== null && query.runId === r.id,
             () => r.id !== null && onQuery({ ...open, runId: r.id }),

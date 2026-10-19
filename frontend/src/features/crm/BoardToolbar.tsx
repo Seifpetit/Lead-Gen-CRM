@@ -1,12 +1,12 @@
 import type { BoardSort, CrmBoard, CrmPipeline } from '@lead-gen-crm/shared';
-import { ArrowDownNarrowWide, ArrowUpNarrowWide, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
+import { FilterChips, FilterMenu, type FilterField } from '../../components/shared/FilterMenu.js';
 import { ToggleGroup } from '../../components/shared/ToggleGroup.js';
 import { useT, type StringKey } from '../../i18n/index.js';
 import { useDebounced } from '../../lib/useDebounced.js';
 import {
   DEFAULT_DIRECTION,
-  MIN_SCORES,
   effectiveDirection,
   effectiveSort,
   type BoardQuery,
@@ -16,7 +16,8 @@ import type { BoardView } from './useBoard.js';
 const SEARCH_DELAY_MS = 300;
 
 /**
- * Above the board: search, sector, minimum score, sort and the Board / Table switch. Nothing is
+ * Above the board: search, a Filters button (sector, minimum score, sort and order, with the
+ * active filters as chips underneath) and the Board / Table switch. Nothing is
  * filtered here; every change is handed up and the server does the filtering, so the column totals
  * always describe what matches.
  */
@@ -66,93 +67,103 @@ export function BoardToolbar({
     pipeline === 'companies'
       ? ['newest', 'score', 'days', 'name', 'sector']
       : ['newest', 'score', 'days', 'name'];
-  const flipped = direction === 'asc' ? 'desc' : 'asc';
   const views: { value: BoardView; label: string }[] = [
     { value: 'board', label: t('crm.view.board') },
     { value: 'table', label: t('crm.view.table') },
   ];
+  const minScore = query.minScore ?? 0;
+  const scoreText = (n: number) =>
+    n === 0 ? t('filters.score.any') : t('filters.score.value', { score: n });
+  const sectorName = sectors.find((s) => s.id === query.sector)?.name ?? query.sector;
+
+  const fields: FilterField[] = [];
+  if (pipeline === 'companies') {
+    fields.push({
+      id: 'sector',
+      type: 'choice',
+      label: t('crm.filter.sector'),
+      value: query.sector ?? '',
+      options: [
+        { value: '', label: t('crm.filter.sector.any') },
+        ...sectors.map((s) => ({ value: s.id, label: s.name })),
+      ],
+      onChange: (sector) => onChange({ sector: sector || undefined }),
+      filter: {
+        active: Boolean(query.sector),
+        chip: t('filters.chip.sector', { value: sectorName ?? '' }),
+        clear: () => onChange({ sector: undefined }),
+      },
+    });
+  }
+  fields.push(
+    {
+      id: 'minScore',
+      type: 'range',
+      label: t('filters.score'),
+      value: minScore,
+      min: 0,
+      max: 100,
+      step: 5,
+      valueText: scoreText(minScore),
+      onChange: (n) => onChange({ minScore: n || undefined }),
+      filter: {
+        active: minScore > 0,
+        chip: t('filters.chip.score', { value: scoreText(minScore) }),
+        clear: () => onChange({ minScore: undefined }),
+      },
+    },
+    {
+      id: 'sort',
+      type: 'choice',
+      label: t('crm.sort'),
+      value: sort,
+      options: sorts.map((s) => ({ value: s, label: t(`crm.sort.${s}` as StringKey) })),
+      onChange: (s) => onChange({ sort: s as BoardSort, dir: undefined }),
+    },
+    {
+      id: 'order',
+      type: 'choice',
+      label: t('filters.crm.order'),
+      value: direction,
+      options: [
+        { value: 'asc', label: t('filters.crm.ascending') },
+        { value: 'desc', label: t('filters.crm.descending') },
+      ],
+      onChange: (d) => onChange({ dir: d === DEFAULT_DIRECTION[sort] ? undefined : (d as 'asc') }),
+    },
+  );
+  const reset = () => onChange({ sector: undefined, minScore: undefined });
 
   return (
-    <div className="board-toolbar" role="search" aria-busy={busy}>
-      <div className="search">
-        <Search size={14} aria-hidden="true" />
-        <label htmlFor={searchId} className="visually-hidden">
-          {t('crm.search')}
-        </label>
-        <input
-          id={searchId}
-          type="search"
-          value={text}
-          placeholder={t(pipeline === 'companies' ? 'crm.search.companies' : 'crm.search.people')}
-          onChange={(e) => setText(e.target.value)}
-        />
+    <>
+      <div className="board-toolbar" role="search" aria-busy={busy}>
+        <div className="search">
+          <Search size={14} aria-hidden="true" />
+          <label htmlFor={searchId} className="visually-hidden">
+            {t('crm.search')}
+          </label>
+          <input
+            id={searchId}
+            type="search"
+            value={text}
+            placeholder={t(pipeline === 'companies' ? 'crm.search.companies' : 'crm.search.people')}
+            onChange={(e) => setText(e.target.value)}
+          />
+        </div>
+        <FilterMenu fields={fields} onReset={reset} />
+        <p className="board-toolbar-count muted" role="status">
+          {t('crm.matches', { count: total })}
+        </p>
+        <div className="board-toolbar-view">
+          <ToggleGroup
+            label={t('crm.view.label')}
+            options={views}
+            value={query.view}
+            onChange={(view) => onChange({ view })}
+          />
+        </div>
       </div>
-      {pipeline === 'companies' && (
-        <label className="inline-field">
-          <span>{t('crm.filter.sector')}</span>
-          <select
-            value={query.sector ?? ''}
-            onChange={(e) => onChange({ sector: e.target.value || undefined })}
-          >
-            <option value="">{t('crm.filter.sector.any')}</option>
-            {sectors.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      <label className="inline-field">
-        <span>{t('crm.filter.score')}</span>
-        <select
-          value={String(query.minScore ?? 0)}
-          onChange={(e) => onChange({ minScore: Number(e.target.value) || undefined })}
-        >
-          {MIN_SCORES.map((n) => (
-            <option key={n} value={n}>
-              {t(`crm.filter.score.${n}` as StringKey)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="inline-field">
-        <span>{t('crm.sort')}</span>
-        <select
-          value={sort}
-          onChange={(e) => onChange({ sort: e.target.value as BoardSort, dir: undefined })}
-        >
-          {sorts.map((s) => (
-            <option key={s} value={s}>
-              {t(`crm.sort.${s}` as StringKey)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <button
-        type="button"
-        className="button button-icon"
-        aria-label={t(direction === 'asc' ? 'crm.sort.ascending' : 'crm.sort.descending')}
-        title={t(direction === 'asc' ? 'crm.sort.ascending' : 'crm.sort.descending')}
-        onClick={() => onChange({ dir: flipped === DEFAULT_DIRECTION[sort] ? undefined : flipped })}
-      >
-        {direction === 'asc' ? (
-          <ArrowUpNarrowWide size={16} aria-hidden="true" />
-        ) : (
-          <ArrowDownNarrowWide size={16} aria-hidden="true" />
-        )}
-      </button>
-      <p className="board-toolbar-count muted" role="status">
-        {t('crm.matches', { count: total })}
-      </p>
-      <div className="board-toolbar-view">
-        <ToggleGroup
-          label={t('crm.view.label')}
-          options={views}
-          value={query.view}
-          onChange={(view) => onChange({ view })}
-        />
-      </div>
-    </div>
+      <FilterChips fields={fields} />
+    </>
   );
 }

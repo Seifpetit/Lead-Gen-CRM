@@ -15,6 +15,8 @@ export function Popover({
   children,
   align = 'right',
   portal = false,
+  badge,
+  buttonLabel,
 }: {
   /** Names the button for screen readers and as its tooltip. */
   label: string;
@@ -25,6 +27,10 @@ export function Popover({
   children: ReactNode | ((close: () => void) => ReactNode);
   align?: 'left' | 'right';
   portal?: boolean;
+  /** A small count on the button (not drawn when it is 0). */
+  badge?: number;
+  /** What a screen reader says for the button when it differs from `label` (e.g. with the count). */
+  buttonLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const id = useId();
@@ -70,21 +76,23 @@ export function Popover({
       // The panel's own scrolling is not a reason to move it.
       if (!panel.current?.contains(event.target as Node)) follow();
     };
+    // Caught on the way down so that a dialog around the panel does not also close.
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        event.stopPropagation();
         setOpen(false);
         button.current?.focus();
       }
     };
     document.addEventListener('pointerdown', onPointer);
-    document.addEventListener('keydown', onKey);
+    document.addEventListener('keydown', onKey, true);
     if (portal) {
       window.addEventListener('scroll', onScroll, true);
       window.addEventListener('resize', follow);
     }
     return () => {
       document.removeEventListener('pointerdown', onPointer);
-      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('keydown', onKey, true);
       window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', follow);
     };
@@ -96,7 +104,7 @@ export function Popover({
         ref={button}
         type="button"
         className={showLabel ? 'button button-icon-text' : 'button button-icon'}
-        aria-label={label}
+        aria-label={buttonLabel ?? label}
         title={label}
         aria-expanded={open}
         aria-controls={id}
@@ -105,6 +113,11 @@ export function Popover({
       >
         {icon}
         {showLabel && label}
+        {badge !== undefined && badge > 0 && (
+          <span className="popover-badge" aria-hidden="true">
+            {badge}
+          </span>
+        )}
       </button>
       {open && !portal && (
         <div id={id} className={`popover-panel popover-${align}`} role="dialog" aria-label={label}>

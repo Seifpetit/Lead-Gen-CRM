@@ -1,20 +1,28 @@
 import type { RunSummary } from '@lead-gen-crm/shared';
 import { useCallback, useMemo, useState } from 'react';
+import { FilterChips } from '../../../components/shared/FilterMenu.js';
 import { Modal } from '../../../components/Modal.js';
 import { PanelSection } from '../../../components/shared/PanelSection.js';
 import { useT } from '../../../i18n/index.js';
 import { Folders } from './Folders.js';
 import { LeadsBody } from './LeadsBody.js';
-import { LeadsControls, type LeadsView } from './LeadsControls.js';
-import { LeadsToolbar } from './LeadsToolbar.js';
-import { ALL_PARTS, type TileParts } from './LeadTile.js';
-import { cardFilters, facetFilters, initialQuery, type LeadsQuery } from './leadsQuery.js';
+import { LeadsActions, PipelineSwitch, type LeadsView } from './LeadsControls.js';
+import { ALL_PARTS, COMPACT_PARTS } from './LeadTile.js';
+import { NO_FILTERS, useLeadsFilters } from './leadsFilters.js';
+import {
+  cardFilters,
+  facetFilters,
+  hasFilters,
+  initialQuery,
+  type Density,
+  type LeadsQuery,
+} from './leadsQuery.js';
 import { useLeadCards } from './useLeadCards.js';
 
 /**
  * Recent leads: the section that takes about 55% of the panel. Its view (found-in, pipeline,
- * stage, search, sort, grid or table) belongs to this component, so the expanded window opens on
- * the same cards and what is changed there is kept after it closes.
+ * stage, search, sort, grid or table, density) belongs to this component, so the expanded window
+ * opens on the same cards and what is changed there is kept after it closes.
  */
 export function LeadsPanel({
   regionId,
@@ -30,12 +38,13 @@ export function LeadsPanel({
   const t = useT();
   const [query, setQuery] = useState<LeadsQuery>(initialQuery);
   const [view, setView] = useState<LeadsView>('grid');
-  const [parts, setParts] = useState<TileParts>(ALL_PARTS);
+  const [density, setDensity] = useState<Density>('comfortable');
   const [expanded, setExpanded] = useState(false);
   const patch = useCallback(
     (change: Partial<LeadsQuery>) => setQuery((q) => ({ ...q, ...change })),
     [],
   );
+  const reset = useCallback(() => patch(NO_FILTERS), [patch]);
 
   const data = useLeadCards(
     query.pipeline,
@@ -47,23 +56,36 @@ export function LeadsPanel({
     () => new Map((data.facets?.sectors ?? []).map((s) => [s.id, s.name])),
     [data.facets],
   );
+  const fields = useLeadsFilters({
+    query,
+    onQuery: patch,
+    view,
+    onView: setView,
+    density,
+    onDensity: setDensity,
+    facets: data.facets,
+    runs,
+  });
+  const parts = density === 'compact' ? COMPACT_PARTS : ALL_PARTS;
   const nothingYet =
     !data.loading && data.error === null && data.facets?.total === 0 && !hasFilters(query);
 
-  const controls = (
-    <LeadsControls
-      query={query}
-      onQuery={patch}
-      view={view}
-      onView={setView}
-      parts={parts}
-      onParts={setParts}
-      onExpand={() => setExpanded(true)}
-    />
-  );
-
   return (
-    <PanelSection title={t('leads.title')} tone="teal" controls={controls} className="dp-leads">
+    <PanelSection
+      title={t('leads.title')}
+      tone="teal"
+      className="dp-leads"
+      leading={<PipelineSwitch query={query} onQuery={patch} />}
+      controls={
+        <LeadsActions
+          query={query}
+          onQuery={patch}
+          fields={fields}
+          onReset={reset}
+          onExpand={() => setExpanded(true)}
+        />
+      }
+    >
       {nothingYet ? (
         <div className="state state-empty">
           <p className="state-title">{t('leads.empty.title')}</p>
@@ -73,7 +95,7 @@ export function LeadsPanel({
         </div>
       ) : (
         <>
-          <LeadsToolbar query={query} onQuery={patch} stages={data.facets?.stages} />
+          <FilterChips fields={fields} />
           <LeadsBody
             data={data}
             query={query}
@@ -90,8 +112,8 @@ export function LeadsPanel({
           onQuery={patch}
           view={view}
           onView={setView}
-          parts={parts}
-          onParts={setParts}
+          density={density}
+          onDensity={setDensity}
           regionId={regionId}
           refreshKey={refreshKey}
           runs={runs}
@@ -102,17 +124,14 @@ export function LeadsPanel({
   );
 }
 
-const hasFilters = (q: LeadsQuery) =>
-  q.q.trim() !== '' || q.minScore !== '0' || q.found !== 'all' || q.stage !== null;
-
 /** The expanded window: folders on the left, the same cards (or table) with ticking and bulk actions. */
 function LeadsExplorer({
   query,
   onQuery,
   view,
   onView,
-  parts,
-  onParts,
+  density,
+  onDensity,
   regionId,
   refreshKey,
   runs,
@@ -122,8 +141,8 @@ function LeadsExplorer({
   onQuery: (patch: Partial<LeadsQuery>) => void;
   view: LeadsView;
   onView: (view: LeadsView) => void;
-  parts: TileParts;
-  onParts: (parts: TileParts) => void;
+  density: Density;
+  onDensity: (density: Density) => void;
   regionId: string;
   refreshKey: number;
   runs: readonly RunSummary[];
@@ -140,22 +159,27 @@ function LeadsExplorer({
     () => new Map((data.facets?.sectors ?? []).map((s) => [s.id, s.name])),
     [data.facets],
   );
+  const fields = useLeadsFilters({
+    query,
+    onQuery,
+    view,
+    onView,
+    density,
+    onDensity,
+    facets: data.facets,
+    runs,
+  });
+  const reset = useCallback(() => onQuery(NO_FILTERS), [onQuery]);
   return (
     <Modal title={t('leads.title')} onClose={onClose} full>
       <div className="explorer">
         <Folders facets={data.facets} query={query} runs={runs} onQuery={onQuery} />
         <div className="explorer-main">
-          <div className="explorer-controls">
-            <LeadsControls
-              query={query}
-              onQuery={onQuery}
-              view={view}
-              onView={onView}
-              parts={parts}
-              onParts={onParts}
-            />
+          <div className="explorer-bar">
+            <PipelineSwitch query={query} onQuery={onQuery} />
+            <LeadsActions query={query} onQuery={onQuery} fields={fields} onReset={reset} />
           </div>
-          <LeadsToolbar query={query} onQuery={onQuery} />
+          <FilterChips fields={fields} />
           <p className="muted small explorer-count" role="status">
             {t('leads.count', { count: data.total })}
           </p>
@@ -164,7 +188,7 @@ function LeadsExplorer({
             query={query}
             onQuery={onQuery}
             view={view}
-            parts={parts}
+            parts={density === 'compact' ? COMPACT_PARTS : ALL_PARTS}
             selectable
             sectorNames={sectorNames}
           />

@@ -173,7 +173,15 @@ async function setup(cards?: CrmCard[], extra = {}) {
   return { server, user, ...view };
 }
 const panel = () => screen.getByRole('region', { name: 'Recent leads' });
+type User = ReturnType<typeof userEvent.setup>;
+/** The Filters button of the panel (or of the Expand window, with `inside`) and its open panel. */
+const openFilters = async (user: User, inside?: HTMLElement) => {
+  const scope = inside ?? panel();
+  await user.click(within(scope).getByRole('button', { name: /^Filters/ }));
+  return screen.getByRole('dialog', { name: 'Filters' });
+};
 const grid = () => within(panel()).getByRole('list', { name: 'Companies found' });
+const tile = (name: string) => within(grid()).getByText(name).closest('li')!;
 const names = (list: HTMLElement) =>
   within(list)
     .getAllByRole('listitem')
@@ -260,30 +268,43 @@ describe('Recent leads cards', () => {
     expect(server.to('GET /api/crm/people/cards').length).toBeGreaterThan(0);
   });
 
-  it('switches from the card grid to the CRM table', async () => {
+  it('switches from the card grid to the CRM table from the Filters panel', async () => {
     const { user } = await setup();
-    await user.click(within(panel()).getByRole('radio', { name: 'Table' }));
+    const filters = await openFilters(user);
+    await user.click(within(filters).getByRole('radio', { name: 'Table' }));
     expect(await within(panel()).findByRole('table')).toBeVisible();
-    await user.click(within(panel()).getByRole('radio', { name: 'Grid' }));
+    await user.click(within(filters).getByRole('radio', { name: 'Grid' }));
     expect(within(panel()).queryByRole('table')).toBeNull();
   });
 
-  it('hides parts of the cards from the display settings', async () => {
+  it('makes the cards compact, with a smaller picture and no found date or contact icons', async () => {
     const { user } = await setup();
-    await user.click(within(panel()).getByRole('button', { name: 'Display settings' }));
-    await user.click(await screen.findByRole('checkbox', { name: 'Found date' }));
+    const filters = await openFilters(user);
+    expect(within(grid()).getByText('found 2d ago')).toBeVisible();
+    await user.click(within(filters).getByRole('radio', { name: 'Compact' }));
     expect(within(grid()).queryByText('found 2d ago')).toBeNull();
+    expect(tile('Fixture Transport SARL')).toHaveClass('tile-compact');
+    expect(tile('Fixture Transport SARL').querySelector('.thumb')).toHaveStyle({ width: '36px' });
+    await user.click(within(filters).getByRole('radio', { name: 'Comfortable' }));
+    expect(within(grid()).getByText('found 2d ago')).toBeVisible();
   });
 
-  it('searches, filters by score and by the Found window through the server', async () => {
+  it('searches in the header, and filters by score and Found through the server', async () => {
     const { user, server } = await setup();
     await user.type(within(panel()).getByRole('searchbox', { name: 'Search leads' }), 'second');
     await waitFor(() => expect(names(grid())).toEqual(['Second Freight']));
     expect(server.to('GET /api/crm/companies/cards').at(-1)!.query.get('q')).toBe('second');
     await user.clear(within(panel()).getByRole('searchbox', { name: 'Search leads' }));
-    await user.click(within(panel()).getByRole('radio', { name: '7 days' }));
+    const filters = await openFilters(user);
+    await user.click(within(filters).getByRole('radio', { name: '7 days' }));
     await waitFor(() => expect(names(grid())).toEqual(['Fixture Transport SARL']));
     expect(server.to('GET /api/crm/companies/cards').at(-1)!.query.get('foundDays')).toBe('7');
+    await user.click(within(filters).getByRole('radio', { name: 'All' }));
+    fireEvent.change(within(filters).getByRole('slider', { name: 'Minimum score' }), {
+      target: { value: '50' },
+    });
+    await waitFor(() => expect(names(grid())).toEqual(['Fixture Transport SARL']));
+    expect(server.to('GET /api/crm/companies/cards').at(-1)!.query.get('minScore')).toBe('50');
   });
 
   it('narrows to the chosen region', async () => {
@@ -297,8 +318,6 @@ describe('Recent leads cards', () => {
 });
 
 describe('Rearranging cards', () => {
-  const tile = (name: string) => within(grid()).getByText(name).closest('li')!;
-
   it('lets a card be dragged to another place, and keeps it there', async () => {
     await setup();
     expect(names(grid())).toEqual(['Fixture Transport SARL', 'Second Freight']);
@@ -336,7 +355,8 @@ describe('Rearranging cards', () => {
       .focus();
     await user.keyboard('{Alt>}{ArrowRight}{/Alt}');
     expect(names(grid())).toEqual(['Second Freight', 'Fixture Transport SARL']);
-    await user.selectOptions(within(panel()).getByLabelText('Sort by'), 'Name A to Z');
+    const filters = await openFilters(user);
+    await user.click(within(filters).getByRole('radio', { name: 'Name A to Z' }));
     await waitFor(() =>
       expect(names(grid())).toEqual(['Fixture Transport SARL', 'Second Freight']),
     );
@@ -380,34 +400,211 @@ describe('Divider between leads and charts', () => {
   });
 });
 
-describe('Stage chips', () => {
-  it('filter the cards by stage and All brings them back', async () => {
-    const { user, server } = await setup();
-    const chips = within(panel()).getByRole('group', { name: 'Stage' });
-    expect(within(chips).getByRole('button', { name: /^All/ })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-    expect(names(grid())).toEqual(['Fixture Transport SARL', 'Second Freight']);
+describe('Filters panel', () => {
+  const chips = () => screen.queryByRole('list', { name: 'Active filters' });
 
-    await user.click(within(chips).getByRole('button', { name: /^Investigating/ }));
+  it('has the one-line header: title, Companies / People, search, Filters and Expand', async () => {
+    await setup();
+    const head = panel().querySelector('.panel-head')!;
+    expect(
+      within(head as HTMLElement).getByRole('heading', { name: 'Recent leads' }),
+    ).toBeVisible();
+    expect(within(head as HTMLElement).getByRole('radio', { name: 'Companies' })).toBeVisible();
+    expect(
+      within(head as HTMLElement).getByRole('searchbox', { name: 'Search leads' }),
+    ).toBeVisible();
+    expect(within(head as HTMLElement).getByRole('button', { name: 'Filters' })).toBeVisible();
+    expect(within(head as HTMLElement).getByRole('button', { name: 'Expand' })).toBeVisible();
+    // Nothing else is in the header or in a second row: the rest is in the panel.
+    expect(within(head as HTMLElement).queryByRole('radio', { name: '7 days' })).toBeNull();
+    expect(within(panel()).queryByRole('group', { name: 'Stage' })).toBeNull();
+    expect(chips()).toBeNull();
+  });
+
+  it('holds found range, stages with counts, score, sort, view and density', async () => {
+    const { user } = await setup();
+    const filters = await openFilters(user);
+    for (const name of ['Found', 'Stage', 'Sort by', 'View', 'Card density']) {
+      expect(within(filters).getByRole('group', { name })).toBeVisible();
+    }
+    expect(within(filters).getByRole('slider', { name: 'Minimum score' })).toBeVisible();
+    expect(within(filters).getByRole('radio', { name: /^All\s*2$/ })).toBeChecked();
+    expect(within(filters).getByRole('radio', { name: /^Found\s*1$/ })).toBeVisible();
+    expect(within(filters).getByRole('radio', { name: /^Investigating\s*1$/ })).toBeVisible();
+    expect(within(filters).getByRole('button', { name: 'Reset' })).toBeDisabled();
+  });
+
+  it('filters the cards by stage as soon as one is picked, and All brings them back', async () => {
+    const { user, server } = await setup();
+    const filters = await openFilters(user);
+    await user.click(within(filters).getByRole('radio', { name: /^Investigating/ }));
     await waitFor(() => expect(names(grid())).toEqual(['Second Freight']));
-    expect(within(chips).getByRole('button', { name: /^Investigating/ })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
     expect(server.to('GET /api/crm/companies/cards').at(-1)!.query.get('stage')).toBe(
       'investigating',
     );
-
-    await user.click(within(chips).getByRole('button', { name: /^All/ }));
+    await user.click(within(filters).getByRole('radio', { name: /^All\s*\d+$/ }));
     await waitFor(() => expect(names(grid())).toHaveLength(2));
+  });
+
+  it('counts the active filters on the button, and the chips come and go with them', async () => {
+    const { user } = await setup();
+    const button = () => within(panel()).getByRole('button', { name: /^Filters/ });
+    expect(button()).toHaveAccessibleName('Filters');
+    expect(within(button()).queryByText(/^\d+$/)).toBeNull();
+    const filters = await openFilters(user);
+
+    await user.click(within(filters).getByRole('radio', { name: '30 days' }));
+    await waitFor(() => expect(button()).toHaveAccessibleName('Filters, 1 active'));
+    expect(within(button()).getByText('1')).toBeVisible();
+    expect(within(chips()!).getAllByRole('listitem')).toHaveLength(1);
+    expect(within(chips()!).getByText('Found: 30 days')).toBeVisible();
+
+    await user.click(within(filters).getByRole('radio', { name: /^Investigating/ }));
+    fireEvent.change(within(filters).getByRole('slider', { name: 'Minimum score' }), {
+      target: { value: '30' },
+    });
+    await waitFor(() => expect(button()).toHaveAccessibleName('Filters, 3 active'));
+    expect(
+      within(chips()!)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual(['Found: 30 days', 'Stage: Investigating', 'Score: 30 or more']);
+
+    // A chip's X removes just that filter, and the row goes when the last one is gone.
+    await user.click(
+      within(chips()!).getByRole('button', { name: 'Remove filter Stage: Investigating' }),
+    );
+    await waitFor(() => expect(button()).toHaveAccessibleName('Filters, 2 active'));
+    expect(within(chips()!).queryByText('Stage: Investigating')).toBeNull();
+    await user.click(
+      within(chips()!).getByRole('button', { name: 'Remove filter Found: 30 days' }),
+    );
+    await user.click(within(chips()!).getByRole('button', { name: /^Remove filter Score/ }));
+    await waitFor(() => expect(chips()).toBeNull());
+    expect(button()).toHaveAccessibleName('Filters');
+  });
+
+  it('does not count the search, the sort or the layout as filters', async () => {
+    const { user } = await setup();
+    await user.type(within(panel()).getByRole('searchbox', { name: 'Search leads' }), 'fix');
+    const filters = await openFilters(user);
+    await user.click(within(filters).getByRole('radio', { name: 'Name A to Z' }));
+    await user.click(within(filters).getByRole('radio', { name: 'Compact' }));
+    expect(chips()).toBeNull();
+    expect(within(panel()).getByRole('button', { name: 'Filters' })).toBeVisible();
+  });
+
+  it('Reset clears every filter at once and leaves the sort and layout alone', async () => {
+    const { user, server } = await setup();
+    const filters = await openFilters(user);
+    await user.click(within(filters).getByRole('radio', { name: '7 days' }));
+    await user.click(within(filters).getByRole('radio', { name: /^Found\s*1$/ }));
+    fireEvent.change(within(filters).getByRole('slider', { name: 'Minimum score' }), {
+      target: { value: '50' },
+    });
+    await user.click(within(filters).getByRole('radio', { name: 'Compact' }));
+    await waitFor(() =>
+      expect(within(panel()).getByRole('button', { name: 'Filters, 3 active' })).toBeVisible(),
+    );
+    expect(within(chips()!).getAllByRole('listitem')).toHaveLength(3);
+
+    await user.click(within(filters).getByRole('button', { name: 'Reset' }));
+    await waitFor(() => expect(chips()).toBeNull());
+    expect(within(panel()).getByRole('button', { name: 'Filters' })).toBeVisible();
+    expect(within(filters).getByRole('radio', { name: 'All' })).toBeChecked();
+    expect(within(filters).getByRole('radio', { name: /^All\s*2$/ })).toBeChecked();
+    expect(within(filters).getByRole('slider', { name: 'Minimum score' })).toHaveValue('0');
+    expect(within(filters).getByRole('button', { name: 'Reset' })).toBeDisabled();
+    await waitFor(() => expect(names(grid())).toHaveLength(2));
+    const last = server.to('GET /api/crm/companies/cards').at(-1)!;
+    expect(last.query.get('stage')).toBeNull();
+    expect(last.query.get('foundDays')).toBeNull();
+    expect(last.query.get('minScore')).toBeNull();
+    // The layout choice is not a filter.
+    expect(within(filters).getByRole('radio', { name: 'Compact' })).toBeChecked();
+  });
+
+  it('closes with Escape and hands the focus back to the button', async () => {
+    const { user } = await setup();
+    const button = within(panel()).getByRole('button', { name: /^Filters/ });
+    await user.click(button);
+    expect(screen.getByRole('dialog', { name: 'Filters' })).toBeVisible();
+    expect(button).toHaveAttribute('aria-expanded', 'true');
+    within(screen.getByRole('dialog', { name: 'Filters' }))
+      .getByRole('radio', { name: '7 days' })
+      .focus();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Filters' })).toBeNull();
+    expect(button).toHaveFocus();
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('works with the keyboard alone', async () => {
+    const { user } = await setup();
+    const button = within(panel()).getByRole('button', { name: /^Filters/ });
+    button.focus();
+    await user.keyboard('{Enter}');
+    const filters = screen.getByRole('dialog', { name: 'Filters' });
+    within(filters).getByRole('radio', { name: '7 days' }).focus();
+    await user.keyboard('{ArrowRight}');
+    expect(within(filters).getByRole('radio', { name: '30 days' })).toBeChecked();
+    await waitFor(() =>
+      expect(within(panel()).getByRole('button', { name: 'Filters, 1 active' })).toBeVisible(),
+    );
+    const slider = within(filters).getByRole('slider', { name: 'Minimum score' });
+    slider.focus();
+    expect(slider).toHaveFocus();
+    fireEvent.change(slider, { target: { value: '10' } });
+    await waitFor(() =>
+      expect(within(panel()).getByRole('button', { name: 'Filters, 2 active' })).toBeVisible(),
+    );
+    await user.keyboard('{Escape}');
+    expect(button).toHaveFocus();
+  });
+
+  it('is the same panel in the Expand window, on the same filters; Escape closes only the panel', async () => {
+    const { user } = await setup();
+    const filters = await openFilters(user);
+    await user.click(within(filters).getByRole('radio', { name: /^Investigating/ }));
+    await waitFor(() => expect(names(grid())).toEqual(['Second Freight']));
+    await user.keyboard('{Escape}');
+
+    await user.click(within(panel()).getByRole('button', { name: 'Expand' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Recent leads' });
+    // The filter chosen in the panel is on in the window, as a chip and in the badge.
+    const inChips = await within(dialog).findByRole('list', { name: 'Active filters' });
+    expect(within(inChips).getByText('Stage: Investigating')).toBeVisible();
+    const inside = await openFilters(user, dialog);
+    expect(within(inside).getByRole('radio', { name: /^Investigating/ })).toBeChecked();
+    await user.click(within(inside).getByRole('radio', { name: /^All\s*\d+$/ }));
+    // Escape closes the Filters panel first, and the window stays.
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Filters' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Recent leads' })).toBeVisible();
+    expect(within(dialog).getByRole('button', { name: 'Filters' })).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Recent leads' })).toBeNull();
+    // What was changed in the window is kept in the panel.
+    expect(chips()).toBeNull();
+  });
+
+  it('shows a folder as a chip too, and the chip clears it', async () => {
+    const { user } = await setup();
+    await user.click(within(panel()).getByRole('button', { name: 'Expand' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Recent leads' });
+    const folders = await within(dialog).findByRole('navigation', { name: 'Folders' });
+    await user.click(within(folders).getByRole('button', { name: /^Food\s*1$/ }));
+    const inChips = await within(dialog).findByRole('list', { name: 'Active filters' });
+    expect(within(inChips).getByText('Sector: Food')).toBeVisible();
+    await user.click(within(inChips).getByRole('button', { name: 'Remove filter Sector: Food' }));
+    await waitFor(() =>
+      expect(within(dialog).queryByRole('list', { name: 'Active filters' })).toBeNull(),
+    );
   });
 
   it('never asks for Noise, so removed leads do not show', async () => {
     const { server } = await setup();
     expect(server.to('GET /api/crm/companies/cards')[0]!.query.get('excludeNoise')).toBe('true');
-    expect(within(panel()).queryByRole('button', { name: /^Noise/ })).toBeNull();
   });
 });
 
