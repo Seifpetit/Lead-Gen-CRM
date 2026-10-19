@@ -108,7 +108,9 @@ export function combinePreviews(previews: readonly RunPreview[]): RunPreview | n
   return {
     ...first,
     cells: previews.flatMap((p) => p.cells),
-    queries: previews.flatMap((p) => p.queries).slice(0, 50),
+    queries: previews
+      .flatMap((p) => p.queries.map((q) => ({ ...q, regionId: p.regionId })))
+      .slice(0, 50),
     queriesTotal: sum((p) => p.queriesTotal),
     volume: {
       ...first.volume,

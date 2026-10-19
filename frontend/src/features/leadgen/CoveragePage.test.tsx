@@ -2,7 +2,7 @@ import type { Coverage, RegionGeometry } from '@lead-gen-crm/shared';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes, useLocation } from 'react-router';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { dashboardRoutes, page, preview, region, run } from '../../test/fixtures.js';
 import { fakeServer } from '../../test/fakeServer.js';
 import { renderWith } from '../../test/render.js';
@@ -221,7 +221,12 @@ describe('Coverage page', () => {
   });
 
   it('runs one sector in several regions: one estimate for all, one run per region', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const { server, user } = setup();
+    // Each region's preview names its own region, as the real server's does.
+    server.set('POST /api/runs/preview', (req) => ({
+      body: preview({ regionId: String((req.body as { regionId: string }).regionId) }),
+    }));
     await user.click(await screen.findByRole('button', { name: 'Start a run for Textile' }));
     const dialog = await screen.findByRole('dialog', { name: 'Start a run' });
     await user.click(within(dialog).getByRole('button', { name: 'Select all' }));
@@ -238,6 +243,10 @@ describe('Coverage page', () => {
     // Two runs at $3.50 each: the combined estimate and the cap for each run.
     expect(await within(dialog).findByText('$7.00')).toBeVisible();
     expect(within(dialog).getByLabelText('Spend cap for each run (USD)')).toBeVisible();
+    // Both regions plan the same cell names; each keeps its own list, under its own heading.
+    await user.click(within(dialog).getByText('Advanced'));
+    expect(within(dialog).getByRole('heading', { name: 'Cell Sfax r0c0' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('heading', { name: 'Cell Tunis r0c0' })).toBeInTheDocument();
     const start = within(dialog).getByRole('button', { name: /Start 2 runs, up to \$2.00 each/ });
     await waitFor(() => expect(start).toHaveAttribute('aria-disabled', 'false'));
     await user.click(start);
@@ -249,6 +258,9 @@ describe('Coverage page', () => {
       ['tunis', ['textile']],
     ]);
     expect(await screen.findByText('2 runs started: sfax, tunis.')).toBeVisible();
+    // No "same key" warnings from React.
+    expect(errors.mock.calls.filter((c) => String(c[0]).includes('same key'))).toEqual([]);
+    errors.mockRestore();
   });
 
   it('starts only as many runs as can go at once, and names the regions left', async () => {

@@ -147,6 +147,8 @@ export interface PlannedQuery {
   /** The sector the wording belongs to; null for a wording typed in. */
   sectorId: string | null;
   cellKey: string;
+  /** Set when several regions are planned together, so the same cell name is not mixed up. */
+  regionId?: string;
 }
 
 /** A sector and the French wordings the grid searches for it. */
