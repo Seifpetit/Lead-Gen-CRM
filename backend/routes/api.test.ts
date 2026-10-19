@@ -173,6 +173,8 @@ interface RouteCase {
   pattern: string;
   url: (ids: Ids) => string;
   body?: unknown;
+  /** Never ends, so it is only checked signed out here; see GET /api/runs/stream. */
+  stream?: boolean;
 }
 const CASES: RouteCase[] = [
   { method: 'GET', pattern: '/api/auth/me', url: () => '/api/auth/me' },
@@ -190,7 +192,15 @@ const CASES: RouteCase[] = [
     body: { regionId: 'tunis', budgetCapUsd: 5, confirm: true },
   },
   { method: 'GET', pattern: '/api/runs', url: () => '/api/runs' },
+  { method: 'GET', pattern: '/api/runs/live', url: () => '/api/runs/live' },
+  {
+    method: 'GET',
+    pattern: '/api/runs/stream',
+    url: () => '/api/runs/stream',
+    stream: true,
+  },
   { method: 'GET', pattern: '/api/runs/:id', url: (i) => `/api/runs/${i.run}` },
+  { method: 'GET', pattern: '/api/runs/:id/logs', url: (i) => `/api/runs/${i.run}/logs` },
   { method: 'POST', pattern: '/api/runs/:id/stop', url: (i) => `/api/runs/${i.run}/stop` },
   { method: 'GET', pattern: '/api/runs/:id/costs', url: (i) => `/api/runs/${i.run}/costs` },
   { method: 'GET', pattern: '/api/regions', url: () => '/api/regions' },
@@ -352,7 +362,7 @@ describe('every route', () => {
 
   it('does not ask for a CSRF token on reads', async () => {
     const i = await ids();
-    for (const c of CASES.filter((x) => x.method === 'GET')) {
+    for (const c of CASES.filter((x) => x.method === 'GET' && !x.stream)) {
       const res = await call(alice, 'GET', c.url(i), undefined, { csrf: null });
       expect(res.statusCode, `GET ${c.pattern}`).toBe(200);
     }

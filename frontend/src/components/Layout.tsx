@@ -1,4 +1,5 @@
 import {
+  Activity,
   CircleDollarSign,
   CircleHelp,
   LayoutDashboard,
@@ -24,7 +25,7 @@ export function Layout() {
   const api = useApi();
   const inLeadGen = useLocation().pathname.startsWith('/leadgen');
 
-  // The counts beside "Dashboard" (leads waiting for a decision) and "Logs" (runs in progress).
+  // The counts beside "Dashboard" (leads waiting for a decision) and "Runs" (runs in progress).
   const waiting = useResource(() => api.leads.list({ stage: ['system_suggested'], limit: 1 }), {
     enabled: inLeadGen,
     pollMs: BADGE_POLL_MS,
@@ -84,11 +85,16 @@ export function Layout() {
                   id: 'activity',
                   items: [
                     {
+                      to: '/leadgen/runs',
+                      label: t('side.runs'),
+                      icon: <Activity size={ICON} aria-hidden="true" />,
+                      badge: activeRuns,
+                      badgeLabel: t('side.badge.activeRuns', { count: activeRuns }),
+                    },
+                    {
                       to: '/leadgen/logs',
                       label: t('side.logs'),
                       icon: <ScrollText size={ICON} aria-hidden="true" />,
-                      badge: activeRuns,
-                      badgeLabel: t('side.badge.activeRuns', { count: activeRuns }),
                     },
                   ],
                 },

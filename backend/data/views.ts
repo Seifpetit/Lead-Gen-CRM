@@ -92,6 +92,16 @@ async function funnels(db: Queryable, userId: UserId, runIds: string[]) {
   return out;
 }
 
+/** The runs in progress, for the live strip and console: newest first. */
+export async function activeRunSummaries(db: Queryable, userId: UserId): Promise<RunSummary[]> {
+  return runSummaries(db, userId, await activeRunIds(db, userId));
+}
+
+/** Companies per funnel stage for one run. */
+export async function runFunnel(db: Queryable, userId: UserId, runId: string): Promise<RunFunnel> {
+  return (await funnels(db, userId, [runId])).get(runId)!;
+}
+
 export async function listRunSummaries(
   db: Queryable,
   userId: UserId,
@@ -130,15 +140,36 @@ export async function runSummaries(
   runIds: string[],
 ): Promise<RunSummary[]> {
   const f = await funnels(db, userId, runIds);
-  const errors = await db.query<{ id: string; error: string | null }>(
-    'SELECT id, error FROM runs WHERE user_id = $1 AND id = ANY($2::uuid[])',
+  const extra = await db.query<{
+    id: string;
+    error: string | null;
+    live_message: string | null;
+    stage_total: number;
+    stage_done: number;
+  }>(
+    `SELECT r.id, r.error, r.live_message,
+            count(s.id)::integer AS stage_total,
+            (count(s.id) FILTER (WHERE s.status IN ('finished', 'failed')))::integer AS stage_done
+       FROM runs r
+       LEFT JOIN run_steps s ON s.run_id = r.id AND s.stage = r.current_stage
+      WHERE r.user_id = $1 AND r.id = ANY($2::uuid[])
+      GROUP BY r.id`,
     [userId, runIds],
   );
-  const errorOf = new Map(errors.rows.map((r) => [r.id, r.error]));
+  const extraOf = new Map(extra.rows.map((r) => [r.id, r]));
   const out: RunSummary[] = [];
   for (const id of runIds) {
     const run = await getRun(db, userId, id);
-    if (run) out.push({ ...run, funnel: f.get(id)!, error: errorOf.get(id) ?? null });
+    if (!run) continue;
+    const e = extraOf.get(id);
+    out.push({
+      ...run,
+      funnel: f.get(id)!,
+      error: e?.error ?? null,
+      liveMessage: e?.live_message ?? null,
+      // Steps of the current stage that have landed; the stages with no steps count as 0.
+      stageFraction: e && e.stage_total > 0 ? e.stage_done / e.stage_total : 0,
+    });
   }
   return out;
 }

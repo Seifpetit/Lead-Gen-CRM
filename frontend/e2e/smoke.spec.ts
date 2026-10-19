@@ -50,7 +50,13 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
   await nav.getByRole('link', { name: 'Lead Gen' }).click();
   await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible();
   const side = page.getByRole('navigation', { name: 'Lead Gen sections' });
-  await expect(side.getByRole('link')).toHaveText(['Dashboard', 'Coverage', 'Costs', 'Logs']);
+  await expect(side.getByRole('link')).toHaveText([
+    'Dashboard',
+    'Coverage',
+    'Costs',
+    'Runs',
+    'Logs',
+  ]);
 
   // Clean start: no leads and no runs yet.
   await expect(page.getByText('No leads yet. Create a run to find your first ones.')).toBeVisible();
@@ -83,8 +89,10 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
   await expect(toast).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
-  // The dashboard shows it as active: a link under the header and a row in Runs.
-  await expect(page.getByRole('link', { name: 'Run active: sfax' })).toBeVisible();
+  // The dashboard shows it as active: a live strip under the header and a row in Runs.
+  await expect(
+    page.getByRole('region', { name: 'Runs in progress' }).getByRole('link').first(),
+  ).toBeVisible();
   await expect(
     runs.getByRole('link', { name: 'Open run for sfax' }).getByText('Running'),
   ).toBeVisible();
@@ -126,7 +134,7 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
 
   // Open the result: people first, every field tagged.
   await runs.getByRole('link', { name: 'Open run for sfax' }).click();
-  await expect(page.getByRole('heading', { name: 'Run in sfax' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'This run' })).toBeVisible();
   const card = page.getByRole('article').first();
   await expect(card.getByRole('heading', { name: 'Decision-maker' })).toBeVisible();
   await expect(card.locator('.tag-fact, .tag-estimate').first()).toBeVisible();

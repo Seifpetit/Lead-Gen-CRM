@@ -135,6 +135,7 @@ const PAGES = [
   ['Dashboard', '/leadgen'],
   ['Coverage', '/leadgen/coverage'],
   ['Costs', '/leadgen/costs'],
+  ['Runs', '/leadgen/runs'],
   ['Logs', '/leadgen/logs'],
   ['Settings', '/leadgen/settings'],
   ['Help', '/leadgen/help'],

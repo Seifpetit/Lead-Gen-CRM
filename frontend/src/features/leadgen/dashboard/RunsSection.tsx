@@ -1,4 +1,4 @@
-import type { RunSummary } from '@lead-gen-crm/shared';
+import { STAGE_CHECKPOINT, type RunSummary } from '@lead-gen-crm/shared';
 import { Link } from 'react-router';
 import { EmptyState, ErrorState, LoadingState } from '../../../components/states.js';
 import { PanelSection } from '../../../components/shared/PanelSection.js';
@@ -51,7 +51,10 @@ export function RunsSection({
                   <span className="run-status">
                     <StatusBadge status={run.status} />
                     {isActive(run.status) && run.currentStage && (
-                      <span className="muted small"> {t(`stage.${run.currentStage}`)}</span>
+                      <span className="muted small">
+                        {' '}
+                        {t(`cp.${STAGE_CHECKPOINT[run.currentStage]}`)}
+                      </span>
                     )}
                   </span>
                   <span className="run-spend" title={spent}>

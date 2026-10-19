@@ -1,0 +1,343 @@
+/* Live run monitoring: the Dashboard strip, the Runs page cards and the log window.
+   Colours, borders and shadows come from the tokens in styles.css; the log window is the one
+   dark panel in the light theme. */
+
+/* ---- Dashboard strip: one slim row per run in progress ------------------------------------ */
+.live-strip {
+  flex: none;
+  border-bottom: var(--bw) solid var(--ink);
+  background: var(--accent-tint);
+}
+.live-strip ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.strip-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(120px, 240px) auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 36px;
+  padding: var(--space-1) var(--space-4);
+}
+.strip-row + .strip-row {
+  border-top: 2px solid var(--ink);
+}
+.strip-sentence {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-weight: 700;
+}
+.strip-sentence:hover {
+  text-decoration: underline;
+}
+.strip-bar {
+  min-width: 0;
+}
+.strip-spend {
+  font-size: var(--fs-caption);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+@container dashpanel (max-width: 640px) {
+  .strip-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .strip-bar {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+/* ---- Six checkpoints ---------------------------------------------------------------------- */
+.cp-list {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.cp {
+  min-width: 0;
+}
+.cp-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  margin-top: var(--space-1);
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.25;
+}
+.cp {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.cp-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 2px solid var(--ink);
+  border-radius: 9px;
+  background: var(--white);
+  color: var(--ink);
+}
+.cp-label {
+  font-weight: 700;
+  overflow-wrap: break-word;
+}
+.cp-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.cp[data-state='done'] .cp-icon {
+  background: var(--teal);
+}
+.cp[data-state='current'] .cp-icon {
+  background: var(--yellow);
+}
+.cp[data-state='halted'] .cp-icon {
+  background: var(--coral);
+}
+.cp[data-state='todo'] .cp-icon {
+  border-style: dashed;
+  color: var(--muted);
+}
+.cp[data-state='todo'] .cp-label {
+  font-weight: 400;
+  color: var(--muted);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cp[data-state='current'] .cp-icon {
+    animation: cp-pulse 1.6s ease-in-out infinite;
+  }
+}
+@keyframes cp-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--ink);
+  }
+  50% {
+    box-shadow:
+      0 0 0 4px var(--yellow),
+      0 0 0 6px var(--ink);
+  }
+}
+/* A run in a list: icons and counts, the names stay in the title and for screen readers. */
+.cp-list.is-compact .cp-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.cp-list.is-compact .cp-icon {
+  width: 26px;
+  height: 26px;
+}
+
+/* On a narrow screen the six steps wrap into two rows of three, so no name breaks in the middle. */
+@container dashpanel (max-width: 600px) {
+  .cp-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: var(--space-2);
+  }
+}
+
+/* ---- Runs page ---------------------------------------------------------------------------- */
+.runs-mode {
+  font-size: var(--fs-caption);
+}
+.runs-top {
+  flex: 0 1 auto;
+  max-height: 58%;
+}
+.runs-bottom {
+  flex: 1 1 0;
+  min-height: 160px;
+  border-top: var(--bw) solid var(--ink);
+}
+.runs-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  gap: var(--space-3);
+  align-items: start;
+  /* Room for the cards' hard shadows inside the scrolling area. */
+  padding: 0 6px 6px 0;
+}
+.runs-cards.is-past {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
+}
+.run-card .widget-header h2 {
+  font-size: var(--fs-body);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.run-card .widget-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.run-card-meta {
+  margin: 0;
+  font-size: var(--fs-caption);
+}
+.run-card-bars {
+  display: grid;
+  gap: var(--space-1);
+}
+.run-card-spend {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-caption);
+  font-variant-numeric: tabular-nums;
+}
+.run-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.run-card-spent {
+  margin-right: auto;
+  font-size: var(--fs-caption);
+}
+.runs-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-caption);
+}
+.runs-scope select {
+  max-width: 260px;
+}
+
+/* ---- Log window --------------------------------------------------------------------------- */
+.log-modal {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+}
+.log-tools {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.log-search input {
+  min-width: 220px;
+}
+.log-count {
+  margin-left: auto;
+  font-size: var(--fs-caption);
+}
+.log-buttons {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+.log-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+.term {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: #141414;
+  color: #f2f2f2;
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--radius);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 13px;
+  line-height: 20px;
+}
+.term-lines {
+  position: relative;
+  min-width: 100%;
+}
+.term-row {
+  position: absolute;
+  left: 0;
+  height: 20px;
+  padding: 0 var(--space-3);
+  white-space: pre;
+}
+.term-row:hover {
+  background: #262626;
+}
+.term-time {
+  margin-right: var(--space-3);
+  color: #a9a9a9;
+}
+.term-level {
+  display: inline-block;
+  width: 6ch;
+  margin-right: var(--space-2);
+  font-weight: 700;
+}
+.term-row[data-level='info'] .term-level {
+  color: #8fe3dc;
+}
+.term-row[data-level='warn'] .term-level {
+  color: #ffe066;
+}
+.term-row[data-level='error'] .term-level {
+  color: #ff9a90;
+}
+.term-row[data-level='error'] .term-msg {
+  color: #ffc2bc;
+}
+/* The detail behind a sentence is quieter than the sentences themselves. */
+.term-row[data-technical='true'] .term-msg {
+  color: #b9b9b9;
+}
+.term-note {
+  margin: 0;
+  padding: var(--space-4);
+  color: #d6d6d6;
+  font-family: var(--font);
+}
+.log-modal .jump {
+  position: absolute;
+  right: var(--space-5);
+  bottom: var(--space-4);
+}
+.log-foot {
+  flex: none;
+  margin: 0;
+  font-size: var(--fs-caption);
+}
+/* The page's scrollbars are drawn for a light page; on the dark panel they need their own colours. */
+.log-modal .term {
+  scrollbar-color: #8a8a8a #141414;
+}
+.log-modal .term::-webkit-scrollbar-thumb,
+.log-modal .term:hover::-webkit-scrollbar-thumb,
+.log-modal .term:focus-within::-webkit-scrollbar-thumb {
+  background-color: #8a8a8a;
+  border: 3px solid #141414;
+  background-clip: padding-box;
+}
+.log-modal .term::-webkit-scrollbar-track,
+.log-modal .term::-webkit-scrollbar-corner {
+  background: #141414;
+}
