@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Db } from './db.js';
 import { MIGRATIONS, migrateDown, migrateUp } from './migrate.js';
 import { upsertCompany } from './companies.js';
+import { createRun } from './runs.js';
 import { seedReference } from './seed.js';
 import { makeUser, openTestDb } from './testDb.js';
 
@@ -45,6 +46,7 @@ describe('migrations', () => {
       'region_status',
       'regions',
       'run_companies',
+      'run_log',
       'run_steps',
       'runs',
       'search_queries',
@@ -63,11 +65,11 @@ describe('migrations', () => {
     expect(await migrateDown(db, Infinity)).toEqual(MIGRATIONS.map((m) => m.id).reverse());
     expect(await tables()).toEqual([]);
     expect(await migrateUp(db)).toEqual(MIGRATIONS.map((m) => m.id));
-    expect(await tables()).toHaveLength(28);
+    expect(await tables()).toHaveLength(29);
   });
 
   it('moves existing leads onto the Companies board in Found, one card per company', async () => {
-    await migrateDown(db, 3); // back to 008, before the boards
+    await migrateDown(db, 4); // back to 008, before the boards
     expect(await tables()).not.toContain('crm_cards');
     await seedReference(db, {});
     const user = await makeUser(db);
@@ -108,6 +110,7 @@ describe('migrations', () => {
       '009_crm_boards',
       '010_board_images',
       '011_company_notes_history',
+      '012_run_live',
     ]);
     const { rows } = await db.query<{
       user_id: string;
@@ -141,5 +144,54 @@ describe('migrations', () => {
     // The leads themselves are untouched, and the People board starts empty.
     expect((await db.query('SELECT 1 FROM crm_leads')).rowCount).toBe(4);
     expect((await db.query("SELECT 1 FROM crm_cards WHERE pipeline = 'people'")).rowCount).toBe(0);
+  });
+  it('turns the provider events of runs from before the live log into technical log lines', async () => {
+    await migrateDown(db, 1); // back to 011, before run_log
+    expect(await tables()).not.toContain('run_log');
+    await seedReference(db, {});
+    const user = await makeUser(db);
+    const run = await createRun(db, user, { regionId: 'sfax', budgetCapUsd: 2 });
+    const step = (
+      await db.query<{ id: string }>(
+        `INSERT INTO run_steps (user_id, run_id, stage, step_key)
+         VALUES ($1, $2, 'discover', 'cell-1') RETURNING id`,
+        [user, run.id],
+      )
+    ).rows[0]!.id;
+    const event = (state: string, message: string | null, at: string) =>
+      db.query(
+        `INSERT INTO apify_events (user_id, run_id, run_step_id, apify_run_id, state, message, occurred_at)
+         VALUES ($1, $2, $3, 'apify-1', $4, $5, $6)`,
+        [user, run.id, step, state, message, at],
+      );
+    await event('started', null, '2026-10-18T09:00:00Z');
+    await event('restarting', 'ran out of memory', '2026-10-18T09:01:00Z');
+    await event('failed', 'gave up', '2026-10-18T09:02:00Z');
+
+    expect(await migrateUp(db)).toEqual(['012_run_live']);
+    const { rows } = await db.query<{
+      level: string;
+      technical: boolean;
+      message: string;
+      run_step_id: string;
+    }>('SELECT level, technical, message, run_step_id FROM run_log ORDER BY id');
+    expect(rows).toEqual([
+      { level: 'info', technical: true, message: 'Apify run apify-1 started', run_step_id: step },
+      {
+        level: 'warn',
+        technical: true,
+        message: 'Apify run apify-1 restarting: ran out of memory',
+        run_step_id: step,
+      },
+      {
+        level: 'error',
+        technical: true,
+        message: 'Apify run apify-1 failed: gave up',
+        run_step_id: step,
+      },
+    ]);
+    expect((await db.query('SELECT live_message FROM runs')).rows[0]).toEqual({
+      live_message: null,
+    });
   });
 });

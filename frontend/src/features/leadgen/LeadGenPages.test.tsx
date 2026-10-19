@@ -19,17 +19,18 @@ const activeRun = run({
   budgetCapUsd: 2,
   spentUsd: 0.5,
   finishedAt: null,
+  liveMessage: 'Searching Google Maps for textile companies in Sfax...',
 });
 
 describe('Lead Gen sidebar and pages', () => {
-  it('has the four sections in the sidebar, with the profile at the top', async () => {
+  it('has the five sections in the sidebar, with the profile at the top', async () => {
     renderApp(fakeServer(signedIn), '/leadgen');
     const side = await screen.findByRole('navigation', { name: 'Lead Gen sections' });
     expect(
       within(side)
         .getAllByRole('link')
         .map((a) => a.textContent),
-    ).toEqual(['Dashboard', 'Coverage', 'Costs', 'Logs']);
+    ).toEqual(['Dashboard', 'Coverage', 'Costs', 'Runs', 'Logs']);
     expect(within(side).getByRole('link', { name: 'Dashboard' })).toHaveAttribute(
       'aria-current',
       'page',
@@ -69,14 +70,17 @@ describe('Lead Gen sidebar and pages', () => {
     expect(screen.getByRole('button', { name: 'Refresh now' })).toBeVisible();
   });
 
-  it('links the active run under the header and lists it in Runs with its spend', async () => {
+  it('links the active run in the live strip and lists it in Runs with its spend', async () => {
     const server = fakeServer({
       ...signedIn,
       'GET /api/runs': (req) =>
         req.query.has('status') ? page([activeRun]) : page([activeRun, run()]),
+      'GET /api/runs/live': { runs: [activeRun] },
     });
     renderApp(server, '/leadgen');
-    const link = await screen.findByRole('link', { name: 'Run active: sfax' });
+    const link = await screen.findByRole('link', {
+      name: 'Searching Google Maps for textile companies in Sfax...',
+    });
     expect(link).toHaveAttribute('href', '/leadgen/runs/run-live');
     const runs = await screen.findByRole('region', { name: 'Runs' });
     const row = within(runs).getAllByRole('link', { name: 'Open run for sfax' })[0]!;

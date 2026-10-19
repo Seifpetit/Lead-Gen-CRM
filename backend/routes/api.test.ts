@@ -173,6 +173,8 @@ interface RouteCase {
   pattern: string;
   url: (ids: Ids) => string;
   body?: unknown;
+  /** Never ends, so it is only checked signed out here; see GET /api/runs/stream. */
+  stream?: boolean;
 }
 const CASES: RouteCase[] = [
   { method: 'GET', pattern: '/api/auth/me', url: () => '/api/auth/me' },
@@ -190,7 +192,15 @@ const CASES: RouteCase[] = [
     body: { regionId: 'tunis', budgetCapUsd: 5, confirm: true },
   },
   { method: 'GET', pattern: '/api/runs', url: () => '/api/runs' },
+  { method: 'GET', pattern: '/api/runs/live', url: () => '/api/runs/live' },
+  {
+    method: 'GET',
+    pattern: '/api/runs/stream',
+    url: () => '/api/runs/stream',
+    stream: true,
+  },
   { method: 'GET', pattern: '/api/runs/:id', url: (i) => `/api/runs/${i.run}` },
+  { method: 'GET', pattern: '/api/runs/:id/logs', url: (i) => `/api/runs/${i.run}/logs` },
   { method: 'POST', pattern: '/api/runs/:id/stop', url: (i) => `/api/runs/${i.run}/stop` },
   { method: 'GET', pattern: '/api/runs/:id/costs', url: (i) => `/api/runs/${i.run}/costs` },
   { method: 'GET', pattern: '/api/regions', url: () => '/api/regions' },
@@ -352,7 +362,7 @@ describe('every route', () => {
 
   it('does not ask for a CSRF token on reads', async () => {
     const i = await ids();
-    for (const c of CASES.filter((x) => x.method === 'GET')) {
+    for (const c of CASES.filter((x) => x.method === 'GET' && !x.stream)) {
       const res = await call(alice, 'GET', c.url(i), undefined, { csrf: null });
       expect(res.statusCode, `GET ${c.pattern}`).toBe(200);
     }
@@ -1503,13 +1513,23 @@ describe('POST /api/webhooks/apify', () => {
 
   it('ignores a repeated event: nothing is applied or paid for twice', async () => {
     const { run, step } = await outWithApify();
+    // Repeated events may still move the run on to its next stage; what must not change is what
+    // the searches themselves booked and stored.
+    const searchLedger = async () =>
+      (
+        await db.query<{ n: number; usd: string }>(
+          `SELECT count(*)::integer AS n, coalesce(sum(l.amount_usd), 0)::text AS usd
+             FROM cost_ledger l JOIN run_steps s ON s.id = l.run_step_id
+            WHERE l.run_id = $1 AND s.stage = 'discover'`,
+          [run.id],
+        )
+      ).rows[0]!;
     await hook(body(alice.id, step.id));
     const after1 = await rowCounts();
-    const ledger = (await call(alice, 'GET', `/api/runs/${run.id}/costs`)).json().ledgerUsd;
+    const ledger = await searchLedger();
     for (let i = 0; i < 3; i++) expect((await hook(body(alice.id, step.id))).statusCode).toBe(202);
-    expect((await rowCounts()).cost_ledger).toBe(after1.cost_ledger);
+    expect(await searchLedger()).toEqual(ledger);
     expect((await rowCounts()).companies).toBe(after1.companies);
-    expect((await call(alice, 'GET', `/api/runs/${run.id}/costs`)).json().ledgerUsd).toBe(ledger);
     expect(
       (
         await db.query('SELECT 1 FROM apify_events WHERE run_step_id = $1 AND state = $2', [

@@ -60,7 +60,7 @@ describe('committed region geometry', () => {
 });
 
 describe('cells outside the outline', () => {
-  it('keeps only grid cells that intersect the outline, and only such children when splitting', async () => {
+  it('keeps only grid cells with real area inside the outline, and only such children when splitting', async () => {
     await upsertRegions(db, TUNISIAN_GOVERNORATES, 'TN', {
       gabes: { bounds: BOX, outline: TRIANGLE },
     });
@@ -69,8 +69,8 @@ describe('cells outside the outline', () => {
     expect(cells.map((c) => c.cellKey).sort()).toEqual(['r0c0', 'r0c1', 'r1c0']);
     const r0c1 = cells.find((c) => c.cellKey === 'r0c1')!;
     const children = await splitCell(db, r0c1.id);
-    // The hypotenuse cuts r0c1; its far (north-east) child lies wholly beyond it.
-    expect(children.length).toBe(3);
+    // The hypotenuse leaves 12.5% of r0c1 inside; only its south-west child holds any of that.
+    expect(children.map((c) => c.cellKey)).toEqual(['r0c1.r0c0']);
     expect(children.every((c) => boundsIntersectOutline(c, TRIANGLE))).toBe(true);
     expect((await listCells(db, 'gabes')).some((c) => c.cellKey === 'r1c1')).toBe(false);
   });

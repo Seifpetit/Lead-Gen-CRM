@@ -90,6 +90,11 @@ export class ApiClient {
     this.fetchImpl = options.fetch ?? ((...args) => globalThis.fetch(...args));
   }
 
+  /** An address on the API, for what cannot go through fetch (an EventSource). */
+  url(path: string): string {
+    return `${this.baseUrl}${path}`;
+  }
+
   /** Runs when a request that needed a session comes back 401. Returns the unsubscribe. */
   onUnauthenticated(listener: () => void): () => void {
     this.listeners.add(listener);

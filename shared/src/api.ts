@@ -58,6 +58,35 @@ export interface RunFunnel {
 export interface RunSummary extends Run {
   funnel: RunFunnel;
   error: string | null;
+  /** The latest plain sentence about what the run is doing; null for runs from before it existed. */
+  liveMessage: string | null;
+  /** Share of the current step's searches or lookups already finished, 0 to 1 (see runProgress). */
+  stageFraction: number;
+}
+
+/** What GET /api/runs/live and the /api/runs/stream events carry: the runs in progress. */
+export interface LiveRuns {
+  runs: RunSummary[];
+}
+
+export const LOG_LEVELS = ['info', 'warn', 'error'] as const;
+export type LogLevel = (typeof LOG_LEVELS)[number];
+
+/** One line of a run's log: the sentences shown live and the technical detail behind them. */
+export interface RunLogLine {
+  /** Grows with time; pass the last one seen as `after` to get only newer lines. */
+  id: number;
+  at: string;
+  level: LogLevel;
+  message: string;
+  /** True for the detail behind a sentence (provider states, failures), false for the sentences. */
+  technical: boolean;
+}
+
+export interface RunLogPage {
+  items: RunLogLine[];
+  /** More lines exist after the last one returned. */
+  hasMore: boolean;
 }
 
 export interface RunStepCounts {
