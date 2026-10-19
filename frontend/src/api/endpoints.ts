@@ -1,4 +1,5 @@
 import type {
+  AddDecisionMakerResult,
   ApifyLog,
   AuthConfig,
   BudgetView,
@@ -7,7 +8,11 @@ import type {
   CellSummary,
   Coverage,
   RegionGeometry,
+  CrmBoard,
+  CrmCard,
+  CrmPipeline,
   CrmStage,
+  DecisionMakerInput,
   Lead,
   ObjectionResult,
   Page,
@@ -115,6 +120,23 @@ export function createApi(client: ApiClient) {
       objection: (id: string, reason: string) =>
         client.request<ObjectionResult>('POST', `/api/leads/${id}/objection`, {
           body: { reason },
+        }),
+    },
+
+    crm: {
+      board: (pipeline: CrmPipeline) => client.get<CrmBoard>(`/api/crm/${pipeline}`),
+      move: (id: string, stage: string, reason?: string) =>
+        client.request<CrmCard>('POST', `/api/crm/cards/${id}/move`, {
+          body: defined({ stage, reason }),
+        }),
+      addDecisionMaker: (id: string, input: DecisionMakerInput) =>
+        client.request<AddDecisionMakerResult>('POST', `/api/crm/cards/${id}/decision-maker`, {
+          body: input,
+        }),
+      remove: (id: string) => client.request<CrmCard>('POST', `/api/crm/cards/${id}/remove`),
+      restore: (id: string, stage?: string) =>
+        client.request<CrmCard>('POST', `/api/crm/cards/${id}/restore`, {
+          body: defined({ stage }),
         }),
     },
 
