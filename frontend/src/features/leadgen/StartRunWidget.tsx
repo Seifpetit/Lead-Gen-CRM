@@ -16,14 +16,17 @@ import {
   wordingsProblem,
 } from './startrun/AdvancedSection.js';
 import { EstimateCard } from './startrun/EstimateCard.js';
+import { RegionChips } from './startrun/RegionChips.js';
 import { SectorChips } from './startrun/SectorChips.js';
 import {
   QUICK_CAPS_USD,
   capText as formatCap,
+  combinePreviews,
   confirmReason,
   parseCap,
   readCap,
   regionProgress,
+  runsToStart,
   saveCap,
   suggestedSectors,
 } from './startrun/startPlan.js';
@@ -43,7 +46,8 @@ export function StartRunWidget({
   onCancel,
   prefill,
 }: {
-  onStarted: (run: RunSummary) => void;
+  /** The runs started, and the names of regions that were chosen but had to wait. */
+  onStarted: (runs: RunSummary[], notStarted: string[]) => void;
   onCancel?: () => void;
   /** Set by the coverage page; each new object (a fresh click) is applied once. */
   prefill?: (StartPrefill & { nonce: number }) | null;
@@ -57,6 +61,9 @@ export function StartRunWidget({
   const root = useRef<HTMLDivElement>(null);
 
   const [region, setRegion] = useState('');
+  // Opened from a sector: any number of regions, one run each.
+  const [many, setMany] = useState(false);
+  const [regionIds, setRegionIds] = useState<string[]>([]);
   // null = untouched: the default for the region (the coverage prefill, else the suggested sector).
   const [picked, setPicked] = useState<string[] | null>(null);
   const [prefilledSectors, setPrefilledSectors] = useState<string[] | null>(null);
@@ -74,7 +81,9 @@ export function StartRunWidget({
 
   useEffect(() => {
     if (!prefill) return;
-    setRegion(prefill.regionId);
+    setMany(prefill.regionIds !== undefined);
+    setRegionIds(prefill.regionIds ?? []);
+    setRegion(prefill.regionId ?? '');
     setPrefilledSectors(prefill.sectorIds ?? null);
     setPicked(null);
     setCellKeys(prefill.cellKeys ?? []);
@@ -86,7 +95,7 @@ export function StartRunWidget({
   useEffect(() => {
     if (focused.current || !prefill?.sectorIds?.length || !coverage.data) return;
     const chip = root.current?.querySelector<HTMLElement>(
-      `[data-sector="${prefill.sectorIds[0]}"]`,
+      `[data-chip-id="${prefill.sectorIds[0]}"]`,
     );
     if (chip) {
       chip.focus();
@@ -105,45 +114,85 @@ export function StartRunWidget({
   const wordings = useMemo(() => parseWordings(wordingsText), [wordingsText]);
   const problem = wordingsProblem(wordings);
   const planned = selected.length > 0 || wordings.length > 0;
-  const planKey = JSON.stringify([selected, wordings, cellKeys]);
-  const debouncedRegion = useDebounced(region, PREVIEW_DEBOUNCE_MS);
+  const targets = many ? regionIds : region ? [region] : [];
+  const planKey = JSON.stringify([selected, wordings, cellKeys, targets]);
   const debouncedCap = useDebounced(cap, PREVIEW_DEBOUNCE_MS);
   const debouncedPlan = useDebounced(planKey, PREVIEW_DEBOUNCE_MS);
-  const settled = debouncedRegion === region && debouncedCap === cap && debouncedPlan === planKey;
+  const settled = debouncedCap === cap && debouncedPlan === planKey;
   const selectedRegion: RegionSummary | undefined = regions.data?.items.find(
     (r) => r.regionId === region,
   );
   const canPreview =
-    region !== '' && selectedRegion?.hasBounds !== false && planned && problem === null;
-  const preview = useResource<RunPreview>(
-    () => {
-      const [ids, words, cells] = JSON.parse(debouncedPlan) as [string[], string[], string[]];
-      return api.runs.preview({
-        regionId: debouncedRegion,
-        sectorIds: ids,
-        ...(words.length > 0 ? { customWordings: words } : {}),
-        ...(cells.length > 0 ? { cellKeys: cells } : {}),
-        ...(debouncedCap !== null ? { budgetCapUsd: debouncedCap } : {}),
-      });
+    targets.length > 0 &&
+    (many || selectedRegion?.hasBounds !== false) &&
+    planned &&
+    problem === null;
+  // One estimate per region that a start could begin, asked in the same way as for one region.
+  // The first answer says how many runs can go at once, so no more are asked for than can start.
+  const previews = useResource<RunPreview[]>(
+    async () => {
+      const [ids, words, cells, regionList] = JSON.parse(debouncedPlan) as [
+        string[],
+        string[],
+        string[],
+        string[],
+      ];
+      const one = (regionId: string) =>
+        api.runs.preview({
+          regionId,
+          sectorIds: ids,
+          ...(words.length > 0 ? { customWordings: words } : {}),
+          ...(cells.length > 0 ? { cellKeys: cells } : {}),
+          ...(debouncedCap !== null ? { budgetCapUsd: debouncedCap } : {}),
+        });
+      const first = await one(regionList[0]!);
+      const room = Math.max(1, runsToStart(regionList.length, first.limits));
+      return [first, ...(await Promise.all(regionList.slice(1, room).map(one)))];
     },
-    { enabled: canPreview && settled, deps: [debouncedRegion, debouncedCap, debouncedPlan] },
+    { enabled: canPreview && settled, deps: [debouncedCap, debouncedPlan] },
   );
-  const estimating = preview.loading || !settled;
-  const data = canPreview ? preview.data : null;
+  const estimating = previews.loading || !settled;
+  const list = canPreview ? previews.data : null;
+  const data = list ? combinePreviews(list) : null;
+  const toStart = runsToStart(targets.length, list?.[0]?.limits ?? null);
+  const names = (ids: string[]) =>
+    ids.map((id) => regions.data?.items.find((r) => r.regionId === id)?.name ?? id);
 
   // Why Start cannot be pressed, in the order a person would fix things.
   const blocker = data?.blockers[0]?.message ?? null;
   let reason: string | null = null;
-  if (region === '') reason = t('start.reason.region');
-  else if (selectedRegion && !selectedRegion.hasBounds) reason = t('start.noBounds');
+  if (targets.length === 0) reason = t(many ? 'start.reason.regions' : 'start.reason.region');
+  else if (!many && selectedRegion && !selectedRegion.hasBounds) reason = t('start.noBounds');
   else if (!planned) reason = t('start.reason.sector');
   else if (problem !== null) reason = t('start.reason.wordings');
   else if (cap === null) reason = t('start.cap.invalid');
   else if (estimating) reason = t('start.reason.estimating');
-  else if (preview.error !== null && !preview.data) reason = t('start.reason.estimateFailed');
+  else if (previews.error !== null && !previews.data) reason = t('start.reason.estimateFailed');
   else if (blocker) reason = blocker;
+  else if (
+    toStart > 1 &&
+    cap !== null &&
+    data?.limits.monthRemainingUsd != null &&
+    cap * toStart > data.limits.monthRemainingUsd
+  ) {
+    reason = t('start.many.month', {
+      n: toStart,
+      total: formatUsd(cap * toStart),
+      left: formatUsd(data.limits.monthRemainingUsd),
+    });
+  }
+  // Not a reason to wait: some chosen regions will not start, and the person is told which.
+  const notice =
+    many && list && toStart > 0 && toStart < targets.length
+      ? t('start.many.limit', {
+          max: list[0]!.limits.maxActiveRuns,
+          active: list[0]!.limits.activeRuns,
+          start: toStart,
+          skipped: names(targets.slice(toStart)).join(', '),
+        })
+      : null;
 
-  const need = cap !== null && data ? confirmReason(cap, data.cost.totalUsd) : null;
+  const need = cap !== null && data ? confirmReason(cap, data.cost.totalUsd, toStart) : null;
 
   function pressStart() {
     if (reason !== null || cap === null) return;
@@ -156,21 +205,33 @@ export function StartRunWidget({
     if (cap === null) return;
     setStarting(true);
     setStartError(null);
+    const started: RunSummary[] = [];
+    const begin = targets.slice(0, toStart);
     try {
-      // The only call that starts a run: it needs the cap, and `confirm` says the person saw it.
-      const run = await api.runs.start({
-        regionId: region,
-        sectorIds: selected,
-        ...(wordings.length > 0 ? { customWordings: wordings } : {}),
-        ...(cellKeys.length > 0 ? { cellKeys } : {}),
-        budgetCapUsd: cap,
-        confirm: true,
-      });
+      // The only calls that start runs: each needs the cap, and `confirm` says the person saw it.
+      for (const target of begin) {
+        started.push(
+          await api.runs.start({
+            regionId: target,
+            sectorIds: selected,
+            ...(wordings.length > 0 ? { customWordings: wordings } : {}),
+            ...(cellKeys.length > 0 ? { cellKeys } : {}),
+            budgetCapUsd: cap,
+            confirm: true,
+          }),
+        );
+      }
       saveCap(cap);
-      onStarted(run);
+      onStarted(started, names(targets.slice(toStart)));
     } catch (err) {
-      setStartError(err);
-      setConfirming(false);
+      if (started.length > 0) {
+        // Some runs are going: say so, and name the regions the server turned down.
+        saveCap(cap);
+        onStarted(started, names(targets.slice(started.length)));
+      } else {
+        setStartError(err);
+        setConfirming(false);
+      }
     } finally {
       setStarting(false);
     }
@@ -207,12 +268,13 @@ export function StartRunWidget({
                 type="button"
                 className="button"
                 onClick={() => {
+                  setMany(false);
                   setRegion(sugg.regionId!);
                   setPicked(null);
                   setPrefilledSectors(null);
                   setCellKeys([]);
                 }}
-                disabled={region === sugg.regionId}
+                disabled={!many && region === sugg.regionId}
               >
                 {t('start.suggestion.use', { region: suggestedRegion?.name ?? sugg.regionId })}
               </button>
@@ -226,35 +288,52 @@ export function StartRunWidget({
 
         <div className="sr-cols">
           <div className="sr-left">
-            <div className="form-field">
-              <label htmlFor={regionId}>{t('start.region')}</label>
-              <select
-                id={regionId}
-                value={region}
-                data-autofocus
-                onChange={(e) => {
-                  setRegion(e.target.value);
-                  setPicked(null);
-                  setPrefilledSectors(null);
-                  setCellKeys([]);
-                  setConfirming(false);
-                }}
-              >
-                <option value="">
-                  {regions.loading && !regions.data
-                    ? t('start.region.loading')
-                    : t('start.region.placeholder')}
-                </option>
-                {regions.data?.items.map((r) => (
-                  <option key={r.regionId} value={r.regionId} disabled={!r.hasBounds}>
-                    {regionOption(r)}
-                  </option>
-                ))}
-              </select>
-              {regions.error !== null && !regions.data && (
+            {many ? (
+              regions.data ? (
+                <RegionChips
+                  regions={regions.data.items}
+                  selected={regionIds}
+                  onChange={(ids) => {
+                    setRegionIds(ids);
+                    setConfirming(false);
+                  }}
+                />
+              ) : regions.error !== null ? (
                 <ErrorState error={regions.error} onRetry={regions.reload} />
-              )}
-            </div>
+              ) : (
+                <p className="muted">{t('start.region.loading')}</p>
+              )
+            ) : (
+              <div className="form-field">
+                <label htmlFor={regionId}>{t('start.region')}</label>
+                <select
+                  id={regionId}
+                  value={region}
+                  data-autofocus
+                  onChange={(e) => {
+                    setRegion(e.target.value);
+                    setPicked(null);
+                    setPrefilledSectors(null);
+                    setCellKeys([]);
+                    setConfirming(false);
+                  }}
+                >
+                  <option value="">
+                    {regions.loading && !regions.data
+                      ? t('start.region.loading')
+                      : t('start.region.placeholder')}
+                  </option>
+                  {regions.data?.items.map((r) => (
+                    <option key={r.regionId} value={r.regionId} disabled={!r.hasBounds}>
+                      {regionOption(r)}
+                    </option>
+                  ))}
+                </select>
+                {regions.error !== null && !regions.data && (
+                  <ErrorState error={regions.error} onRetry={regions.reload} />
+                )}
+              </div>
+            )}
 
             {coverage.error !== null && !coverage.data ? (
               <ErrorState error={coverage.error} onRetry={coverage.reload} />
@@ -272,7 +351,7 @@ export function StartRunWidget({
             )}
 
             <div className="form-field sr-cap">
-              <label htmlFor={capId}>{t('start.cap')}</label>
+              <label htmlFor={capId}>{t(toStart > 1 ? 'start.cap.each' : 'start.cap')}</label>
               <div className="sr-cap-row">
                 <input
                   id={capId}
@@ -312,8 +391,8 @@ export function StartRunWidget({
               ready={canPreview}
               preview={data}
               loading={estimating}
-              error={preview.error}
-              onRetry={preview.reload}
+              error={previews.error}
+              onRetry={previews.reload}
               cap={cap}
             />
           </div>
@@ -339,14 +418,14 @@ export function StartRunWidget({
                   need.aboveCap
                     ? t('start.confirm.aboveCap', {
                         cost: formatUsd(data!.cost.totalUsd),
-                        cap: formatUsd(cap),
+                        cap: formatUsd((cap ?? 0) * Math.max(toStart, 1)),
                       })
                     : null,
                   need.bigCap ? t('start.confirm.bigCap', { cap: formatUsd(cap) }) : null,
                 ]
                   .filter(Boolean)
                   .join(' ')
-              : reason}
+              : (reason ?? notice)}
         </p>
         {onCancel && (
           <button type="button" className="button" disabled={starting} onClick={onCancel}>
@@ -382,7 +461,11 @@ export function StartRunWidget({
             aria-describedby={reasonId}
             onClick={pressStart}
           >
-            {cap === null ? t('start.submit.noCap') : t('start.submit', { cap: formatUsd(cap) })}
+            {cap === null
+              ? t('start.submit.noCap')
+              : toStart > 1
+                ? t('start.submit.many', { n: toStart, cap: formatUsd(cap) })
+                : t('start.submit', { cap: formatUsd(cap) })}
           </button>
         )}
       </footer>

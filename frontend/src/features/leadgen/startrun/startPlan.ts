@@ -1,4 +1,5 @@
-import type { Coverage, RegionSummary } from '@lead-gen-crm/shared';
+import type { Coverage, RegionSummary, RunPreview, RunSummary } from '@lead-gen-crm/shared';
+import type { Translate } from '../../../i18n/index.js';
 import { yieldOf } from '../../../lib/coverageView.js';
 
 // What Start a run fills in and decides before the person touches anything. Pure, no React.
@@ -76,9 +77,90 @@ export interface ConfirmReason {
   bigCap: boolean;
 }
 
-/** Whether Start needs a second click: the estimate is above the cap, or the cap is large. */
-export function confirmReason(cap: number, estimateUsd: number | null): ConfirmReason | null {
-  const aboveCap = estimateUsd !== null && estimateUsd > cap;
+/**
+ * Whether Start needs a second click: the estimate is above the caps, or a cap is large. `cap`
+ * is per run; with several runs the estimate is the sum, so it is held against all their caps.
+ */
+export function confirmReason(
+  cap: number,
+  estimateUsd: number | null,
+  runs = 1,
+): ConfirmReason | null {
+  const aboveCap = estimateUsd !== null && estimateUsd > cap * runs;
   const bigCap = cap > CONFIRM_ABOVE_USD;
   return aboveCap || bigCap ? { aboveCap, bigCap } : null;
+}
+
+/**
+ * One estimate for several runs: costs and volumes added up, the room left taken from the first
+ * (every run asks the same server the same question), blockers and assumptions without repeats.
+ */
+export function combinePreviews(previews: readonly RunPreview[]): RunPreview | null {
+  const first = previews[0];
+  if (!first) return null;
+  if (previews.length === 1) return first;
+  const sum = (pick: (p: RunPreview) => number) => previews.reduce((n, p) => n + pick(p), 0);
+  const leads = sum((p) => p.volume.leads);
+  const total = sum((p) => p.cost.totalUsd);
+  const unique = <T>(items: T[], key: (x: T) => string) => [
+    ...new Map(items.map((x) => [key(x), x])).values(),
+  ];
+  return {
+    ...first,
+    cells: previews.flatMap((p) => p.cells),
+    queries: previews
+      .flatMap((p) => p.queries.map((q) => ({ ...q, regionId: p.regionId })))
+      .slice(0, 50),
+    queriesTotal: sum((p) => p.queriesTotal),
+    volume: {
+      ...first.volume,
+      placesMax: sum((p) => p.volume.placesMax),
+      places: sum((p) => p.volume.places),
+      newPlaces: sum((p) => p.volume.newPlaces),
+      qualified: sum((p) => p.volume.qualified),
+      people: sum((p) => p.volume.people),
+      leads,
+    },
+    cost: {
+      ...first.cost,
+      discoverUsd: sum((p) => p.cost.discoverUsd),
+      findPeopleUsd: sum((p) => p.cost.findPeopleUsd),
+      enrichUsd: sum((p) => p.cost.enrichUsd),
+      totalUsd: total,
+      perLeadUsd: leads >= 1 ? total / leads : null,
+      upperBoundUsd: sum((p) => p.cost.upperBoundUsd),
+    },
+    blockers: unique(
+      previews.flatMap((p) => p.blockers),
+      (b) => b.code,
+    ),
+    assumptions: unique(
+      previews.flatMap((p) => p.assumptions),
+      (a) => a,
+    ),
+  };
+}
+
+/**
+ * How many of the chosen regions a start can begin: one run each, but never more than the free
+ * places for concurrent runs. The rest are left for the person to start when a run finishes.
+ */
+export function runsToStart(
+  regions: number,
+  limits: { activeRuns: number; maxActiveRuns: number } | null,
+): number {
+  if (!limits) return regions;
+  return Math.max(0, Math.min(regions, limits.maxActiveRuns - limits.activeRuns));
+}
+
+/** The toast after a start: one run, several, and any regions that had to wait. */
+export function startedMessage(t: Translate, runs: readonly RunSummary[], notStarted: string[]) {
+  const names = runs.map((r) => r.region).join(', ');
+  const head =
+    runs.length === 1
+      ? t('create.toast', { region: names })
+      : t('create.toast.many', { n: runs.length, regions: names });
+  return notStarted.length === 0
+    ? head
+    : `${head} ${t('create.toast.waiting', { regions: notStarted.join(', ') })}`;
 }

@@ -66,6 +66,21 @@ sudo -u postgres psql -c "CREATE ROLE leadgen LOGIN SUPERUSER PASSWORD 'leadgen'
 CI (`.github/workflows/ci.yml`) runs a `postgres:16` service container, then format check,
 lint, typecheck and tests on every pull request and push to main.
 
+## Data and licences
+
+The 24 governorate outlines come from [geoBoundaries](https://www.geoboundaries.org) (gbOpen,
+Tunisia ADM1, boundary TUN-ADM1-13205935), which is derived from OpenStreetMap and so is
+licensed under the [Open Database Licence 1.0](https://opendatacommons.org/licenses/odbl/1-0/).
+© OpenStreetMap contributors. The app credits it in the corner of the Coverage map.
+
+The processed file is committed (`backend/config/regionOutlines.json`, full precision; the map
+is served a lightly simplified copy), so nothing is downloaded at runtime. To rebuild it:
+
+```sh
+npm run regions:build        # downloads the source, checks it, rewrites config/region*
+npm run db:migrate           # loads the new outlines and bounds into the database
+```
+
 ## Security
 
 - **Passwords** are hashed with argon2id (the `argon2` library); the app never stores or logs

@@ -1,13 +1,18 @@
 import type { CoverageEntry } from '@lead-gen-crm/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { preview, run } from '../../../test/fixtures.js';
+import { translate, type Translate } from '../../../i18n/index.js';
 import {
   capText,
+  combinePreviews,
   confirmReason,
   leadsRange,
   parseCap,
   readCap,
   regionProgress,
+  runsToStart,
   saveCap,
+  startedMessage,
   suggestedSectors,
 } from './startPlan.js';
 
@@ -100,5 +105,52 @@ describe('regionProgress', () => {
     expect(regionProgress({ coverage: null, status: 'active' })).toBe('new');
     expect(regionProgress({ coverage: 0.3, status: 'active' })).toBe('partly');
     expect(regionProgress({ coverage: 1, status: 'saturated' })).toBe('saturated');
+  });
+});
+
+describe('confirmReason with several runs', () => {
+  it('holds the combined estimate against every run cap together', () => {
+    expect(confirmReason(2, 3.5, 2)).toBeNull();
+    expect(confirmReason(2, 4.5, 2)).toEqual({ aboveCap: true, bigCap: false });
+  });
+});
+
+describe('combinePreviews', () => {
+  it('is nothing for no previews and the same preview for one', () => {
+    const one = preview();
+    expect(combinePreviews([])).toBeNull();
+    expect(combinePreviews([one])).toBe(one);
+  });
+
+  it('adds up costs and volumes and lists each blocker and assumption once', () => {
+    const blocker = { code: 'month_cap', message: 'Monthly cap reached' } as never;
+    const a = preview({ blockers: [blocker] });
+    const b = preview({ regionId: 'tunis', blockers: [blocker] });
+    const both = combinePreviews([a, b])!;
+    expect(both.cost.totalUsd).toBeCloseTo(7);
+    expect(both.volume.leads).toBe(12);
+    expect(both.queriesTotal).toBe(4);
+    expect(both.cost.perLeadUsd).toBeCloseTo(7 / 12);
+    expect(both.blockers).toHaveLength(1);
+    expect(both.assumptions).toHaveLength(1);
+  });
+});
+
+describe('runsToStart', () => {
+  it('starts one run per region, up to the free places', () => {
+    expect(runsToStart(3, null)).toBe(3);
+    expect(runsToStart(3, { activeRuns: 0, maxActiveRuns: 2 })).toBe(2);
+    expect(runsToStart(1, { activeRuns: 1, maxActiveRuns: 2 })).toBe(1);
+    expect(runsToStart(2, { activeRuns: 2, maxActiveRuns: 2 })).toBe(0);
+  });
+});
+
+describe('startedMessage', () => {
+  const t: Translate = (key, vars) => translate('en', key, vars);
+  it('names one run, several runs, and the regions that wait', () => {
+    expect(startedMessage(t, [run({ region: 'sfax' })], [])).toBe('Run started in sfax.');
+    const two = startedMessage(t, [run({ region: 'sfax' }), run({ region: 'tunis' })], ['Gabès']);
+    expect(two).toContain('sfax, tunis');
+    expect(two).toContain('Gabès');
   });
 });

@@ -49,7 +49,8 @@ const rows = coverageRows(data, [
 ]);
 
 function setup(metric: Metric = 'status', extra = {}) {
-  const onSelectRegion = vi.fn();
+  const onPlanRegion = vi.fn();
+  const onPlanSector = vi.fn();
   const onSelectCell = vi.fn();
   render(
     <I18nProvider>
@@ -58,13 +59,14 @@ function setup(metric: Metric = 'status', extra = {}) {
         rows={rows}
         metric={metric}
         selected={{ regionId: null, sectorId: null }}
-        onSelectRegion={onSelectRegion}
+        onPlanRegion={onPlanRegion}
+        onPlanSector={onPlanSector}
         onSelectCell={onSelectCell}
         {...extra}
       />
     </I18nProvider>,
   );
-  return { onSelectRegion, onSelectCell, user: userEvent.setup() };
+  return { onPlanRegion, onPlanSector, onSelectCell, user: userEvent.setup() };
 }
 
 describe('CoverageMatrix', () => {
@@ -77,20 +79,21 @@ describe('CoverageMatrix', () => {
     expect(names).toEqual(['Sfax', 'Tunis', 'Gabès']);
   });
 
-  it('names each sector column by an icon with an accessible name', () => {
+  it('names each sector column by an icon button with an accessible name', () => {
     setup();
-    expect(screen.getByRole('img', { name: 'Agri-food' })).toHaveAttribute('title', 'Agri-food');
-    expect(screen.getByRole('img', { name: 'Textile' })).toBeInTheDocument();
+    const agri = screen.getByRole('button', { name: 'Start a run for Agri-food' });
+    expect(agri).toHaveAttribute('title', 'Agri-food');
+    expect(screen.getByRole('button', { name: 'Start a run for Textile' })).toBeInTheDocument();
   });
 
   it('greys out a region with no data: disabled squares that cannot be selected', async () => {
-    const { onSelectCell, onSelectRegion, user } = setup();
+    const { onSelectCell, onPlanRegion, user } = setup();
     const grey = screen.getByRole('button', { name: 'Gabès, Textile, Not explored yet' });
     expect(grey).toHaveAttribute('aria-disabled', 'true');
     await user.click(grey);
     await user.click(screen.getByRole('button', { name: 'Gabès' }));
     expect(onSelectCell).not.toHaveBeenCalled();
-    expect(onSelectRegion).not.toHaveBeenCalled();
+    expect(onPlanRegion).not.toHaveBeenCalled();
     await user.hover(grey);
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Not explored yet');
   });
@@ -119,10 +122,13 @@ describe('CoverageMatrix', () => {
     expect(within(tip).getByText('17 Oct 2026')).toBeVisible();
   });
 
-  it('selects a region from its label and a region and sector from a square', async () => {
-    const { onSelectCell, onSelectRegion, user } = setup();
-    await user.click(screen.getByRole('button', { name: 'Sfax' }));
-    expect(onSelectRegion).toHaveBeenCalledWith('sfax');
+  it('starts a run from a region title or a sector icon, and selects from a square', async () => {
+    const { onSelectCell, onPlanRegion, onPlanSector, user } = setup();
+    await user.click(screen.getByRole('button', { name: 'Start a run in Sfax' }));
+    expect(onPlanRegion).toHaveBeenCalledWith('sfax');
+    await user.click(screen.getByRole('button', { name: 'Start a run for Agri-food' }));
+    expect(onPlanSector).toHaveBeenCalledWith('agri-food');
+    expect(onSelectCell).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Tunis, Textile, Unexplored' }));
     expect(onSelectCell).toHaveBeenCalledWith('tunis', 'textile');
   });
@@ -162,12 +168,15 @@ describe('CoverageMatrix', () => {
 
   it('keeps one tab stop and moves between squares with the arrow keys', async () => {
     const { user } = setup();
-    const tabStops = screen
-      .getAllByRole('button')
-      .filter((b) => b.getAttribute('tabindex') === '0');
-    expect(tabStops).toHaveLength(1);
+    // The rows have one tab stop between them; the sector buttons in the header have their own.
+    const body = within(screen.getAllByRole('rowgroup')[1]!);
+    expect(
+      body.getAllByRole('button').filter((b) => b.getAttribute('tabindex') === '0'),
+    ).toHaveLength(1);
+    await user.tab(); // Agri-food
+    await user.tab(); // Textile
     await user.tab();
-    expect(screen.getByRole('button', { name: 'Sfax' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Start a run in Sfax' })).toHaveFocus();
     await user.keyboard('{ArrowRight}');
     expect(screen.getByRole('button', { name: 'Sfax, Agri-food, Partial' })).toHaveFocus();
     await user.keyboard('{ArrowDown}');
@@ -176,7 +185,7 @@ describe('CoverageMatrix', () => {
 
   it('selects with Enter and Space', async () => {
     const { onSelectCell, user } = setup();
-    await user.tab();
+    screen.getByRole('button', { name: 'Start a run in Sfax' }).focus();
     await user.keyboard('{ArrowRight}{Enter}');
     expect(onSelectCell).toHaveBeenCalledWith('sfax', 'agri-food');
     await user.keyboard('{ArrowRight} ');

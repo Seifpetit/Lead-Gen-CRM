@@ -25,6 +25,10 @@ export function wordingsProblem(wordings: string[]): 'tooMany' | 'tooLong' | nul
  * Everything most runs do not need, behind one closed "Advanced": extra searches typed in, the
  * searches that will run (grouped by cell), and how the estimate was made.
  */
+/** "ben-arous" as "Ben Arous". */
+const regionName = (id: string): string =>
+  id.replace(/-/g, ' ').replace(/\b\p{L}/gu, (c) => c.toLocaleUpperCase());
+
 export function AdvancedSection({
   preview,
   stale,
@@ -47,9 +51,12 @@ export function AdvancedSection({
   const sectorName = (id: string | null) =>
     id === null ? t('plan.custom') : (preview?.sectors.find((s) => s.id === id)?.name ?? id);
 
+  // Cells of different regions share names (r0c0), so the region is part of the group's key.
   const byCell = new Map<string, RunPreview['queries']>();
-  for (const q of preview?.queries ?? [])
-    byCell.set(q.cellKey, [...(byCell.get(q.cellKey) ?? []), q]);
+  for (const q of preview?.queries ?? []) {
+    const key = `${q.regionId ?? ''}|${q.cellKey}`;
+    byCell.set(key, [...(byCell.get(key) ?? []), q]);
+  }
 
   return (
     <details className="sr-advanced">
@@ -90,12 +97,18 @@ export function AdvancedSection({
                 total: formatNumber(preview.queriesTotal),
               })}
             </summary>
-            {[...byCell.entries()].map(([cell, list]) => (
-              <div key={cell} className="plan-cell">
-                <h4>{t('plan.cell', { cell })}</h4>
+            {[...byCell.entries()].map(([group, list]) => (
+              <div key={group} className="plan-cell">
+                <h4>
+                  {t('plan.cell', {
+                    cell: list[0]!.regionId
+                      ? `${regionName(list[0]!.regionId)} ${list[0]!.cellKey}`
+                      : list[0]!.cellKey,
+                  })}
+                </h4>
                 <ul>
                   {list.map((q) => (
-                    <li key={`${q.cellKey}|${q.wording}`}>
+                    <li key={`${group}|${q.wording}|${q.sectorId ?? ''}`}>
                       {q.wording} <span className="muted">({sectorName(q.sectorId)})</span>
                     </li>
                   ))}

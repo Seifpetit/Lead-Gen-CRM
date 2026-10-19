@@ -4,7 +4,9 @@ import { describe, expect, it } from 'vitest';
 import { REGION_BOUNDS } from '../config/regionBounds.js';
 import {
   boundsIntersectOutline,
+  cellOverlap,
   MIN_CELL_OVERLAP,
+  pointInOutline,
   splitBounds,
   type Bounds,
   type Outline,
@@ -49,9 +51,27 @@ describe('usableCells: Bizerte-shaped region (a coast with the rectangle mostly 
 
   it('drops the cells with under a tenth of their area inside', () => {
     const dropped = grid.map((c) => c.cellKey).filter((k) => !usable.overlap.has(k));
-    expect(dropped).toEqual(expect.arrayContaining(['r0c4', 'r2c0', 'r2c3', 'r2c4']));
+    // Pinned to the official outline (geoBoundaries), which replaced the old hand-fetched one:
+    // r2c3 has 12.5% inside it and stays, where the old shape put it under a tenth.
+    expect(dropped).toEqual(['r0c0', 'r0c4', 'r2c0', 'r2c1', 'r2c4']);
+    expect(usable.overlap.get('r2c3')).toBeCloseTo(0.125, 2);
     for (const c of usable.cells) {
       expect(usable.overlap.get(c.cellKey)).toBeGreaterThanOrEqual(MIN_CELL_OVERLAP);
+    }
+  });
+
+  it('agrees with counting points: each cell’s share matches a 20 x 20 sample of it', () => {
+    for (const c of grid) {
+      let inside = 0;
+      const n = 20;
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+          const lat = c.bounds.south + ((i + 0.5) / n) * (c.bounds.north - c.bounds.south);
+          const lng = c.bounds.west + ((j + 0.5) / n) * (c.bounds.east - c.bounds.west);
+          if (pointInOutline(lat, lng, outline)) inside++;
+        }
+      }
+      expect(cellOverlap(c.bounds, outline), c.cellKey).toBeCloseTo(inside / (n * n), 1);
     }
   });
 

@@ -17,6 +17,7 @@ import { CoverageExplorer } from './coverageview/CoverageExplorer.js';
 import { MetricSwitch } from './coverageview/MetricSwitch.js';
 import { CreateRunModal } from './CreateRunModal.js';
 import type { StartPrefill } from './prefill.js';
+import { startedMessage } from './startrun/startPlan.js';
 
 /** A click on any of these is a click on something, not on the empty panel. */
 const KEEP = 'button, a, input, select, textarea, label, [role="button"], [data-keep]';
@@ -151,8 +152,8 @@ export function CoveragePage() {
                   data={data}
                   regionId={row.regionId}
                   regionName={row.name}
-                  onPlan={(sectorOf) =>
-                    plan({ regionId: row.regionId, ...(sectorOf ? { sectorIds: [sectorOf] } : {}) })
+                  onPlanSector={(sectorOf) =>
+                    plan({ sectorIds: [sectorOf], regionIds: [row.regionId] })
                   }
                 />
               </div>
@@ -164,7 +165,10 @@ export function CoveragePage() {
                     rows={rows}
                     metric={metric}
                     selected={{ regionId, sectorId }}
-                    onSelectRegion={(id) => select(id)}
+                    onPlanRegion={(id) => plan({ regionId: id })}
+                    onPlanSector={(sectorOf) =>
+                      plan({ sectorIds: [sectorOf], regionIds: regionId ? [regionId] : [] })
+                    }
                     onSelectCell={(id, s) => select(id, s)}
                   />
                 </div>
@@ -178,7 +182,6 @@ export function CoveragePage() {
                     regionName={row.name}
                     sectorName={sector.name}
                     entry={entryOf(data, row.regionId, sector.id)}
-                    onPlan={() => plan({ regionId: row.regionId, sectorIds: [sector.id] })}
                     onClose={() => select(row.regionId)}
                   />
                 )}
@@ -218,7 +221,6 @@ export function CoveragePage() {
                 cellsLoading={cells.loading}
                 cellsError={cells.error}
                 onRetryCells={cells.reload}
-                onPlanCell={(id, cellKey) => plan({ regionId: id, cellKeys: [cellKey] })}
               />
             )}
           </PanelSection>
@@ -235,22 +237,21 @@ export function CoveragePage() {
           regionId={regionId}
           sectorId={sectorId}
           onSelectCell={(id, s) => select(id, s)}
-          onSelectRegion={(id) => {
-            setExpanded(false);
-            select(id);
-          }}
-          onPlan={(id, s) => plan({ regionId: id, sectorIds: [s] })}
+          onPlanRegion={(id) => plan({ regionId: id })}
+          onPlanSector={(sectorOf) =>
+            plan({ sectorIds: [sectorOf], regionIds: regionId ? [regionId] : [] })
+          }
           onClearCell={() => select(regionId)}
           onClose={() => setExpanded(false)}
         />
       )}
       {planning && (
         <CreateRunModal
-          regionId={planning.regionId}
+          {...(planning.regionId ? { regionId: planning.regionId } : {})}
           prefill={planning}
-          onCreated={(run) => {
+          onCreated={(runs, notStarted) => {
             setPlanning(null);
-            toast.show(t('create.toast', { region: run.region }));
+            toast.show(startedMessage(t, runs, notStarted));
             setRefreshKey((n) => n + 1);
           }}
           onCancel={() => setPlanning(null)}
