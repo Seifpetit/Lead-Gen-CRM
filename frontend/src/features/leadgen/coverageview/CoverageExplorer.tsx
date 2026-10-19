@@ -24,8 +24,8 @@ export function CoverageExplorer({
   regionId,
   sectorId,
   onSelectCell,
-  onSelectRegion,
-  onPlan,
+  onPlanRegion,
+  onPlanSector,
   onClearCell,
   onClose,
 }: {
@@ -37,9 +37,9 @@ export function CoverageExplorer({
   regionId: string | null;
   sectorId: string | null;
   onSelectCell: (regionId: string, sectorId: string) => void;
-  /** A row label was chosen: the page shows the region, so this closes the window too. */
-  onSelectRegion: (regionId: string) => void;
-  onPlan: (regionId: string, sectorId: string) => void;
+  /** A region's title or a sector's icon was chosen: the page opens Start a run (and this closes). */
+  onPlanRegion: (regionId: string) => void;
+  onPlanSector: (sectorId: string) => void;
   onClearCell: () => void;
   onClose: () => void;
 }) {
@@ -74,7 +74,8 @@ export function CoverageExplorer({
                   metric={metric}
                   size="large"
                   selected={{ regionId, sectorId }}
-                  onSelectRegion={onSelectRegion}
+                  onPlanRegion={onPlanRegion}
+                  onPlanSector={onPlanSector}
                   onSelectCell={onSelectCell}
                 />
               </div>
@@ -83,7 +84,6 @@ export function CoverageExplorer({
                   regionName={picked.name}
                   sectorName={sector.name}
                   entry={entryOf(data, picked.regionId, sector.id)}
-                  onPlan={() => onPlan(picked.regionId, sector.id)}
                   onClose={onClearCell}
                 />
               )}

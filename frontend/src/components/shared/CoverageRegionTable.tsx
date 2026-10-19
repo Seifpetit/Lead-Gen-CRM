@@ -7,19 +7,20 @@ import { STATE_ICON } from './CoverageMatrix.js';
 
 /**
  * One region on its own: a row per sector with its state, leads, cost, yield and last run, and
- * a button to plan a run for that sector. What the matrix turns into when a region is picked.
+ * titled by a button that starts a run for that sector. What the matrix turns into when a
+ * region is picked.
  */
 export function CoverageRegionTable({
   data,
   regionId,
   regionName,
-  onPlan,
+  onPlanSector,
 }: {
   data: Coverage;
   regionId: string;
   regionName: string;
-  /** Plan a run here: the sector's id, or null for the typed-in searches. */
-  onPlan: (sectorId: string | null) => void;
+  /** A sector's title was activated: start a run for it, in this and other regions. */
+  onPlanSector: (sectorId: string) => void;
 }) {
   const t = useT();
   const rows: { id: string | null; name: string; entry: CoverageEntry }[] = data.sectors.map(
@@ -46,9 +47,6 @@ export function CoverageRegionTable({
               {t('cov.yield')}
             </th>
             <th scope="col">{t('cov.lastRun')}</th>
-            <th scope="col">
-              <span className="visually-hidden">{t('cov.actions')}</span>
-            </th>
           </tr>
         </thead>
         <tbody>
@@ -67,7 +65,18 @@ export function CoverageRegionTable({
                     >
                       <SectorIcon size={14} />
                     </span>
-                    {name}
+                    {id === null ? (
+                      name
+                    ) : (
+                      <button
+                        type="button"
+                        className="link-button cov-name-button"
+                        aria-label={t('cov.start.sector', { sector: name })}
+                        onClick={() => onPlanSector(id)}
+                      >
+                        {name}
+                      </button>
+                    )}
                   </span>
                 </th>
                 <td>
@@ -80,18 +89,6 @@ export function CoverageRegionTable({
                 <td className="num">{formatUsd(entry.spendUsd)}</td>
                 <td className="num">{y === null ? '–' : y.toFixed(1)}</td>
                 <td>{entry.lastRunAt ? formatDay(entry.lastRunAt) : t('cov.never')}</td>
-                <td>
-                  {id !== null && (
-                    <button
-                      type="button"
-                      className="button"
-                      aria-label={t('cov.plan.for', { region: regionName, sector: name })}
-                      onClick={() => onPlan(id)}
-                    >
-                      {t('cov.plan')}
-                    </button>
-                  )}
-                </td>
               </tr>
             );
           })}

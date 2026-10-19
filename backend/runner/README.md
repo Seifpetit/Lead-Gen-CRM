@@ -107,11 +107,11 @@ Proposed fixes where an assumption is weak (none applied silently):
   applies the result; a crash right after it can repeat the call (a few cents at most).
 - Maintenance runs rebuild the company's place from stored evidence (name, website, phone,
   LinkedIn); address and category aren't re-checked.
-- Governorate bounds and outlines come from OpenStreetMap (`config/regionBounds.ts`,
-  `config/regionOutlines.json`, written by `npm run regions:fetch`) and are applied by
-  `db:migrate` / `db:seed`. Until they are fetched, `startRun` fails with "has no map bounds yet"
-  unless bounds were set by hand (`npm run regions:set-bounds -- <region> <s> <w> <n> <e>`; a
-  manual box is never overwritten by a seed).
+- Governorate bounds and outlines come from one dataset, geoBoundaries TUN ADM1 (see the root
+  README), built into `config/regionBounds.ts` and `config/regionOutlines.json` by
+  `npm run regions:build` and applied by `db:migrate` / `db:seed`. A region whose bounds changed
+  loses its search cells if nothing refers to them yet; they are rebuilt on its next run. A box
+  set by hand (`npm run regions:set-bounds -- <region> <s> <w> <n> <e>`) is never overwritten.
 - **Spillage:** a search cell is kept only if it intersects the region's outline, and a
   discovered place whose coordinates are outside the outline (more than ~550 m, since the stored
   outline is simplified) is dropped before it is stored or qualified. The count is on the run

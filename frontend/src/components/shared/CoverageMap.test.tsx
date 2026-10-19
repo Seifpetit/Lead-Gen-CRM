@@ -59,7 +59,6 @@ const explored = new Set(['sfax', 'tunis']);
 
 function setup(regionId: string | null = null) {
   const onRegionChange = vi.fn();
-  const onPlanCell = vi.fn();
   const view = (id: string | null) => (
     <I18nProvider>
       <CoverageMap
@@ -68,14 +67,12 @@ function setup(regionId: string | null = null) {
         regionId={id}
         onRegionChange={onRegionChange}
         cells={id ? [cell] : null}
-        onPlanCell={onPlanCell}
       />
     </I18nProvider>
   );
   const utils = render(view(regionId));
   return {
     onRegionChange,
-    onPlanCell,
     user: userEvent.setup(),
     rerender: (id: string | null) => utils.rerender(view(id)),
   };
@@ -143,12 +140,88 @@ describe('CoverageMap', () => {
     vi.unstubAllGlobals();
   });
 
-  it('shows a cell’s numbers and plans a run for it', async () => {
-    const { onPlanCell, user } = setup('sfax');
+  it('shows a cell’s numbers, with no button to plan a run', async () => {
+    const { user } = setup('sfax');
     await user.click(screen.getByRole('button', { name: /r0c0/ }));
     expect(screen.getByRole('region', { name: 'Cell r0c0' })).toBeVisible();
-    await user.click(screen.getByRole('button', { name: 'Plan a run in this cell' }));
-    expect(onPlanCell).toHaveBeenCalledWith('sfax', 'r0c0');
+    expect(screen.queryByRole('button', { name: /plan a run/i })).toBeNull();
+  });
+
+  describe('how it is drawn', () => {
+    const states = (
+      [
+        ['r0c0', {}, 'never'],
+        ['r0c1', { queriesRun: 2 }, 'searched'],
+        ['r1c0', { queriesRun: 2, leads: 3 }, 'leads'],
+        ['r1c1', { claimedByRunId: 'run-1' }, 'claimed'],
+        ['r2c0', { queriesRun: 9, exhaustedAt: '2026-10-17T10:00:00.000Z' }, 'saturated'],
+      ] as const
+    ).map(([cellKey, over, state], i) => ({
+      state,
+      cell: {
+        ...cell,
+        regionCellId: `c${i}`,
+        cellKey,
+        queriesRun: 0,
+        leads: 0,
+        placesFound: 0,
+        newPlacesFound: 0,
+        exhaustedAt: null,
+        claimedByRunId: null,
+        ...over,
+      } satisfies CellSummary,
+    }));
+
+    function drawn() {
+      return render(
+        <I18nProvider>
+          <CoverageMap
+            regions={regions}
+            exploredIds={explored}
+            regionId="sfax"
+            onRegionChange={vi.fn()}
+            cells={states.map((s) => s.cell)}
+          />
+        </I18nProvider>,
+      );
+    }
+
+    it('cuts the search squares to the region outline, so nothing is drawn outside it', () => {
+      const { container } = drawn();
+      const group = container.querySelector('g.map-cells')!;
+      const clip = /^url\(#(.+)\)$/.exec(group.getAttribute('clip-path') ?? '')?.[1];
+      expect(clip).toBeTruthy();
+      const path = container.querySelector(`clipPath[id="${clip}"] path`)!;
+      // The clip is the outline of the picked region, the same path the region is drawn with.
+      const sfax = container.querySelector('path.region-shape.is-selected')!;
+      expect(path.getAttribute('d')).toBe(sfax.getAttribute('d'));
+      // Every square is inside that group, none loose in the svg.
+      expect(group.querySelectorAll('rect.map-cell')).toHaveLength(5);
+      expect(container.querySelectorAll('svg > rect')).toHaveLength(0);
+    });
+
+    it('gives each square its state as a class, and never a fill of its own colour attribute', () => {
+      const { container } = drawn();
+      for (const { state, cell: c } of states) {
+        const rect = container.querySelector(`rect[aria-label^="Cell ${c.cellKey},"]`)!;
+        expect(rect).toHaveClass('map-cell', `cell-${state}`);
+        // Colour comes from the stylesheet by state; an inline or attribute fill would be dark.
+        expect(rect.getAttribute('fill')).toBeNull();
+        expect(rect.getAttribute('style')).toBeNull();
+      }
+    });
+
+    it('draws no frame: nothing but the region shape carries the focus, and no frame shape exists', () => {
+      const { container } = drawn();
+      expect(container.querySelectorAll('svg rect:not(.map-cell)')).toHaveLength(0);
+      expect(container.querySelector('svg [stroke]')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Region Sfax' })).toHaveClass('is-selected');
+    });
+
+    it('credits the boundary data in the corner of the map', () => {
+      drawn();
+      expect(screen.getByText(/geoBoundaries.*OpenStreetMap contributors.*ODbL/)).toBeVisible();
+    });
   });
 
   it('shows a message when there is nothing to draw', () => {
@@ -160,7 +233,6 @@ describe('CoverageMap', () => {
           regionId={null}
           onRegionChange={vi.fn()}
           cells={null}
-          onPlanCell={vi.fn()}
         />
       </I18nProvider>,
     );

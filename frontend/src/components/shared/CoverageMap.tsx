@@ -1,5 +1,5 @@
 import type { CellSummary, RegionGeometry } from '@lead-gen-crm/shared';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useT } from '../../i18n/index.js';
 import { formatDateTime, formatNumber, formatUsd } from '../../lib/format.js';
 import {
@@ -64,7 +64,8 @@ function useEasedBox(target: Box): Box {
 }
 
 /**
- * Tunisia drawn from the governorate outlines, no map tiles. Picking a region zooms to it
+ * Tunisia drawn from the governorate outlines, no map tiles. The search squares are thin light
+ * grid lines cut to the outline; only a square's state fills it. Picking a region zooms to it
  * (smoothly), outlines it and dims the others, and shows its search cells; picking nothing
  * shows the whole country. A region with nothing to show yet is greyed out and cannot be picked.
  * Takes its data as props; what is picked belongs to the caller.
@@ -78,7 +79,6 @@ export function CoverageMap({
   cellsLoading = false,
   cellsError = null,
   onRetryCells,
-  onPlanCell,
 }: {
   regions: RegionGeometry[];
   /** The regions that can be picked; the others are greyed out. */
@@ -91,10 +91,9 @@ export function CoverageMap({
   cellsLoading?: boolean;
   cellsError?: unknown;
   onRetryCells?: () => void;
-  /** Plan a run in one cell of the picked region. */
-  onPlanCell: (regionId: string, cellKey: string) => void;
 }) {
   const t = useT();
+  const clipId = useId();
   const [cellKey, setCellKey] = useState<string | null>(null);
   useEffect(() => setCellKey(null), [regionId]);
 
@@ -165,35 +164,51 @@ export function CoverageMap({
             </path>
           );
         })}
-        {regionCells.map((c) => {
-          const state = cellState(c);
-          const x = projection.x(c.bounds.west);
-          const y = projection.y(c.bounds.north);
-          return (
-            <rect
-              key={c.regionCellId}
-              x={x}
-              y={y}
-              width={Math.max(projection.x(c.bounds.east) - x, 0.5)}
-              height={Math.max(projection.y(c.bounds.south) - y, 0.5)}
-              className={`map-cell cell-${state}${c.cellKey === cellKey ? ' is-selected' : ''}`}
-              role="button"
-              tabIndex={0}
-              aria-label={t('map.cellShape', { cell: c.cellKey, state: t(`map.state.${state}`) })}
-              aria-pressed={c.cellKey === cellKey}
-              onClick={() => setCellKey(c.cellKey)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  setCellKey(c.cellKey);
-                }
-              }}
-            >
-              <title>{`${c.cellKey}: ${t(`map.state.${state}`)}`}</title>
-            </rect>
-          );
-        })}
+        {region && regionCells.length > 0 && (
+          <>
+            <defs>
+              <clipPath id={clipId}>
+                <path d={outlinePath(region.outline!, projection)} fillRule="evenodd" />
+              </clipPath>
+            </defs>
+            {/* The search squares, cut to the region's outline: nothing is drawn outside it. */}
+            <g className="map-cells" clipPath={`url(#${clipId})`}>
+              {regionCells.map((c) => {
+                const state = cellState(c);
+                const x = projection.x(c.bounds.west);
+                const y = projection.y(c.bounds.north);
+                return (
+                  <rect
+                    key={c.regionCellId}
+                    x={x}
+                    y={y}
+                    width={Math.max(projection.x(c.bounds.east) - x, 0.5)}
+                    height={Math.max(projection.y(c.bounds.south) - y, 0.5)}
+                    className={`map-cell cell-${state}${c.cellKey === cellKey ? ' is-selected' : ''}`}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={t('map.cellShape', {
+                      cell: c.cellKey,
+                      state: t(`map.state.${state}`),
+                    })}
+                    aria-pressed={c.cellKey === cellKey}
+                    onClick={() => setCellKey(c.cellKey)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setCellKey(c.cellKey);
+                      }
+                    }}
+                  >
+                    <title>{`${c.cellKey}: ${t(`map.state.${state}`)}`}</title>
+                  </rect>
+                );
+              })}
+            </g>
+          </>
+        )}
       </svg>
+      <p className="map-attribution">{t('map.attribution')}</p>
       {regionCells.length > 0 && (
         <ul className="legend cov-map-legend" aria-label={t('map.legend')}>
           {CELL_STATES.map((s) => (
@@ -214,10 +229,7 @@ export function CoverageMap({
           <p className="muted">{t('map.cells.none', { region: region.name })}</p>
         )}
         {selectedCell ? (
-          <CellStats
-            cell={selectedCell}
-            onPlan={() => onPlanCell(regionId!, selectedCell.cellKey)}
-          />
+          <CellStats cell={selectedCell} />
         ) : (
           <p className="muted">{region ? t('map.hint.reset') : t('map.hint.region')}</p>
         )}
@@ -231,7 +243,7 @@ export function CoverageMap({
   );
 }
 
-function CellStats({ cell, onPlan }: { cell: CellSummary; onPlan: () => void }) {
+function CellStats({ cell }: { cell: CellSummary }) {
   const t = useT();
   const state = cellState(cell);
   return (
@@ -266,9 +278,6 @@ function CellStats({ cell, onPlan }: { cell: CellSummary; onPlan: () => void }) 
           <dd>{cell.lastRunAt ? formatDateTime(cell.lastRunAt) : t('map.cell.never')}</dd>
         </div>
       </dl>
-      <button type="button" className="button" onClick={onPlan}>
-        {t('cov.plan.cell')}
-      </button>
     </section>
   );
 }

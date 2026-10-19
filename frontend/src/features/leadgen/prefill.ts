@@ -1,8 +1,14 @@
-/** What the coverage widgets hand to Start a run when a cell is clicked. */
+/** What the coverage page hands to Start a run: a region, or a sector and some regions. */
 export interface StartPrefill {
-  regionId: string;
-  /** A single sector, from the coverage grid. */
+  /** One region, from a region's title: the form starts on it with the sector chips to choose. */
+  regionId?: string;
+  /**
+   * From a sector: the regions chosen to begin with (possibly none). Its presence turns the
+   * region field into region chips, so one sector can be run across several regions.
+   */
+  regionIds?: string[];
+  /** The sector or sectors ticked to begin with. */
   sectorIds?: string[];
-  /** A single map cell, from the coverage map. */
+  /** A single map cell of the region. */
   cellKeys?: string[];
 }

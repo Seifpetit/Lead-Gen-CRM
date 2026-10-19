@@ -25,8 +25,7 @@
     "dev:backend": "npm run build:shared && npm run dev -w backend",
     "dev:frontend": "npm run build:shared && npm run dev -w frontend",
     "regions:set-bounds": "npm run regions:set-bounds -w backend --",
-    "regions:fetch": "npm run regions:fetch -w backend --",
-    "regions:derive-manouba": "npm run regions:derive-manouba -w backend --",
+    "regions:build": "npm run regions:build -w backend --",
     "auth:create-user": "npm run auth:create-user -w backend --",
     "auth:disable-dev-user": "npm run auth:disable-dev-user -w backend",
     "auth:create-invite": "npm run auth:create-invite -w backend"

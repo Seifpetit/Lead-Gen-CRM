@@ -48,7 +48,8 @@ export function CoverageMatrix({
   rows,
   metric,
   selected,
-  onSelectRegion,
+  onPlanRegion,
+  onPlanSector,
   onSelectCell,
   size = 'normal',
 }: {
@@ -57,8 +58,10 @@ export function CoverageMatrix({
   rows: readonly CoverageRow[];
   metric: Metric;
   selected: MatrixSelection;
-  /** A row label was activated. */
-  onSelectRegion: (regionId: string) => void;
+  /** A region's title was activated: start a run in it. */
+  onPlanRegion: (regionId: string) => void;
+  /** A sector's icon at the head of a column was activated: start a run for it. */
+  onPlanSector: (sectorId: string) => void;
   /** A square was activated. */
   onSelectCell: (regionId: string, sectorId: string) => void;
   size?: 'normal' | 'large';
@@ -143,15 +146,16 @@ export function CoverageMatrix({
                   scope="col"
                   className={selected.sectorId === s.id ? 'is-selected' : undefined}
                 >
-                  <span
+                  <button
+                    type="button"
                     className="cov-sector"
                     style={{ background: color }}
-                    role="img"
-                    aria-label={s.name}
+                    aria-label={t('cov.start.sector', { sector: s.name })}
                     title={s.name}
+                    onClick={() => onPlanSector(s.id)}
                   >
                     <Icon size={size === 'large' ? 18 : 14} aria-hidden="true" />
-                  </span>
+                  </button>
                 </th>
               );
             })}
@@ -175,12 +179,12 @@ export function CoverageMatrix({
                     data-pos={`${r}:0`}
                     tabIndex={focus.r === r && focus.c === 0 ? 0 : -1}
                     aria-disabled={!row.explored}
-                    aria-pressed={
-                      row.explored ? rowSelected && selected.sectorId === null : undefined
+                    aria-label={
+                      row.explored ? t('cov.start.region', { region: row.name }) : undefined
                     }
                     title={row.explored ? undefined : t('cov.notExplored')}
                     onFocus={() => setFocus({ r, c: 0 })}
-                    onClick={() => row.explored && onSelectRegion(row.regionId)}
+                    onClick={() => row.explored && onPlanRegion(row.regionId)}
                   >
                     {row.name}
                   </button>

@@ -808,7 +808,8 @@ progress {
   border: 1px solid rgba(0, 0, 0, 0.25);
 }
 .cell-never {
-  background: #d9dbe0;
+  background: transparent;
+  border-style: dashed;
 }
 .cell-leads {
   background: #7ccf8e;
@@ -840,16 +841,69 @@ progress {
 .region-shape:focus {
   fill: #dfe4ee;
 }
+/*
+ * Search squares: thin light grid lines, clipped to the region's outline by the map. Only a
+ * state fills a square (never searched has no fill), and the fill stays inside the outline.
+ * An SVG shape with no `fill` is painted black, so every state sets one.
+ */
 .map-cell {
-  stroke: #4b5563;
-  stroke-width: 0.5;
+  fill: transparent;
+  stroke: var(--ink);
+  stroke-opacity: 0.22;
+  stroke-width: 0.75;
   vector-effect: non-scaling-stroke;
-  fill-opacity: 0.85;
   cursor: pointer;
 }
+.map-cell.cell-never {
+  fill: transparent;
+}
+.map-cell.cell-claimed {
+  fill: #f2d45c;
+  fill-opacity: 0.7;
+}
+.map-cell.cell-searched {
+  fill: #bfe6e0;
+  fill-opacity: 0.7;
+}
+.map-cell.cell-leads {
+  fill: #7ccf8e;
+  fill-opacity: 0.7;
+}
+.map-cell.cell-saturated {
+  fill: #6a9bd8;
+  fill-opacity: 0.7;
+}
+.map-cell:hover {
+  stroke-opacity: 0.6;
+}
 .map-cell.is-selected {
-  stroke: #111827;
+  stroke: var(--purple);
+  stroke-opacity: 1;
   stroke-width: 2.5;
+}
+/* The map is drawn in SVG: the page-wide focus rectangle would box a whole region or square. */
+.coverage-map [tabindex]:focus,
+.coverage-map [tabindex]:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.region-shape:focus-visible {
+  stroke: var(--sky);
+  stroke-width: 3;
+}
+.map-cell:focus-visible {
+  stroke: var(--sky);
+  stroke-opacity: 1;
+  stroke-width: 2.5;
+}
+.map-attribution {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+}
+.map-attribution a {
+  color: inherit;
 }
 .cell-stats {
   margin-top: 8px;
@@ -4806,6 +4860,24 @@ a.tile-name:hover {
 .cov-sector.is-inline {
   --cell: 22px;
 }
+/* A sector's icon at the head of a column starts a run for it. */
+button.cov-sector {
+  padding: 0;
+  cursor: pointer;
+}
+button.cov-sector:hover {
+  box-shadow: 0 0 0 3px var(--yellow);
+}
+.cov-name-button {
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  text-decoration: none;
+}
+.cov-name-button:hover {
+  background: var(--yellow);
+}
 .cov-matrix th.is-selected .cov-sector {
   box-shadow: 0 0 0 3px var(--yellow);
 }
@@ -5206,40 +5278,40 @@ a.tile-name:hover {
 .sr-left .form-field > label {
   min-height: 0;
 }
-.sr-sectors {
+.chip-select {
   border: 0;
   margin: 0;
   padding: 0;
   min-width: 0;
 }
-.sr-sectors legend {
+.chip-select legend {
   float: left;
   padding: 0;
   font-weight: 700;
 }
-.sr-sectors-bar {
+.chip-select-bar {
   display: flex;
   justify-content: flex-end;
   align-items: center;
   gap: var(--space-3);
   margin-bottom: var(--space-2);
 }
-.sr-sectors-links {
+.chip-select-links {
   display: inline-flex;
   gap: var(--space-3);
 }
-.sr-chips {
+.chip-select-chips {
   clear: both;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  gap: 6px;
 }
 .sr-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 32px;
-  padding: 2px 10px;
+  min-height: 28px;
+  padding: 1px 8px;
   font: inherit;
   font-size: var(--fs-caption);
   color: var(--muted);
@@ -5250,6 +5322,30 @@ a.tile-name:hover {
 }
 .sr-chip:hover {
   border-color: var(--ink);
+}
+/* Press and drag over chips paints them: no text selection, and a finger must not scroll. */
+.chip-select-chips {
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+.chip-box {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  background: var(--white);
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+}
+.chip-hint {
+  font-weight: 400;
+  color: var(--muted);
+}
+.sr-chip[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .sr-chip[aria-pressed='true'] {
   color: var(--ink);

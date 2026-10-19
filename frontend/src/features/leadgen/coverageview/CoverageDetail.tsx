@@ -6,20 +6,17 @@ import { yieldOf } from '../../../lib/coverageView.js';
 import { formatDay, formatNumber, formatUsd } from '../../../lib/format.js';
 
 /**
- * The numbers for one region and sector, under the matrix, with the way to plan a run for it.
- * Sits inside the panel (it replaces nothing, so the page never grows).
+ * The numbers for one region and sector, under the matrix. Sits inside the panel (it replaces nothing, so the page never grows).
  */
 export function CoverageDetail({
   regionName,
   sectorName,
   entry,
-  onPlan,
   onClose,
 }: {
   regionName: string;
   sectorName: string;
   entry: CoverageEntry;
-  onPlan: () => void;
   onClose: () => void;
 }) {
   const t = useT();
@@ -65,9 +62,6 @@ export function CoverageDetail({
           <dd>{entry.lastRunAt ? formatDay(entry.lastRunAt) : t('cov.never')}</dd>
         </div>
       </dl>
-      <button type="button" className="button button-primary" onClick={onPlan}>
-        {t('cov.plan')}
-      </button>
     </section>
   );
 }

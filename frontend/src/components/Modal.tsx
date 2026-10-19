@@ -53,7 +53,10 @@ export function Modal({
         return;
       }
       if (event.key !== 'Tab' || !node) return;
-      const items = Array.from(node.querySelectorAll<HTMLElement>(FOCUSABLE));
+      // Elements parked out of the tab order (a roving grid's other squares) are not stops.
+      const items = Array.from(node.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+        (el) => el.tabIndex >= 0,
+      );
       if (items.length === 0) {
         event.preventDefault();
         return;

@@ -17,10 +17,10 @@ export function CreateRunModal({
   onCancel,
 }: {
   /** The region picked on the dashboard, if any; the form starts on it. */
-  regionId: string;
+  regionId?: string;
   /** A region and sector (or cell) to start on, from the coverage page; wins over regionId. */
   prefill?: StartPrefill;
-  onCreated: (run: RunSummary) => void;
+  onCreated: (runs: RunSummary[], notStarted: string[]) => void;
   onCancel: () => void;
 }) {
   const t = useT();

@@ -94,6 +94,10 @@ function setup(route = '/leadgen/coverage') {
     'GET /api/regions/sfax/cells': page([]),
     'GET /api/runs': page(runs),
     'POST /api/runs/preview': { body: preview() },
+    'POST /api/runs': (req) => ({
+      status: 201,
+      body: run({ id: `new-${req.body.regionId}`, region: req.body.regionId }),
+    }),
   });
   renderWith(
     <>
@@ -161,26 +165,125 @@ describe('Coverage page', () => {
     expect(where()).toBe('?region=sfax');
   });
 
-  it('opens Create run prefilled with the region and sector from the detail card', async () => {
-    const { server, user } = setup();
+  it('has no "Plan a run here" button anywhere: not on the detail card, not in a table', async () => {
+    const { user } = setup();
     await user.click(await screen.findByRole('button', { name: 'Sfax, Textile, Partial' }));
-    await user.click(screen.getByRole('button', { name: 'Plan a run here' }));
+    expect(screen.getByRole('region', { name: 'Sfax, Textile' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: /plan a run/i })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Region Sfax' }));
+    await screen.findByRole('table', { name: 'Sfax by sector' });
+    expect(screen.queryByRole('button', { name: /plan a run/i })).toBeNull();
+  });
+
+  it('opens Start a run on a region when its title in the matrix is clicked', async () => {
+    const { server, user } = setup();
+    await user.click(await screen.findByRole('button', { name: 'Start a run in Sfax' }));
     const dialog = await screen.findByRole('dialog', { name: 'Start a run' });
     await waitFor(() => expect(within(dialog).getByLabelText('Region')).toHaveValue('sfax'));
+    // The sector chips are there to choose from; one region, so no region chips.
+    expect(within(dialog).getByRole('group', { name: 'Sectors to search' })).toBeVisible();
+    expect(within(dialog).queryByRole('group', { name: 'Regions to search' })).toBeNull();
+    expect(within(dialog).getByRole('button', { name: 'Agri-food' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
     await waitFor(() =>
       expect(server.to('POST /api/runs/preview').at(-1)!.body).toMatchObject({
         regionId: 'sfax',
-        sectorIds: ['textile'],
       }),
+    );
+    // Opening the window did not pick the region on the page.
+    expect(where()).toBe('');
+  });
+
+  it('opens Start a run on a sector, with region chips, when its icon in the matrix is clicked', async () => {
+    const { user } = setup();
+    await user.click(await screen.findByRole('button', { name: 'Start a run for Textile' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Start a run' });
+    expect(within(dialog).queryByLabelText('Region')).toBeNull();
+    const regionChips = within(dialog).getByRole('group', { name: 'Regions to search' });
+    // Name and coverage state on each chip; one with no map area cannot be chosen.
+    expect(
+      within(regionChips).getByRole('button', { name: /Sfax.*partly covered/ }),
+    ).toHaveAttribute('aria-pressed', 'false');
+    expect(
+      within(regionChips).getByRole('button', { name: /Tunis.*partly covered/ }),
+    ).toBeVisible();
+    expect(within(regionChips).getByRole('button', { name: /Gabès.*no map area/ })).toHaveAttribute(
+      'aria-disabled',
+      'true',
     );
     expect(within(dialog).getByRole('button', { name: 'Textile' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
-    expect(within(dialog).getByRole('button', { name: 'Agri-food' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
+    expect(within(dialog).getByText('0 of 2 regions selected')).toBeVisible();
+  });
+
+  it('runs one sector in several regions: one estimate for all, one run per region', async () => {
+    const { server, user } = setup();
+    await user.click(await screen.findByRole('button', { name: 'Start a run for Textile' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Start a run' });
+    await user.click(within(dialog).getByRole('button', { name: 'Select all' }));
+    // Select all skips the region that cannot be searched.
+    expect(within(dialog).getByText('2 of 2 regions selected')).toBeVisible();
+    await waitFor(() =>
+      expect(
+        server
+          .to('POST /api/runs/preview')
+          .map((c) => c.body.regionId)
+          .sort(),
+      ).toEqual(['sfax', 'tunis']),
     );
+    // Two runs at $3.50 each: the combined estimate and the cap for each run.
+    expect(await within(dialog).findByText('$7.00')).toBeVisible();
+    expect(within(dialog).getByLabelText('Spend cap for each run (USD)')).toBeVisible();
+    const start = within(dialog).getByRole('button', { name: /Start 2 runs, up to \$2.00 each/ });
+    await waitFor(() => expect(start).toHaveAttribute('aria-disabled', 'false'));
+    await user.click(start);
+    // Above the caps ($7.00 against two $2.00 caps): asks once more, then starts both.
+    await user.click(await within(dialog).findByRole('button', { name: 'Yes, start the run' }));
+    await waitFor(() => expect(server.to('POST /api/runs')).toHaveLength(2));
+    expect(server.to('POST /api/runs').map((c) => [c.body.regionId, c.body.sectorIds])).toEqual([
+      ['sfax', ['textile']],
+      ['tunis', ['textile']],
+    ]);
+    expect(await screen.findByText('2 runs started: sfax, tunis.')).toBeVisible();
+  });
+
+  it('starts only as many runs as can go at once, and names the regions left', async () => {
+    const { server, user } = setup();
+    server.set('POST /api/runs/preview', {
+      body: preview({
+        limits: {
+          budgetCapUsd: null,
+          monthCapUsd: null,
+          monthSpentUsd: 0,
+          monthRemainingUsd: null,
+          activeRuns: 1,
+          maxActiveRuns: 2,
+        },
+      }),
+    });
+    await user.click(await screen.findByRole('button', { name: 'Start a run for Textile' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Start a run' });
+    await user.click(within(dialog).getByRole('button', { name: 'Select all' }));
+    expect(
+      await within(dialog).findByText(
+        'Only 2 runs can go at once (1 running now), so 1 will start. Not started: Tunis. Start those again when a run finishes.',
+      ),
+    ).toBeVisible();
+    await waitFor(() => expect(server.to('POST /api/runs/preview')).toHaveLength(1));
+    const start = within(dialog).getByRole('button', { name: /^Start run, up to/ });
+    await waitFor(() => expect(start).toHaveAttribute('aria-disabled', 'false'));
+    await user.click(start);
+    await user.click(await within(dialog).findByRole('button', { name: 'Yes, start the run' }));
+    await waitFor(() => expect(server.to('POST /api/runs')).toHaveLength(1));
+    expect(
+      await screen.findByText(
+        'Run started in sfax. Not started yet, because of the limit on runs at once: Tunis.',
+      ),
+    ).toBeVisible();
   });
 
   describe('picking a region', () => {
@@ -198,27 +301,31 @@ describe('Coverage page', () => {
       expect(within(textile).getByText('Partial')).toBeVisible();
       expect(within(textile).getByText('3.3')).toBeVisible();
       expect(
-        within(textile).getByRole('button', { name: 'Plan a run in Sfax for Textile' }),
+        within(textile).getByRole('button', { name: 'Start a run for Textile' }),
       ).toBeVisible();
       expect(map()).toHaveAttribute('data-focus', 'sfax');
       expect(screen.getByRole('button', { name: 'Region Tunis' })).toHaveClass('is-dimmed');
       expect(where()).toBe('?region=sfax');
     });
 
-    it('does the same when the region’s label in the matrix is clicked', async () => {
-      const { user } = setup();
-      await user.click(await screen.findByRole('button', { name: 'Tunis' }));
-      expect(await screen.findByRole('table', { name: 'Tunis by sector' })).toBeVisible();
-      expect(map()).toHaveAttribute('data-focus', 'tunis');
-    });
-
-    it('opens Create run from a table row for that region and sector', async () => {
+    it('opens Start a run on that sector, with the region preselected, from a table row', async () => {
       const { server, user } = setup();
       await user.click(await screen.findByRole('button', { name: 'Region Sfax' }));
-      await user.click(
-        await screen.findByRole('button', { name: 'Plan a run in Sfax for Agri-food' }),
+      await user.click(await screen.findByRole('button', { name: 'Start a run for Agri-food' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Start a run' });
+      const regionChips = within(dialog).getByRole('group', { name: 'Regions to search' });
+      expect(within(regionChips).getByRole('button', { name: /Sfax/ })).toHaveAttribute(
+        'aria-pressed',
+        'true',
       );
-      await screen.findByRole('dialog', { name: 'Start a run' });
+      expect(within(regionChips).getByRole('button', { name: /Tunis/ })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+      expect(within(dialog).getByRole('button', { name: 'Agri-food' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
       await waitFor(() =>
         expect(server.to('POST /api/runs/preview').at(-1)!.body).toMatchObject({
           regionId: 'sfax',
@@ -227,11 +334,20 @@ describe('Coverage page', () => {
       );
     });
 
+    it('selects a region from a square, not from its title', async () => {
+      const { user } = setup();
+      await user.click(await screen.findByRole('button', { name: 'Tunis, Textile, Unexplored' }));
+      expect(await screen.findByRole('region', { name: 'Tunis, Textile' })).toBeVisible();
+      expect(map()).toHaveAttribute('data-focus', 'tunis');
+      expect(where()).toBe('?region=tunis&sector=textile');
+    });
+
     it('cannot pick a greyed-out region on the map', async () => {
       const { user } = setup();
       await user.click(await screen.findByRole('button', { name: 'Region Gabès' }));
       await user.click(screen.getByRole('button', { name: 'Gabès' }));
       expect(where()).toBe('');
+      expect(screen.queryByRole('dialog')).toBeNull();
       expect(map()).toHaveAttribute('data-focus', '');
       expect(screen.getByRole('grid')).toBeVisible();
     });

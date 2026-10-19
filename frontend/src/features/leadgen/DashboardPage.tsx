@@ -12,6 +12,7 @@ import { BySectorSection, LeadsPerDaySection } from './dashboard/ChartSections.j
 import { LeadsPanel } from './dashboard/LeadsPanel.js';
 import { RunsSection } from './dashboard/RunsSection.js';
 import { CreateRunModal } from './CreateRunModal.js';
+import { startedMessage } from './startrun/startPlan.js';
 import { MAX_ACTIVE_RUNS, StatusBadge } from './runParts.js';
 import { useErrorToast } from './useErrorToast.js';
 
@@ -105,9 +106,9 @@ export function DashboardPage() {
   const activeRuns = active.data?.items ?? [];
   const chartLeads = leads.data?.items ?? [];
 
-  function created(run: RunSummary) {
+  function created(runs: RunSummary[], notStarted: string[]) {
     setCreating(false);
-    toast.show(t('create.toast', { region: run.region }));
+    toast.show(startedMessage(t, runs, notStarted));
     refresh();
   }
 
