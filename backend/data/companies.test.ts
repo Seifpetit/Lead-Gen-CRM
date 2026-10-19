@@ -120,6 +120,27 @@ describe('upsertCompany dedupe', () => {
     expect(b.created).toBe(true);
   });
 
+  it('merges the same name listed twice by Google within 100 m, but not a real branch', async () => {
+    const a = await upsertCompany(
+      db,
+      user,
+      company({ googlePlaceId: fact('place-1'), location: { lat: 34.6518216, lng: 10.1119682 } }),
+    );
+    const twin = await upsertCompany(
+      db,
+      user,
+      company({ googlePlaceId: fact('place-2'), location: { lat: 34.6515671, lng: 10.1118831 } }),
+    );
+    expect(twin).toMatchObject({ created: false, matchedBy: 'name_nearby' });
+    expect(twin.company.id).toBe(a.company.id);
+    const branch = await upsertCompany(
+      db,
+      user,
+      company({ googlePlaceId: fact('place-3'), location: { lat: 34.66, lng: 10.12 } }),
+    );
+    expect(branch.created).toBe(true);
+  });
+
   it('keeps same-name companies apart when their place IDs differ (branches)', async () => {
     await upsertCompany(db, user, company({ googlePlaceId: fact('place-1') }));
     const b = await upsertCompany(db, user, company({ googlePlaceId: fact('place-2') }));
