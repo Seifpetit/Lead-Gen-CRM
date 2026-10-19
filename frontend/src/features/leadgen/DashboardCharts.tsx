@@ -10,6 +10,28 @@ import { leadsBySector, leadsPerDay, RANGES, type Range } from './leadsView.js';
 
 type Measure = 'leads' | 'cost';
 
+/** The date range both charts share; it sits with the other dashboard controls. */
+export function RangeToggle({
+  value,
+  onChange,
+}: {
+  value: Range;
+  onChange: (range: Range) => void;
+}) {
+  const t = useT();
+  return (
+    <ToggleGroup
+      label={t('charts.range')}
+      value={String(value) as `${Range}`}
+      options={RANGES.map((r) => ({
+        value: String(r) as `${Range}`,
+        label: t('charts.range.days', { days: r }),
+      }))}
+      onChange={(v) => onChange(Number(v) as Range)}
+    />
+  );
+}
+
 /**
  * Two charts under one date-range selector: leads found per day, and leads (or spend) by
  * sector. Spend by sector comes from the coverage totals, which are all-time, so in Cost mode
@@ -21,6 +43,7 @@ export function DashboardCharts({
   coverage,
   regionId,
   now,
+  range,
 }: {
   leads: readonly Lead[];
   runStarted: ReadonlyMap<string, string>;
@@ -28,9 +51,9 @@ export function DashboardCharts({
   /** When a region is picked, spend counts only that region. */
   regionId: string;
   now: number;
+  range: Range;
 }) {
   const t = useT();
-  const [range, setRange] = useState<Range>(30);
   const [measure, setMeasure] = useState<Measure>('leads');
 
   const names = useMemo(
@@ -72,17 +95,6 @@ export function DashboardCharts({
 
   return (
     <>
-      <div className="range-row">
-        <ToggleGroup
-          label={t('charts.range')}
-          value={String(range) as `${Range}`}
-          options={RANGES.map((r) => ({
-            value: String(r) as `${Range}`,
-            label: t('charts.range.days', { days: r }),
-          }))}
-          onChange={(v) => setRange(Number(v) as Range)}
-        />
-      </div>
       <div className="chart-row">
         <Card title={t('charts.perDay.title')} className="chart-card">
           <LineChart

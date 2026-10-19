@@ -179,10 +179,27 @@ describe('light theme only', () => {
   });
 });
 
-describe('long lists', () => {
-  it('scroll with the page, not inside a capped box', () => {
-    const rules = [...css.matchAll(/\.table-scroll\s*\{([^}]*)\}/g)].map((m) => m[1]!);
-    expect(rules.length).toBeGreaterThan(0);
-    for (const rule of rules) expect(rule).not.toMatch(/max-height|overflow(-y)?:\s*(auto|scroll)/);
+/** The declarations of every rule in the stylesheet with exactly this selector, joined. */
+function rule(selector: string): string {
+  const plain = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const found = [...plain.matchAll(/(?<=^|\})([^{}]+)\{([^}]*)\}/g)].filter(
+    (m) => m[1]!.trim() === selector,
+  );
+  expect(found.length, `a rule for ${selector}`).toBeGreaterThan(0);
+  return found.map((m) => m[2]).join('\n');
+}
+
+describe('fixed to the window', () => {
+  it('makes the frame as tall as the window, with no page scroll', () => {
+    expect(rule('#root:has(.topbar)')).toMatch(/height:\s*100dvh/);
+    expect(rule('#root:has(.topbar)')).toMatch(/overflow:\s*hidden/);
+    expect(rule('html:has(.topbar),\nbody:has(.topbar)')).toMatch(/overflow:\s*hidden/);
+  });
+
+  it('scrolls long lists inside their card, under a header that stays', () => {
+    expect(rule('.leads-card .table-scroll')).toMatch(/overflow:\s*auto/);
+    expect(rule('.lead-table thead th')).toMatch(/position:\s*sticky/);
+    expect(rule('.fit-body > .widget > .widget-body')).toMatch(/overflow-y:\s*auto/);
+    expect(rule('.page-scroll')).toMatch(/overflow-y:\s*auto/);
   });
 });
