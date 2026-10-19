@@ -1,4 +1,10 @@
-import type { Coverage, RegionSummary, RunPreview, RunSummary } from '@lead-gen-crm/shared';
+import {
+  regionLabel,
+  type Coverage,
+  type RegionSummary,
+  type RunPreview,
+  type RunSummary,
+} from '@lead-gen-crm/shared';
 import type { Translate } from '../../../i18n/index.js';
 import { yieldOf } from '../../../lib/coverageView.js';
 
@@ -155,7 +161,7 @@ export function runsToStart(
 
 /** The toast after a start: one run, several, and any regions that had to wait. */
 export function startedMessage(t: Translate, runs: readonly RunSummary[], notStarted: string[]) {
-  const names = runs.map((r) => r.region).join(', ');
+  const names = runs.map((r) => regionLabel(r.region)).join(', ');
   const head =
     runs.length === 1
       ? t('create.toast', { region: names })

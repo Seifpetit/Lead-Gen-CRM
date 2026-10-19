@@ -11,6 +11,7 @@ import { AddDecisionMakerModal } from '../../crm/AddDecisionMakerModal.js';
 import { CompanyThumb } from '../../crm/BoardCard.js';
 import { EvidenceTab } from './EvidenceTab.js';
 import { IdentityColumn } from './IdentityColumn.js';
+import { LocationCard } from './LocationCard.js';
 import { NotesTab } from './NotesTab.js';
 import { OverviewTab } from './OverviewTab.js';
 import { ScoreTab } from './ScoreTab.js';
@@ -93,6 +94,7 @@ export function LeadView({
         <div className="lead-columns">
           <div className="lead-col lead-col-left">
             <IdentityColumn lead={lead} detail={detail.data} />
+            <LocationCard company={company} />
           </div>
           <div className="lead-col lead-col-right">
             <Tabs

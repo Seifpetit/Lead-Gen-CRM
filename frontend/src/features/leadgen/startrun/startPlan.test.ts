@@ -148,9 +148,9 @@ describe('runsToStart', () => {
 describe('startedMessage', () => {
   const t: Translate = (key, vars) => translate('en', key, vars);
   it('names one run, several runs, and the regions that wait', () => {
-    expect(startedMessage(t, [run({ region: 'sfax' })], [])).toBe('Run started in sfax.');
+    expect(startedMessage(t, [run({ region: 'sfax' })], [])).toBe('Run started in Sfax.');
     const two = startedMessage(t, [run({ region: 'sfax' }), run({ region: 'tunis' })], ['Gabès']);
-    expect(two).toContain('sfax, tunis');
+    expect(two).toContain('Sfax, Tunis');
     expect(two).toContain('Gabès');
   });
 });

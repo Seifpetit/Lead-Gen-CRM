@@ -50,7 +50,7 @@ describe('the company picture', () => {
     const tile = container.querySelector<HTMLElement>('.thumb-tile')!;
     expect(tile).toHaveAttribute('data-sector', 'olive-oil');
     expect(tile.querySelector('svg.lucide-droplet')).not.toBeNull();
-    expect(tile.style.background).not.toBe('');
+    expect(tile.querySelector<HTMLElement>('.thumb-fill')!.style.background).not.toBe('');
   });
 
   it('falls back to the sector icon when the picture does not load', () => {

@@ -45,6 +45,10 @@ const cards = leads.map((lead, i) => ({
     email: null,
     imageUrl: null,
     imageSource: null,
+    regionId: 'sfax',
+    city: 'Sfax',
+    category: 'Corporate office',
+    location: null,
   },
   person: null,
   score: lead.score.total,
@@ -330,6 +334,10 @@ test('the lead page is one card: the page stays still and a long evidence list s
         email: null,
         imageUrl: null,
         imageSource: null,
+        regionId: 'sfax',
+        city: 'Sfax',
+        category: 'Corporate office',
+        location: { lat: 34.74, lng: 10.76 },
       },
       person: null,
       score: 90,
@@ -356,6 +364,8 @@ test('the lead page is one card: the page stays still and a long evidence list s
   for (const size of [
     { width: 1280, height: 720 },
     { width: 800, height: 600 },
+    { width: 600, height: 800 },
+    { width: 390, height: 844 },
   ]) {
     await page.setViewportSize(size);
     await page.goto(`/leadgen/runs/layout-run/leads/${lead.id}`);
@@ -366,12 +376,26 @@ test('the lead page is one card: the page stays still and a long evidence list s
     expect(m.docWidth).toBeLessThanOrEqual(m.width);
     expect(m.sideways).toBe(false);
     expect(m.nested).toEqual([]);
+    // Narrow: the name wraps onto its own line, not cut short, and the header is not covered.
+    if (size.width <= 640) {
+      const h = await page.evaluate(() => {
+        const head = document.querySelector('.lead-detail > .widget-header')!;
+        const title = head.querySelector('h1')!;
+        const r = head.getBoundingClientRect();
+        const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return {
+          cut: title.scrollWidth > title.clientWidth,
+          covered: !head.contains(top),
+          opacity: getComputedStyle(head).opacity,
+        };
+      });
+      expect(h).toEqual({ cut: false, covered: false, opacity: '1' });
+    }
   }
 
   // Wide: the evidence scrolls in the right column, the left column stays put.
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.getByRole('tab', { name: 'Evidence' }).click();
-  await page.locator('details.evidence-fold > summary').first().click();
   const panel = page.locator('.lead-col-right [role="tabpanel"]');
   expect(await panel.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
   await panel.hover();

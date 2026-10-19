@@ -1,3 +1,4 @@
+import { regionLabel } from '@lead-gen-crm/shared';
 import type { RunSummary } from '@lead-gen-crm/shared';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
@@ -164,7 +165,7 @@ export function RunsPage() {
                   {scopeOptions.map((r) => (
                     <option key={r.id} value={r.id}>
                       {t('runs.leads.scope.run', {
-                        region: r.region,
+                        region: regionLabel(r.region),
                         time: formatDateTime(r.createdAt),
                       })}
                     </option>

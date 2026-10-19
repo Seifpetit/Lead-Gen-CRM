@@ -1,3 +1,4 @@
+import { regionLabel } from '@lead-gen-crm/shared';
 import type { Coverage, RegionSummary, RunSummary } from '@lead-gen-crm/shared';
 import { useId, useMemo, useState } from 'react';
 import { Link } from 'react-router';
@@ -88,7 +89,7 @@ export function RunHistory({
                   <th scope="row">
                     <Link
                       to={`/leadgen/runs/${run.id}`}
-                      aria-label={t('runs.open', { region: run.region })}
+                      aria-label={t('runs.open', { region: regionLabel(run.region) })}
                     >
                       <time dateTime={run.createdAt}>{formatDateTime(run.createdAt)}</time>
                     </Link>

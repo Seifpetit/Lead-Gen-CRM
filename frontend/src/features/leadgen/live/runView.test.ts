@@ -30,7 +30,7 @@ describe('describeRun', () => {
       describeRun(t, run({ status: 'running', liveMessage: null, finishedAt: null })).sentence,
     ).toBe('Getting ready…');
     expect(describeRun(t, run({ status: 'finished', liveMessage: null })).sentence).toBe(
-      'Run in sfax',
+      'Run in Sfax',
     );
   });
 

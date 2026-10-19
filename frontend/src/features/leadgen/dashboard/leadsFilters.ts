@@ -1,3 +1,4 @@
+import { regionLabel } from '@lead-gen-crm/shared';
 import type { BoardStageKey, CrmFacets, RunSummary } from '@lead-gen-crm/shared';
 import { useMemo } from 'react';
 import type { FilterField } from '../../../components/shared/FilterMenu.js';
@@ -16,7 +17,7 @@ import {
 /** A run named by its region and day; runs from before the list kept are "Earlier run". */
 export function runLabel(runs: readonly RunSummary[], id: string | null, earlier: string): string {
   const run = runs.find((r) => r.id === id);
-  return run ? `${run.region} · ${formatDay(run.createdAt)}` : earlier;
+  return run ? `${regionLabel(run.region)} · ${formatDay(run.createdAt)}` : earlier;
 }
 
 /** The query's filters put back to nothing; the search text, sort and layout are left alone. */

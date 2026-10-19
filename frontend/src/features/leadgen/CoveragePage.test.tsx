@@ -257,7 +257,7 @@ describe('Coverage page', () => {
       ['sfax', ['textile']],
       ['tunis', ['textile']],
     ]);
-    expect(await screen.findByText('2 runs started: sfax, tunis.')).toBeVisible();
+    expect(await screen.findByText('2 runs started: Sfax, Tunis.')).toBeVisible();
     // No "same key" warnings from React.
     expect(errors.mock.calls.filter((c) => String(c[0]).includes('same key'))).toEqual([]);
     errors.mockRestore();
@@ -293,7 +293,7 @@ describe('Coverage page', () => {
     await waitFor(() => expect(server.to('POST /api/runs')).toHaveLength(1));
     expect(
       await screen.findByText(
-        'Run started in sfax. Not started yet, because of the limit on runs at once: Tunis.',
+        'Run started in Sfax. Not started yet, because of the limit on runs at once: Tunis.',
       ),
     ).toBeVisible();
   });

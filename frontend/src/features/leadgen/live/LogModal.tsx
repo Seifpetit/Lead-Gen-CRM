@@ -1,3 +1,4 @@
+import { regionLabel } from '@lead-gen-crm/shared';
 import type { RunSummary } from '@lead-gen-crm/shared';
 import { ArrowDownToLine, Copy, Download } from 'lucide-react';
 import {
@@ -151,7 +152,7 @@ export function LogModal({ run, onClose }: { run: RunSummary; onClose: () => voi
 
   const empty = !log.loading && log.lines.length === 0;
   return (
-    <Modal title={t('logs.title', { region: run.region })} onClose={onClose} full>
+    <Modal title={t('logs.title', { region: regionLabel(run.region) })} onClose={onClose} full>
       <div className="log-modal">
         <div className="log-tools">
           <ToggleGroup<LevelFilter>

@@ -34,6 +34,10 @@ const card = (over: Partial<CrmCard> = {}): CrmCard => ({
     email: null,
     imageUrl: null,
     imageSource: null,
+    regionId: 'sfax',
+    city: null,
+    category: null,
+    location: null,
   },
   person: null,
   score: 77,
@@ -156,9 +160,33 @@ describe('Lead page', () => {
     const dot = screen.getAllByRole('img', { name: /^Fact/ })[0]!;
     await user.tab();
     dot.focus();
-    expect(await screen.findByRole('tooltip')).toHaveTextContent(/read directly from a source/);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      /Green: a fact, read directly from a source/,
+    );
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('explains all three dots in one legend, by colour', async () => {
+    const user = userEvent.setup();
+    await open(pageServer());
+    const legend = screen.getByRole('img', { name: 'What the dots mean' });
+    legend.focus();
+    const tip = await screen.findByRole('tooltip');
+    expect(tip).toHaveTextContent('Green: a fact');
+    expect(tip).toHaveTextContent('Yellow: an estimate');
+    expect(tip).toHaveTextContent('Grey: no source recorded');
+    await user.keyboard('{Escape}');
+  });
+
+  it('greys out a channel that was not found, with no Find button because nothing can find it', async () => {
+    await open(pageServer());
+    // The default company has a phone and a website but no email.
+    const email = screen.getByText(/^Email:/, { selector: '.visually-hidden' }).closest('li')!;
+    expect(email).toHaveClass('is-empty');
+    expect(within(email).getByText('Not found')).toBeVisible();
+    expect(screen.getByRole('link', { name: /Call/ }).closest('li')).not.toHaveClass('is-empty');
+    expect(screen.queryByRole('button', { name: /^Find/ })).toBeNull();
   });
 
   it('lists each value’s source and read time in one Sources popover', async () => {
@@ -217,7 +245,7 @@ describe('Lead page', () => {
     expect(screen.getByText('+10 freight sector')).toBeVisible();
   });
 
-  it('keeps the raw values on Evidence, each group closed until opened', async () => {
+  it('keeps the raw values on Evidence, in one table grouped by Person and Company', async () => {
     const user = userEvent.setup();
     const long = Array.from({ length: 60 }, (_, i) => evidence(`extra${i}`, `value ${i}`));
     const base = lead();
@@ -227,12 +255,14 @@ describe('Lead page', () => {
       }),
     );
     await user.click(tab('Evidence'));
-    const folds = document.querySelectorAll('details.evidence-fold');
-    expect(folds.length).toBeGreaterThanOrEqual(3);
-    for (const fold of folds) expect(fold).not.toHaveAttribute('open');
+    const table = screen.getByRole('table', { name: 'Evidence' });
+    for (const name of ['Field', 'Value', 'Source', 'Date']) {
+      expect(within(table).getByRole('columnheader', { name })).toBeVisible();
+    }
+    for (const name of ['Person', 'Company', 'Record fields']) {
+      expect(within(table).getByRole('rowgroup', { name })).toBeInTheDocument();
+    }
     // The place ID lives here, and nowhere on the other tabs.
-    const record = screen.getByText('Record fields');
-    await user.click(record);
     expect(screen.getAllByText('place-1').length).toBeGreaterThan(0);
     // A long list scrolls inside the right column, never the page.
     expect(document.querySelector('main')).toHaveClass('fit');

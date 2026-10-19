@@ -2687,7 +2687,7 @@ fieldset.segmented legend {
   align-items: center;
   gap: var(--space-2);
   width: 100%;
-  height: 88px;
+  height: 112px;
   padding: 6px;
   /* clip, not hidden: nothing can scroll the card's contents, even when a button in it is focused */
   overflow: clip;
@@ -2781,29 +2781,14 @@ body.is-dragging-card * {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.kanban-card-tools {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-1);
-}
-.kanban-card-channels,
 .kanban-card-actions {
   display: flex;
   align-items: center;
   gap: 2px;
+  margin-left: auto;
 }
-.kanban-card-channels a {
-  display: inline-grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  color: var(--accent-ink);
-  -webkit-user-drag: none;
-}
-.kanban-card-channels a:hover {
-  background: var(--accent-tint);
+.kanban-card-row .badge {
+  flex: none;
 }
 .kanban-card .button.button-icon {
   width: 28px;
@@ -3608,7 +3593,17 @@ body:has(.topbar) {
   background: var(--yellow);
 }
 .dot-none {
-  background: var(--surface);
+  background: #c9c9c9;
+}
+.dot-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.lead-picture-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 .tip {
   position: relative;
@@ -5456,5 +5451,287 @@ button.cov-sector:hover {
   }
   .sr-suggest-text {
     white-space: normal;
+  }
+}
+
+/* ---- Lead card parts, shared by the boards and the dashboard ---- */
+.thumb-tile {
+  position: relative;
+  background: var(--ink);
+  border: 0;
+}
+.thumb-tile .thumb-fill {
+  position: absolute;
+  inset: 2px;
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+}
+/* Every outline is drawn twice, an ink shape with the colour inside it, so the border follows it. */
+.thumb-tile[data-shape='circle'],
+.thumb-tile[data-shape='circle'] .thumb-fill {
+  border-radius: 50%;
+}
+.thumb-tile[data-shape='squircle'],
+.thumb-tile[data-shape='squircle'] .thumb-fill {
+  border-radius: 34%;
+}
+.thumb-tile[data-shape='rounded'],
+.thumb-tile[data-shape='rounded'] .thumb-fill {
+  border-radius: 10px;
+}
+.thumb-tile[data-shape='hexagon'],
+.thumb-tile[data-shape='hexagon'] .thumb-fill {
+  border-radius: 0;
+  clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0 50%);
+}
+.thumb-tile[data-shape='diamond'],
+.thumb-tile[data-shape='diamond'] .thumb-fill {
+  border-radius: 0;
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+.thumb-tile[data-shape='shield'],
+.thumb-tile[data-shape='shield'] .thumb-fill {
+  border-radius: 0;
+  clip-path: polygon(0 0, 100% 0, 100% 56%, 50% 100%, 0 56%);
+}
+.badge-score {
+  white-space: nowrap;
+}
+.channels {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.channel-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 24px;
+}
+.channel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--accent-ink);
+  font-size: var(--fs-caption);
+  text-decoration: none;
+  -webkit-user-drag: none;
+}
+a.channel:hover .channel-text {
+  text-decoration: underline;
+}
+.channel svg {
+  flex: none;
+}
+.channel-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The phone has a slot of its own that fits "+216 74 679 952" whole, so it is never cut. */
+.channel-phone {
+  flex: none;
+}
+.channel-number {
+  min-width: 15ch;
+  overflow: visible;
+  text-overflow: clip;
+  font-variant-numeric: tabular-nums;
+}
+.channel-phone.is-missing {
+  min-width: 0;
+}
+.channel-row:not(.channel-row-phone) .channel {
+  flex: 1 1 0;
+}
+.channel-row:not(.channel-row-phone) .channel.is-missing {
+  flex: none;
+}
+.channel.is-missing {
+  color: var(--text);
+  opacity: 0.35;
+}
+
+/* ---- Evidence table: Field | Value | Source | Date, no sideways scroll ---- */
+.evidence-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: var(--fs-caption);
+}
+.evidence-table th,
+.evidence-table td {
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border-soft);
+}
+.evidence-table thead th {
+  border-bottom: 2px solid var(--ink);
+  font-weight: 700;
+}
+.evidence-table thead th:nth-child(1) {
+  width: 20%;
+}
+.evidence-table thead th:nth-child(2) {
+  width: 36%;
+}
+.evidence-table thead th:nth-child(3) {
+  width: 28%;
+}
+.evidence-table thead th:nth-child(4) {
+  width: 16%;
+}
+.evidence-table .evidence-group th {
+  padding-top: var(--space-3);
+  background: var(--yellow-soft);
+  border-bottom: 2px solid var(--ink);
+  font-size: var(--fs-body);
+}
+.evidence-table .evidence-field {
+  font-weight: 600;
+}
+.evidence-value-cell {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px;
+  max-width: 100%;
+}
+.evidence-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-width: 0;
+}
+.evidence-id code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+}
+.evidence-date {
+  white-space: nowrap;
+}
+
+/* ---- Location card on the lead page ---- */
+.lead-col-left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.location-card {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  padding-top: var(--space-3);
+  border-top: 2px solid var(--ink);
+}
+.location-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  font-size: var(--fs-h4);
+}
+.location-region {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-caption);
+}
+.tunisia-mini {
+  width: 100%;
+  max-height: 150px;
+  flex: none;
+}
+.mini-region {
+  fill: var(--surface);
+  stroke: var(--ink);
+  stroke-width: 0.6;
+  stroke-opacity: 0.45;
+}
+.mini-region.is-picked {
+  fill: var(--coral, #ff6b5e);
+  stroke-opacity: 1;
+  stroke-width: 1.2;
+}
+.mini-pin-halo {
+  fill: var(--white);
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+.mini-pin-dot {
+  fill: var(--ink);
+}
+.osm-map {
+  flex: 1 1 200px;
+  min-height: 180px;
+  /* Leaflet's own layers use high z-indexes; keep them under dialogs and menus. */
+  isolation: isolate;
+  z-index: 0;
+  border: 2px solid var(--ink);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.osm-pin-dot {
+  display: block;
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+  background: var(--coral, #ff6b5e);
+  border: 3px solid var(--ink);
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+}
+.osm-pin {
+  background: transparent;
+  border: 0;
+}
+.location-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+}
+.location-unknown {
+  margin: 0;
+}
+
+/* A channel with nothing found is greyed out; there is no finder to run for it yet. */
+.lead-row.is-empty .lead-row-icon {
+  opacity: 0.4;
+}
+.lead-row.is-empty .lead-row-value,
+.lead-row.is-empty .lead-row-value * {
+  color: var(--muted);
+}
+
+/* Narrow: the company name gets a line of its own and wraps, instead of being cut to "Lay…". */
+@media (max-width: 640px) {
+  .lead-detail > .widget-header {
+    flex-wrap: wrap;
+  }
+  .lead-detail > .widget-header h1 {
+    order: 3;
+    flex: 1 0 100%;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .lead-detail > .widget-header .widget-actions {
+    margin-left: auto;
   }
 }

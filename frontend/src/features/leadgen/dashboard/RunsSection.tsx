@@ -1,9 +1,11 @@
+import { regionLabel } from '@lead-gen-crm/shared';
 import { STAGE_CHECKPOINT, type RunSummary } from '@lead-gen-crm/shared';
 import { Link } from 'react-router';
 import { EmptyState, ErrorState, LoadingState } from '../../../components/states.js';
 import { PanelSection } from '../../../components/shared/PanelSection.js';
+import { runResultText } from '../runResult.js';
 import { useT } from '../../../i18n/index.js';
-import { formatNumber, formatUsd } from '../../../lib/format.js';
+import { formatUsd } from '../../../lib/format.js';
 import { isActive, StatusBadge } from '../runParts.js';
 
 /** Runs as compact rows: region, status, a small bar of spend against the cap, and found to leads. */
@@ -40,10 +42,10 @@ export function RunsSection({
                 <Link
                   to={`/leadgen/runs/${run.id}`}
                   className="run-row"
-                  aria-label={t('runs.open', { region: run.region })}
+                  aria-label={t('runs.open', { region: regionLabel(run.region) })}
                 >
                   <span className="run-region">
-                    {run.region}
+                    {regionLabel(run.region)}
                     {run.mode === 'maintenance' && (
                       <span className="muted"> · {t('runs.maintenance')}</span>
                     )}
@@ -61,13 +63,7 @@ export function RunsSection({
                     <progress max={1} value={share} aria-label={spent} />
                     <span className="small">{spent}</span>
                   </span>
-                  <span className="run-found small">
-                    {t('runs.found', {
-                      // Places found again from an earlier run count too: a run of known places did find them.
-                      found: formatNumber(run.funnel.discovered + run.funnel.skipped),
-                      leads: formatNumber(run.funnel.leads),
-                    })}
-                  </span>
+                  <span className="run-found small">{runResultText(t, run)}</span>
                 </Link>
               </li>
             );

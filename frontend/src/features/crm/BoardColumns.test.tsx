@@ -1,3 +1,4 @@
+import { SLOT } from './boardLayout.js';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
@@ -48,7 +49,7 @@ describe('a long column', () => {
     await screen.findByRole('group', { name: 'Company 001' });
     expect(cardsCalls(server)).toHaveLength(0);
 
-    scrollTo('Found', 4400);
+    scrollTo('Found', 46 * SLOT);
     await waitFor(() => expect(cardsCalls(server)).toHaveLength(1));
     const first = cardsCalls(server)[0]!;
     expect(first.query.get('stage')).toBe('found');
@@ -56,17 +57,17 @@ describe('a long column', () => {
     expect(first.query.get('limit')).toBe('50');
 
     // The new page is drawn when scrolled to; a repeat scroll does not ask twice.
-    scrollTo('Found', 4900);
+    scrollTo('Found', 51 * SLOT);
     expect(await screen.findByRole('group', { name: 'Company 055' })).toBeInTheDocument();
     expect(cardsCalls(server)).toHaveLength(1);
 
     // And the page after that, which is the last: the cursor runs out.
-    scrollTo('Found', 9400);
+    scrollTo('Found', 98 * SLOT);
     await waitFor(() => expect(cardsCalls(server)).toHaveLength(2));
     expect(cardsCalls(server)[1]!.query.get('cursor')).toBe('100');
-    scrollTo('Found', 11400);
+    scrollTo('Found', 119 * SLOT);
     expect(await screen.findByRole('group', { name: 'Company 120' })).toBeInTheDocument();
-    scrollTo('Found', 11400);
+    scrollTo('Found', 119 * SLOT);
     expect(cardsCalls(server)).toHaveLength(2);
     expect(within(column('Found')).getByLabelText('120 in total')).toBeInTheDocument();
   });

@@ -278,6 +278,34 @@ describe('lead page layout', () => {
   });
 });
 
+describe('lead card parts', () => {
+  it('gives the phone a slot that fits it whole, never cut with an ellipsis', () => {
+    const slot = rule('.channel-number');
+    expect(slot).toMatch(/min-width:\s*1[5-9]ch|min-width:\s*[2-9]\dch/);
+    expect(slot).toMatch(/overflow:\s*visible/);
+    expect(slot).toMatch(/text-overflow:\s*clip/);
+    expect(rule('.channel-phone')).toMatch(/flex:\s*none/);
+  });
+
+  it('draws the email and website as domains that may be cut, with the whole value in a tooltip', () => {
+    expect(rule('.channel-text')).toMatch(/text-overflow:\s*ellipsis/);
+  });
+
+  it('has a fallback outline for each of the six shapes', () => {
+    for (const shape of ['circle', 'squircle', 'rounded', 'hexagon', 'diamond', 'shield']) {
+      expect(css, shape).toContain(`.thumb-tile[data-shape='${shape}']`);
+    }
+    expect(
+      rule(".thumb-tile[data-shape='hexagon'],\n.thumb-tile[data-shape='hexagon'] .thumb-fill"),
+    ).toMatch(/clip-path:\s*polygon/);
+  });
+
+  it('greys a missing channel instead of hiding it', () => {
+    expect(rule('.channel.is-missing')).toMatch(/opacity:\s*0\.\d+/);
+    expect(rule('.lead-row.is-empty .lead-row-icon')).toMatch(/opacity:\s*0\.\d+/);
+  });
+});
+
 describe('coverage map drawing', () => {
   /** The declarations of the last rule whose selector list contains exactly `selector`. */
   function rule(selector: string): Record<string, string> {

@@ -496,6 +496,12 @@ export interface CrmCard {
     /** Thumbnail address (never the picture itself) and where it came from. */
     imageUrl: string | null;
     imageSource: 'og' | 'maps' | null;
+    /** The region id ("ben-arous"), the city read from the address, and Google's category. */
+    regionId: string;
+    city: string | null;
+    category: string | null;
+    /** Where the business is, when Google gave coordinates. */
+    location: { lat: number; lng: number } | null;
   };
   /** The decision-maker; null on the Companies board. */
   person: {

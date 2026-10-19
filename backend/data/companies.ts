@@ -30,6 +30,13 @@ export interface CompanyRecord {
   phoneForeign: boolean;
   email: string | null;
   linkedinUrl: string | null;
+  /** Where Google puts the business, as plain numbers; null when unknown. */
+  location: { lat: number; lng: number } | null;
+  /** Google's own category label ("Corporate office"). */
+  category: string | null;
+  address: string | null;
+  /** Thumbnail address (never the picture), from the page or the Maps photo. */
+  imageUrl: string | null;
   sourceProvider: string | null;
   refreshBy: Date | null;
   /** The run and map cell that first found this company. */
@@ -50,6 +57,11 @@ export interface CompanyInput {
   phone?: Sourced<string>;
   email?: Sourced<string>;
   linkedinUrl?: Sourced<string>;
+  /** Google's category label and street address; kept as evidence too. */
+  category?: Sourced<string>;
+  address?: Sourced<string>;
+  /** Where the business is; a pair of numbers, not a sourced text. */
+  location?: { lat: number; lng: number };
   /** Provider the fields came from, e.g. 'google_maps'. Metadata, not a sourced fact. */
   sourceProvider?: string;
   /** When this provider's content must be refreshed or dropped under its storage terms. */
@@ -80,6 +92,11 @@ interface Row {
   phone_foreign: boolean;
   email: string | null;
   linkedin_url: string | null;
+  lat: number | null;
+  lng: number | null;
+  category: string | null;
+  address: string | null;
+  image_url: string | null;
   source_provider: string | null;
   refresh_by: Date | null;
   run_id: string | null;
@@ -102,6 +119,10 @@ const toCompany = (r: Row): CompanyRecord => ({
   phoneForeign: r.phone_foreign,
   email: r.email,
   linkedinUrl: r.linkedin_url,
+  location: r.lat !== null && r.lng !== null ? { lat: r.lat, lng: r.lng } : null,
+  category: r.category,
+  address: r.address,
+  imageUrl: r.image_url,
   sourceProvider: r.source_provider,
   refreshBy: r.refresh_by,
   runId: r.run_id,
@@ -197,6 +218,10 @@ export async function upsertCompany(
       phone_foreign: phone?.foreign ?? false,
       email: input.email ? normalizeEmail(input.email.value) : null,
       linkedin_url: input.linkedinUrl?.value.trim() ?? null,
+      lat: input.location?.lat ?? null,
+      lng: input.location?.lng ?? null,
+      category: input.category?.value.trim() || null,
+      address: input.address?.value.trim() || null,
       source_provider: input.sourceProvider ?? null,
       refresh_by: input.refreshBy ?? null,
     };
@@ -227,8 +252,10 @@ export async function upsertCompany(
       const { rows } = await tx.query<Row>(
         `INSERT INTO companies (user_id, name, normalized_name, governorate, sector, google_place_id,
                                 domain, website, phone, email, linkedin_url, source_provider, refresh_by,
-                                run_id, region_cell_id, phone_e164, phone_foreign)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+                                run_id, region_cell_id, phone_e164, phone_foreign,
+                                lat, lng, category, address)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
+                 $18, $19, $20, $21)
          RETURNING *`,
         [
           userId,
@@ -248,6 +275,10 @@ export async function upsertCompany(
           input.regionCellId ?? null,
           values.phone_e164,
           values.phone_foreign,
+          values.lat,
+          values.lng,
+          values.category,
+          values.address,
         ],
       );
       return rows[0]!;
@@ -272,6 +303,8 @@ export async function upsertCompany(
            run_id = COALESCE(c.run_id, $15), region_cell_id = COALESCE(c.region_cell_id, $16),
            phone_e164 = CASE WHEN $10 IS NULL THEN c.phone_e164 ELSE $17 END,
            phone_foreign = CASE WHEN $10 IS NULL THEN c.phone_foreign ELSE $18 END,
+           lat = COALESCE($19, c.lat), lng = COALESCE($20, c.lng),
+           category = COALESCE($21, c.category), address = COALESCE($22, c.address),
            updated_at = now()
          WHERE c.user_id = $1 AND c.id = $2 RETURNING *`,
         [
@@ -293,13 +326,17 @@ export async function upsertCompany(
           input.regionCellId ?? null,
           values.phone_e164,
           values.phone_foreign,
+          values.lat,
+          values.lng,
+          values.category,
+          values.address,
         ],
       );
       row = rows[0]!;
     }
 
     const target = { companyId: row.id };
-    const { sourceProvider, refreshBy, regionCellId, ...sourcedFields } = input;
+    const { sourceProvider, refreshBy, regionCellId, location, ...sourcedFields } = input;
     for (const [field, sourced] of Object.entries(sourcedFields) as [
       string,
       Sourced<string> | undefined,
