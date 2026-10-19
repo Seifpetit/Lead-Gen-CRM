@@ -29,6 +29,7 @@ describe('migrations', () => {
       'companies',
       'contacts',
       'cost_ledger',
+      'crm_card_events',
       'crm_cards',
       'crm_leads',
       'evidence',
@@ -62,11 +63,11 @@ describe('migrations', () => {
     expect(await migrateDown(db, Infinity)).toEqual(MIGRATIONS.map((m) => m.id).reverse());
     expect(await tables()).toEqual([]);
     expect(await migrateUp(db)).toEqual(MIGRATIONS.map((m) => m.id));
-    expect(await tables()).toHaveLength(27);
+    expect(await tables()).toHaveLength(28);
   });
 
   it('moves existing leads onto the Companies board in Found, one card per company', async () => {
-    await migrateDown(db, 2); // back to 008, before the boards
+    await migrateDown(db, 3); // back to 008, before the boards
     expect(await tables()).not.toContain('crm_cards');
     await seedReference(db, {});
     const user = await makeUser(db);
@@ -103,7 +104,11 @@ describe('migrations', () => {
     await lead(user, b, null, 'opted_out');
     await lead(other, c, null, 'confirmed');
 
-    expect(await migrateUp(db)).toEqual(['009_crm_boards', '010_board_images']);
+    expect(await migrateUp(db)).toEqual([
+      '009_crm_boards',
+      '010_board_images',
+      '011_company_notes_history',
+    ]);
     const { rows } = await db.query<{
       user_id: string;
       company_id: string;
@@ -125,6 +130,14 @@ describe('migrations', () => {
     }
     expect(rows.find((r) => r.company_id === c)!.user_id).toBe(other);
     expect(rows.some((r) => r.company_id === noLead)).toBe(false);
+    // Each card starts its history where it stands.
+    expect(
+      (
+        await db.query(
+          "SELECT 1 FROM crm_card_events WHERE from_stage IS NULL AND to_stage = 'found'",
+        )
+      ).rowCount,
+    ).toBe(3);
     // The leads themselves are untouched, and the People board starts empty.
     expect((await db.query('SELECT 1 FROM crm_leads')).rowCount).toBe(4);
     expect((await db.query("SELECT 1 FROM crm_cards WHERE pipeline = 'people'")).rowCount).toBe(0);

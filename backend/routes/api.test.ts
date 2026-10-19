@@ -164,6 +164,7 @@ interface Ids {
   run: string;
   lead: string;
   card: string;
+  company: string;
   region: string;
   cell: string;
 }
@@ -227,6 +228,17 @@ const CASES: RouteCase[] = [
     url: () => '/api/crm/companies/cards',
   },
   {
+    method: 'GET',
+    pattern: '/api/crm/cards/by-company/:companyId',
+    url: (i) => `/api/crm/cards/by-company/${i.company}`,
+  },
+  {
+    method: 'PATCH',
+    pattern: '/api/crm/companies/:companyId/notes',
+    url: (i) => `/api/crm/companies/${i.company}/notes`,
+    body: { notes: 'Call after Ramadan' },
+  },
+  {
     method: 'POST',
     pattern: '/api/crm/cards/:id/move',
     url: (i) => `/api/crm/cards/${i.card}/move`,
@@ -270,8 +282,15 @@ const PUBLIC = [
 async function ids(): Promise<Ids> {
   const leads = (await call(alice, 'GET', '/api/leads')).json().items;
   const cell = (await listCells(db, 'sfax', { leafOnly: true }))[0]!;
-  const card = (await call(alice, 'GET', '/api/crm/companies')).json().stages[0].cards[0].id;
-  return { run: seededRun, lead: leads[0].id, card, region: 'sfax', cell: cell.id };
+  const first = (await call(alice, 'GET', '/api/crm/companies')).json().stages[0].cards[0];
+  return {
+    run: seededRun,
+    lead: leads[0].id,
+    card: first.id,
+    company: first.company.id,
+    region: 'sfax',
+    cell: cell.id,
+  };
 }
 
 describe('every route', () => {
@@ -1587,6 +1606,57 @@ describe('crm boards', () => {
     });
     expect(again.statusCode).toBe(409);
     expect(again.json().error).toBe('suppressed');
+  });
+
+  it("serves a company's page data: card, notes, history and decision-maker", async () => {
+    const found = (await call(alice, 'GET', '/api/crm/companies')).json().stages[0].cards[0];
+    const url = `/api/crm/cards/by-company/${found.company.id}`;
+    const before = (await call(alice, 'GET', url)).json();
+    expect(before).toMatchObject({ card: { id: found.id }, notes: '', person: null });
+    expect(before.history.at(-1)).toMatchObject({ from: null });
+    await post(alice, `/api/crm/cards/${found.id}/move`, { stage: 'investigating' });
+    const moved = (await call(alice, 'GET', url)).json();
+    expect(moved.card.stage).toBe('investigating');
+    // Newest first: the move is on top of where the card started.
+    expect(moved.history[0]).toMatchObject({ from: 'found', to: 'investigating' });
+    expect(moved.history.length).toBe(before.history.length + 1);
+
+    const saved = await call(alice, 'PATCH', `/api/crm/companies/${found.company.id}/notes`, {
+      notes: 'Call after Ramadan.\nAsk for Amel.',
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toEqual({ notes: 'Call after Ramadan.\nAsk for Amel.' });
+    expect((await call(alice, 'GET', url)).json().notes).toBe('Call after Ramadan.\nAsk for Amel.');
+    // The note is the company's: the board card is unchanged and Bob cannot read or write it.
+    expect((await call(bob, 'GET', url)).statusCode).toBe(404);
+    expect(
+      (await call(bob, 'PATCH', `/api/crm/companies/${found.company.id}/notes`, { notes: 'x' }))
+        .statusCode,
+    ).toBe(404);
+    for (const bad of [{ notes: 'x'.repeat(5001) }, { notes: 5 }, {}, { notes: 'a', extra: 1 }]) {
+      const res = await call(alice, 'PATCH', `/api/crm/companies/${found.company.id}/notes`, bad);
+      expect(res.statusCode, JSON.stringify(bad).slice(0, 40)).toBe(400);
+    }
+    await call(alice, 'PATCH', `/api/crm/companies/${found.company.id}/notes`, { notes: '' });
+    expect((await call(alice, 'GET', url)).json().notes).toBe('');
+    // Naming the decision-maker is part of the history, and the person comes back with it.
+    await post(alice, `/api/crm/cards/${found.id}/decision-maker`, {
+      fullName: 'Nour Gharbi',
+      email: 'nour@example.tn',
+    });
+    const named = (await call(alice, 'GET', url)).json();
+    expect(named.history[0]).toMatchObject({
+      from: 'investigating',
+      to: 'decision_maker_identified',
+    });
+    expect(named.person).toMatchObject({ pipeline: 'people', person: { fullName: 'Nour Gharbi' } });
+    await post(alice, `/api/crm/cards/${found.id}/remove`);
+    const removed = (await call(alice, 'GET', url)).json();
+    expect(removed.card).toMatchObject({
+      stage: 'noise',
+      removedFrom: 'decision_maker_identified',
+    });
+    expect(removed.history[0]).toMatchObject({ to: 'noise' });
   });
 
   it('pages a column, filters and sorts on the server, and refuses bad queries', async () => {

@@ -14,16 +14,18 @@ export function ToggleGroup<T extends string>({
   options,
   value,
   onChange,
+  disabled = false,
 }: {
   /** What the switch chooses, shown as its legend. */
   label: string;
   options: readonly ToggleOption<T>[];
-  value: T;
+  value: T | '';
   onChange: (value: T) => void;
+  disabled?: boolean;
 }) {
   const name = useId();
   return (
-    <fieldset className="segmented">
+    <fieldset className="segmented" disabled={disabled}>
       <legend>{label}</legend>
       {options.map((o) => (
         <label key={o.value}>

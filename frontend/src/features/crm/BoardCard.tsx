@@ -5,6 +5,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
@@ -20,7 +21,7 @@ import { cardName, leftKey } from './useBoard.js';
 const ICON = 16;
 
 /** The LinkedIn mark; the icon set has no brand logos. */
-function LinkedinIcon() {
+export function LinkedinIcon() {
   return (
     <svg width={ICON} height={ICON} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
       <path d="M20.45 20.45h-3.56v-5.57c0-1.33-.03-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45z" />
@@ -45,13 +46,19 @@ export interface CardActions {
  * The picture on a company card: the page's preview image or the Maps photo when there is an
  * address and it loads, otherwise the sector's icon on its color. Only the address is stored.
  */
-export function CompanyThumb({ card }: { card: CrmCard }) {
+export function CompanyThumb({ card, size }: { card: CrmCard; size?: number }) {
   const { imageUrl, sector } = card.company;
   const [failed, setFailed] = useState<string | null>(null);
   const look = sectorLook(sector);
+  // The board's 56px unless the page asks for another size.
+  const box: CSSProperties | undefined = size ? { width: size, height: size } : undefined;
   if (imageUrl && failed !== imageUrl) {
     return (
-      <span className="thumb thumb-image" data-source={card.company.imageSource ?? undefined}>
+      <span
+        className="thumb thumb-image"
+        style={box}
+        data-source={card.company.imageSource ?? undefined}
+      >
         <img
           src={imageUrl}
           alt=""
@@ -66,10 +73,10 @@ export function CompanyThumb({ card }: { card: CrmCard }) {
   return (
     <span
       className="thumb thumb-tile"
-      style={{ background: look.color }}
+      style={{ ...box, background: look.color }}
       data-sector={sector ?? ''}
     >
-      <look.Icon size={28} strokeWidth={2.25} aria-hidden="true" />
+      <look.Icon size={size ? Math.round(size / 2) : 28} strokeWidth={2.25} aria-hidden="true" />
     </span>
   );
 }

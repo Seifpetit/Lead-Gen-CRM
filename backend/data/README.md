@@ -55,6 +55,10 @@ database driver (enforced by ESLint).
   `contacts.photo_url` when the provider returned one. Only the address is stored, never the file.
   `companyImages.ts` sets the Maps photo when a company is first found, lists companies still to be
   looked up, and `finishImageLookup` records the result (a website image replaces the Maps one).
+- **Company notes and stage history** (migration 011): `companies.notes` holds the free text from the
+  company page (up to 5000 characters). `crm_card_events` records each card's creation and every stage
+  change (`from_stage` null for creation) with its time; a trigger on `crm_cards` writes them, so every
+  code path that moves a card is covered and the existing cards got one backfilled event each.
 - **CRM boards**: `listCards` and `loadBoard` page every column with a keyset cursor over
   `(sort key, id)`, so a page boundary is exact even when many cards tie. Search, sector, minimum
   score and sort are applied in SQL; each column's `total` counts what matches the filters.

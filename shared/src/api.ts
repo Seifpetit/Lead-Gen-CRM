@@ -531,6 +531,27 @@ export interface DecisionMakerInput {
   linkedinUrl?: string;
 }
 
+/** One step in a card's history: the stage it entered (null `from` is the card's creation). */
+export interface CardEvent {
+  from: BoardStageKey | null;
+  to: BoardStageKey;
+  at: string;
+}
+
+/** Everything the company's own page needs from the CRM, found by company ID. */
+export interface CompanyCardDetail {
+  /** The company's card on the Companies board (created in Found if it had none). */
+  card: CrmCard;
+  sectorName: string | null;
+  notes: string;
+  /** Newest first. */
+  history: CardEvent[];
+  /** The decision-maker's card on the People board, when one has been added. */
+  person: CrmCard | null;
+}
+
+export const MAX_NOTES_LENGTH = 5000;
+
 /** The company moved to Decision-maker identified and the new person card (stage New). */
 export interface AddDecisionMakerResult {
   company: CrmCard;

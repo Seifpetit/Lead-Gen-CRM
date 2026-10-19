@@ -1,6 +1,8 @@
 import {
   BOARD_PAGE_SIZE,
+  MAX_NOTES_LENGTH,
   type AddDecisionMakerResult,
+  type CompanyCardDetail,
   type CrmBoard,
   type CrmCard,
   type CrmCardPage,
@@ -12,11 +14,13 @@ import {
   addDecisionMaker,
   BoardError,
   getCard,
+  getCompanyDetail,
   listCards,
   loadBoard,
   moveCard,
   removeCard,
   restoreCard,
+  setCompanyNotes,
 } from '../data/crmBoards.js';
 import { matchTitleByRules } from '../stages/matchTitle.js';
 import type { RouteDeps } from './deps.js';
@@ -24,6 +28,7 @@ import { ApiError, body, notFound, parse, uuidParam } from './http.js';
 
 const Reason = z.string().trim().min(1).max(500);
 const MoveBody = z.object({ stage: z.string().min(1).max(40), reason: Reason.optional() }).strict();
+const NotesBody = z.object({ notes: z.string().max(MAX_NOTES_LENGTH) }).strict();
 const RestoreBody = z.object({ stage: z.string().min(1).max(40).optional() }).strict();
 
 /** A blank form field means "not given". */
@@ -115,6 +120,20 @@ export async function crmRoutes(app: FastifyInstance, deps: RouteDeps): Promise<
     const { pipeline } = parse(PipelineParam, request.params);
     const options = parse(CardsQuery, request.query);
     return guard(() => listCards(db, currentUser(request).id, pipeline, days, options));
+  });
+
+  // A company's page: its card, notes, history and decision-maker, found by company ID.
+  app.get('/api/crm/cards/by-company/:companyId', async (request): Promise<CompanyCardDetail> => {
+    const companyId = uuidParam(request, 'companyId');
+    return guard(() => getCompanyDetail(db, currentUser(request).id, companyId, days));
+  });
+
+  app.patch('/api/crm/companies/:companyId/notes', async (request): Promise<{ notes: string }> => {
+    const companyId = uuidParam(request, 'companyId');
+    const { notes } = body(NotesBody, request);
+    return {
+      notes: await guard(() => setCompanyNotes(db, currentUser(request).id, companyId, notes)),
+    };
   });
 
   async function reload(user: ReturnType<typeof currentUser>['id'], id: string): Promise<CrmCard> {

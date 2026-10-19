@@ -6,6 +6,8 @@ import {
   type BoardSort,
   type BoardStage,
   type BoardStageKey,
+  type CardEvent,
+  type CompanyCardDetail,
   type CrmBoard,
   type CrmCard,
   type CrmCardPage,
@@ -684,6 +686,74 @@ export async function ensureCompanyCard(
      ON CONFLICT DO NOTHING`,
     [userId, companyId],
   );
+}
+
+// ---------------------------------------------------------------------------------------
+// The company's own page: its card, notes and history
+
+/**
+ * The CRM side of one company: its Companies card (put in Found when it has none), its notes,
+ * the stages the card has been through and the decision-maker's card when there is one.
+ */
+export async function getCompanyDetail(
+  db: Queryable,
+  userId: UserId,
+  companyId: string,
+  retentionDays: number,
+): Promise<CompanyCardDetail> {
+  const company = await db.query<{ notes: string; sector: string | null }>(
+    'SELECT notes, sector FROM companies WHERE user_id = $1 AND id = $2',
+    [userId, companyId],
+  );
+  if (!company.rows[0]) throw new BoardError('not_found', 'Company not found');
+  await ensureCompanyCard(db, userId, companyId);
+  const { rows } = await db.query<{ id: string }>(
+    `SELECT id FROM crm_cards WHERE user_id = $1 AND pipeline = 'companies' AND company_id = $2`,
+    [userId, companyId],
+  );
+  const card = (await getCard(db, userId, rows[0]!.id, retentionDays))!;
+  const events = await db.query<{
+    from_stage: BoardStageKey | null;
+    to_stage: BoardStageKey;
+    at: Date;
+  }>(
+    'SELECT from_stage, to_stage, at FROM crm_card_events WHERE card_id = $1 ORDER BY at DESC, id DESC',
+    [card.id],
+  );
+  const people = await db.query<{ id: string }>(
+    `SELECT id FROM crm_cards WHERE user_id = $1 AND pipeline = 'people' AND company_id = $2
+        AND stage <> 'noise' ORDER BY created_at LIMIT 1`,
+    [userId, companyId],
+  );
+  const history: CardEvent[] = events.rows.map((e) => ({
+    from: e.from_stage,
+    to: e.to_stage,
+    at: e.at.toISOString(),
+  }));
+  const sector = company.rows[0].sector;
+  return {
+    card,
+    sectorName: sector ? (FREIGHT_SECTORS.find((s) => s.id === sector)?.name ?? sector) : null,
+    notes: company.rows[0].notes,
+    history,
+    person: people.rows[0] ? await getCard(db, userId, people.rows[0].id, retentionDays) : null,
+  };
+}
+
+/** Saves the company's notes; the text is kept as typed. */
+export async function setCompanyNotes(
+  db: Queryable,
+  userId: UserId,
+  companyId: string,
+  notes: string,
+): Promise<string> {
+  const { rows } = await db.query<{ notes: string }>(
+    `UPDATE companies SET notes = $3, updated_at = now()
+      WHERE user_id = $1 AND id = $2 RETURNING notes`,
+    [userId, companyId, notes],
+  );
+  if (!rows[0]) throw new BoardError('not_found', 'Company not found');
+  return rows[0].notes;
 }
 
 // ---------------------------------------------------------------------------------------
