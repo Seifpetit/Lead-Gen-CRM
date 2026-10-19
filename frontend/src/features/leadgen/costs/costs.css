@@ -1,0 +1,52 @@
+/* Costs: one panel; only the table scrolls. */
+.costs-strip {
+  flex: none;
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: var(--bw) solid var(--ink);
+  background: var(--yellow);
+  font-weight: 700;
+}
+.costs-toolbar {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: var(--bw) solid var(--ink);
+}
+.costs-toolbar .budget {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+.costs-toolbar fieldset.segmented {
+  margin: 0;
+}
+.costs-toolbar .budget p,
+.costs-toolbar .budget .budget-line {
+  margin: 0;
+}
+.costs-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.costs-body .table {
+  margin: 0;
+}
+.costs-body .table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+.costs-note {
+  flex: none;
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border-top: var(--bw) solid var(--ink);
+}

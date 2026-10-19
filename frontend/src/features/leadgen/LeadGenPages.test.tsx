@@ -63,10 +63,10 @@ describe('Lead Gen sidebar and pages', () => {
     expect(await screen.findByRole('region', { name: 'Costs' })).toBeVisible();
   });
 
-  it('renders the Logs page with the Apify log and Refresh now', async () => {
+  it('renders the Logs page with its filters and Refresh now', async () => {
     renderApp(fakeServer(signedIn), '/leadgen/logs');
     expect(await screen.findByRole('heading', { name: 'Logs', level: 1 })).toBeVisible();
-    expect(await screen.findByRole('region', { name: 'Apify log' })).toBeVisible();
+    expect(await screen.findByText('No runs to show')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Refresh now' })).toBeVisible();
   });
 

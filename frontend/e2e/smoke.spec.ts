@@ -98,25 +98,27 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
     runs.getByRole('link', { name: 'Open run for sfax' }).getByText('Running'),
   ).toBeVisible();
 
-  // Watch it on the Logs page while it runs.
+  // Watch it on the Logs page while it runs: one compact row, with a Running badge.
   await side.getByRole('link', { name: 'Logs' }).click();
-  const log = page.getByRole('region', { name: 'Apify log' });
-  await expect(log.getByText('Run in sfax')).toBeVisible();
-  await expect(log.locator('.badge-apify-running, .badge-apify-started').first()).toBeVisible();
+  const log = page.getByRole('list', { name: 'Runs, newest first' });
+  await expect(log.getByText('Running')).toBeVisible();
 
   // It finishes on its own.
   await side.getByRole('link', { name: 'Dashboard' }).click();
   await expect(
-    runs.getByRole('link', { name: 'Open run for sfax' }).getByText('Finished'),
+    runs.getByRole('link', { name: 'Open run for sfax' }).getByText('Completed with leads'),
   ).toBeVisible({
     timeout: 100_000,
   });
   await side.getByRole('link', { name: 'Logs' }).click();
-  // A finished run keeps each group of steps collapsed under its totals; open one.
-  const searches = log.getByText(/searches done/).first();
-  await expect(searches).toBeVisible();
-  await searches.click();
-  await expect(log.locator('.badge-apify-finished').first()).toBeVisible();
+  await expect(log.getByText('Completed with leads')).toBeVisible();
+  // Its whole story opens in a window, and Escape closes it.
+  await log.getByRole('button', { name: /^Open log for / }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('The six steps')).toBeVisible();
+  await expect(dialog.getByText('Complete log')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
 
   // Spend shows up on the Costs page.
   await side.getByRole('link', { name: 'Costs' }).click();

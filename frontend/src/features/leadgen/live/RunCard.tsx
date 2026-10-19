@@ -4,11 +4,10 @@ import { ScrollText } from 'lucide-react';
 import { useState } from 'react';
 import { Card } from '../../../components/shared/Card.js';
 import { ProgressTrack } from '../../../components/shared/ProgressTrack.js';
-import { runResultText } from '../runResult.js';
+import { OutcomeBadge, outcomeText } from '../runOutcomeView.js';
 import { useT } from '../../../i18n/index.js';
 import { formatDateTime, formatUsd } from '../../../lib/format.js';
 import { useThrottled } from '../../../lib/useThrottled.js';
-import { StatusBadge } from '../runParts.js';
 import { Checkpoints } from './Checkpoints.js';
 import { describeRun } from './runView.js';
 import { StopRunDialog } from './StopRunDialog.js';
@@ -50,12 +49,12 @@ export function RunCard({
         title={view.sentence}
         tone={view.active ? 'teal' : view.halted ? 'blush' : 'purple'}
         className={compact ? 'run-card is-compact' : 'run-card'}
-        actions={<StatusBadge status={run.status} />}
+        actions={<OutcomeBadge run={run} />}
       >
         <p className="run-card-meta muted">
           {t('runs.meta', { region: regionLabel(run.region), time: formatDateTime(run.createdAt) })}
         </p>
-        <p className="run-card-result">{runResultText(t, run)}</p>
+        <p className="run-card-result">{outcomeText(t, run)}</p>
         <p className="visually-hidden" aria-live="polite">
           {spoken}
         </p>

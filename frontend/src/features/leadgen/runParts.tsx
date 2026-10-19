@@ -6,11 +6,6 @@ export const ACTIVE_STATUSES: readonly RunStatus[] = ['pending', 'running'];
 export const MAX_ACTIVE_RUNS = 2;
 export const isActive = (status: RunStatus) => ACTIVE_STATUSES.includes(status);
 
-export function StatusBadge({ status }: { status: RunStatus }) {
-  const t = useT();
-  return <span className={`badge badge-${status}`}>{t(`status.${status}`)}</span>;
-}
-
 /** Where the cost checkpoints sit along a run's spend cap, as shares of the cap. */
 export const CHECKPOINTS = [0.25, 0.5, 0.75];
 

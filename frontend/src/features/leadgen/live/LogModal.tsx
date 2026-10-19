@@ -80,7 +80,7 @@ function download(name: string, text: string): boolean {
  * arrive at the bottom and the view follows them; scrolling up pauses that until "Jump to
  * latest". Only the lines on screen are drawn, so a long log stays quick.
  */
-export function LogModal({ run, onClose }: { run: RunSummary; onClose: () => void }) {
+export function LogTerminal({ run }: { run: RunSummary }) {
   const t = useT();
   const active = isActive(run.status);
   const log = useRunLog(run.id, active);
@@ -152,97 +152,105 @@ export function LogModal({ run, onClose }: { run: RunSummary; onClose: () => voi
 
   const empty = !log.loading && log.lines.length === 0;
   return (
-    <Modal title={t('logs.title', { region: regionLabel(run.region) })} onClose={onClose} full>
-      <div className="log-modal">
-        <div className="log-tools">
-          <ToggleGroup<LevelFilter>
-            label={t('logs.level')}
-            value={level}
-            onChange={setLevel}
-            options={[
-              { value: 'all', label: t('logs.level.all') },
-              { value: 'warn', label: t('logs.level.warn') },
-              { value: 'error', label: t('logs.level.error') },
-            ]}
+    <div className="log-modal">
+      <div className="log-tools">
+        <ToggleGroup<LevelFilter>
+          label={t('logs.level')}
+          value={level}
+          onChange={setLevel}
+          options={[
+            { value: 'all', label: t('logs.level.all') },
+            { value: 'warn', label: t('logs.level.warn') },
+            { value: 'error', label: t('logs.level.error') },
+          ]}
+        />
+        <label className="log-search">
+          <span className="visually-hidden">{t('logs.search')}</span>
+          <input
+            type="search"
+            value={query}
+            placeholder={t('logs.search.placeholder')}
+            onChange={(e) => setQuery(e.target.value)}
           />
-          <label className="log-search">
-            <span className="visually-hidden">{t('logs.search')}</span>
-            <input
-              type="search"
-              value={query}
-              placeholder={t('logs.search.placeholder')}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </label>
-          <span className="log-count muted">
-            {t('logs.lines', { shown: shown.length, total: log.lines.length })}
-          </span>
-          <span className="log-buttons">
-            <button type="button" className="button button-icon-text" onClick={() => void copy()}>
-              <Copy size={14} aria-hidden="true" />
-              {t('logs.copy')}
-            </button>
-            <button type="button" className="button button-icon-text" onClick={save}>
-              <Download size={14} aria-hidden="true" />
-              {t('logs.download')}
-            </button>
-          </span>
-          <span className="visually-hidden" role="status">
-            {note}
-          </span>
-        </div>
+        </label>
+        <span className="log-count muted">
+          {t('logs.lines', { shown: shown.length, total: log.lines.length })}
+        </span>
+        <span className="log-buttons">
+          <button type="button" className="button button-icon-text" onClick={() => void copy()}>
+            <Copy size={14} aria-hidden="true" />
+            {t('logs.copy')}
+          </button>
+          <button type="button" className="button button-icon-text" onClick={save}>
+            <Download size={14} aria-hidden="true" />
+            {t('logs.download')}
+          </button>
+        </span>
+        <span className="visually-hidden" role="status">
+          {note}
+        </span>
+      </div>
 
-        <div className="log-stage">
-          <div
-            ref={scroller}
-            className="term"
-            role="log"
-            aria-live="off"
-            aria-label={t('logs.panel')}
-            tabIndex={0}
-            onScroll={measure}
-          >
-            {log.error !== null && log.lines.length === 0 ? (
-              <p className="term-note" role="alert">
-                {describeError(t, log.error)}
-              </p>
-            ) : log.loading ? (
-              <p className="term-note">{t('logs.loading')}</p>
-            ) : empty ? (
-              <p className="term-note">{t('logs.empty')}</p>
-            ) : shown.length === 0 ? (
-              <p className="term-note">{t('logs.noMatch')}</p>
-            ) : (
-              <div className="term-lines" style={{ height: total }}>
-                {rows.map((line, i) => (
-                  <div
-                    key={line.id}
-                    className="term-row"
-                    data-level={line.level}
-                    data-technical={line.technical ? 'true' : undefined}
-                    title={logLineText(line)}
-                    style={{ top: (first + i) * ROW_PX } as CSSProperties}
-                  >
-                    <span className="term-time">{logTime(line.at)}</span>
-                    <span className="term-level">{line.level.toUpperCase()}</span>
-                    <span className="term-msg">{line.message}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          {!follow && shown.length > 0 && (
-            <button type="button" className="button button-primary jump" onClick={jumpToLatest}>
-              <ArrowDownToLine size={14} aria-hidden="true" />
-              {t('logs.jump')}
-            </button>
+      <div className="log-stage">
+        <div
+          ref={scroller}
+          className="term"
+          role="log"
+          aria-live="off"
+          aria-label={t('logs.panel')}
+          tabIndex={0}
+          onScroll={measure}
+        >
+          {log.error !== null && log.lines.length === 0 ? (
+            <p className="term-note" role="alert">
+              {describeError(t, log.error)}
+            </p>
+          ) : log.loading ? (
+            <p className="term-note">{t('logs.loading')}</p>
+          ) : empty ? (
+            <p className="term-note">{t('logs.empty')}</p>
+          ) : shown.length === 0 ? (
+            <p className="term-note">{t('logs.noMatch')}</p>
+          ) : (
+            <div className="term-lines" style={{ height: total }}>
+              {rows.map((line, i) => (
+                <div
+                  key={line.id}
+                  className="term-row"
+                  data-level={line.level}
+                  data-technical={line.technical ? 'true' : undefined}
+                  title={logLineText(line)}
+                  style={{ top: (first + i) * ROW_PX } as CSSProperties}
+                >
+                  <span className="term-time">{logTime(line.at)}</span>
+                  <span className="term-level">{line.level.toUpperCase()}</span>
+                  <span className="term-msg">{line.message}</span>
+                </div>
+              ))}
+            </div>
           )}
         </div>
-
-        <p className="log-foot muted">
-          {!active && !log.loading ? t('logs.ended') : follow ? t('logs.live') : t('logs.paused')}
-        </p>
+        {!follow && shown.length > 0 && (
+          <button type="button" className="button button-primary jump" onClick={jumpToLatest}>
+            <ArrowDownToLine size={14} aria-hidden="true" />
+            {t('logs.jump')}
+          </button>
+        )}
       </div>
+
+      <p className="log-foot muted">
+        {!active && !log.loading ? t('logs.ended') : follow ? t('logs.live') : t('logs.paused')}
+      </p>
+    </div>
+  );
+}
+
+/** The log in a window of its own (the live strip and the Runs page). */
+export function LogModal({ run, onClose }: { run: RunSummary; onClose: () => void }) {
+  const t = useT();
+  return (
+    <Modal title={t('logs.title', { region: regionLabel(run.region) })} onClose={onClose} full>
+      <LogTerminal run={run} />
     </Modal>
   );
 }

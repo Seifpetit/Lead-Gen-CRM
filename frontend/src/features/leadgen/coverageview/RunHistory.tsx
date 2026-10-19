@@ -8,7 +8,7 @@ import { EmptyState, ErrorState, LoadingState } from '../../../components/states
 import { useT } from '../../../i18n/index.js';
 import { formatDateTime, formatNumber, formatUsd } from '../../../lib/format.js';
 import { useResource } from '../../../lib/useResource.js';
-import { StatusBadge } from '../runParts.js';
+import { OutcomeBadge } from '../runOutcomeView.js';
 
 /** Past runs per region, newest first, with a region filter. Only shown in the Expand window. */
 export function RunHistory({
@@ -97,7 +97,7 @@ export function RunHistory({
                   <td className="num">{formatNumber(run.funnel.leads)}</td>
                   <td className="num">{formatUsd(run.spentUsd)}</td>
                   <td>
-                    <StatusBadge status={run.status} />
+                    <OutcomeBadge run={run} />
                   </td>
                 </tr>
               ))}

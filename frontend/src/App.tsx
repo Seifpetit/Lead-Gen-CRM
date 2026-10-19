@@ -14,7 +14,7 @@ import { CoveragePage } from './features/leadgen/CoveragePage.js';
 import { DashboardPage } from './features/leadgen/DashboardPage.js';
 import { LeadPage } from './features/leadgen/LeadPage.js';
 import { HelpPage, SettingsPage } from './features/leadgen/InfoPages.js';
-import { LogsPage } from './features/leadgen/LogsPage.js';
+import { LogsPage } from './features/leadgen/logs/LogsPage.js';
 import { RunsPage } from './features/leadgen/live/RunsPage.js';
 import { I18nProvider, useT } from './i18n/index.js';
 

@@ -1,0 +1,57 @@
+import type { ApifyLogRun } from '@lead-gen-crm/shared';
+import { ProgressTrack } from '../../../components/shared/ProgressTrack.js';
+import { useT } from '../../../i18n/index.js';
+import { formatDuration, formatUsd } from '../../../lib/format.js';
+import { OutcomeBadge, outcomeText } from '../runOutcomeView.js';
+import { runName, runSeconds, searchCount } from './runLogView.js';
+
+/**
+ * One run as one compact row: its name, what it came to, a sentence about it, what it spent
+ * against its cap, how long it took, and the button that opens everything about it.
+ */
+export function RunLogRow({
+  entry,
+  now,
+  onOpen,
+}: {
+  entry: ApifyLogRun;
+  now: number;
+  onOpen: () => void;
+}) {
+  const t = useT();
+  const { run } = entry;
+  const name = runName(run);
+  const cap = run.budgetCapUsd;
+  const spent = t('money.spentOfCap', { spent: formatUsd(run.spentUsd), cap: formatUsd(cap) });
+  const summary = outcomeText(t, run, searchCount(entry.steps));
+  return (
+    <li className="logs-row">
+      <strong className="logs-name">{name}</strong>
+      <span className="logs-outcome">
+        <OutcomeBadge run={run} />
+      </span>
+      <span className="logs-summary" title={summary}>
+        {summary}
+      </span>
+      <span className="logs-spend">
+        <span className="small">{spent}</span>
+        <ProgressTrack
+          size="thin"
+          tone="purple"
+          value={cap > 0 ? Math.min(1, run.spentUsd / cap) : 0}
+          label={t('apify.timeline', { region: name })}
+          valueText={spent}
+        />
+      </span>
+      <span className="logs-time small muted">{formatDuration(runSeconds(run, now))}</span>
+      <button
+        type="button"
+        className="button logs-open"
+        aria-label={t('logs.row.open.for', { name })}
+        onClick={onOpen}
+      >
+        {t('logs.row.open')}
+      </button>
+    </li>
+  );
+}

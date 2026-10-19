@@ -403,3 +403,112 @@ test('the lead page is one card: the page stays still and a long evidence list s
   await expect.poll(() => panel.evaluate((el) => el.scrollTop)).toBeGreaterThan(100);
   expect(await page.locator('.lead-col-left').evaluate((el) => el.scrollTop)).toBe(0);
 });
+
+// Logs and Costs with far more rows than fit: the rows and the table scroll inside the panel.
+const logRuns = Array.from({ length: 40 }, (_, i) => ({
+  run: {
+    id: `layout-log-${i}`,
+    region: ['sfax', 'bizerte', 'ben-arous', 'sousse'][i % 4],
+    sectors: [],
+    mode: 'normal',
+    status: i === 0 ? 'running' : 'finished',
+    currentStage: i === 0 ? 'discover' : null,
+    budgetCapUsd: 2,
+    spentUsd: 0.553,
+    placesDroppedOutside: i % 4 === 1 ? 98 : 0,
+    customOnly: false,
+    customWordings: [],
+    cellKeys: [],
+    createdAt: new Date(Date.UTC(2026, 9, 19, 12) - i * 3_600_000).toISOString(),
+    finishedAt:
+      i === 0 ? null : new Date(Date.UTC(2026, 9, 19, 12) - i * 3_600_000 + 900_000).toISOString(),
+    funnel: {
+      discovered: i % 4 === 1 ? 0 : 30,
+      skipped: 0,
+      qualified: 10,
+      rejected: 5,
+      review: 0,
+      unreachable: 0,
+      peopleFound: 6,
+      enriched: 5,
+      scored: 5,
+      leads: i % 4 === 1 ? 0 : 5,
+    },
+    error: null,
+    liveMessage: '',
+    stageFraction: 0,
+  },
+  steps: [],
+}));
+const costRows = Array.from({ length: 60 }, (_, i) => ({
+  key: `layout-provider-${i}`,
+  actualUsd: 1.5,
+  openEstimateUsd: 0.25,
+  totalUsd: 1.75,
+  entries: 3,
+}));
+
+for (const size of [
+  { width: 1440, height: 900 },
+  { width: 1280, height: 720 },
+] as const) {
+  test(`${size.width}x${size.height}: Logs and Costs scroll only inside their panel`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(size);
+    await signIn(page);
+    await page.route(
+      (url) => url.pathname === '/api/apify/log',
+      (route) =>
+        route.fulfill({
+          json: {
+            runs: logRuns,
+            attention: [],
+            recent: { items: [], total: 0, limit: 50, offset: 0, nextOffset: null },
+          },
+        }),
+    );
+    await page.route(
+      (url) => url.pathname === '/api/costs',
+      (route) =>
+        route.fulfill({
+          json: { items: costRows, total: costRows.length, limit: 50, offset: 0, nextOffset: null },
+        }),
+    );
+
+    await page.goto('/leadgen/logs');
+    const rows = page.locator('.logs-row');
+    await expect(rows.first()).toBeVisible();
+    const header = (await page.locator('.dp-header').boundingBox())!;
+    expect(header.height).toBeLessThanOrEqual(60);
+    const logs = await page.evaluate(measure);
+    expect(logs.docHeight).toBeLessThanOrEqual(logs.height);
+    expect(logs.nested).toEqual([]);
+    expect(
+      await page.locator('.logs-body').evaluate((el) => el.scrollHeight > el.clientHeight),
+    ).toBe(true);
+    // A row is one line high, and Open log is pinned to its right edge.
+    const row = (await rows.first().boundingBox())!;
+    expect(row.height).toBeLessThan(80);
+    const open = (await rows.first().getByRole('button').boundingBox())!;
+    expect(row.x + row.width - (open.x + open.width)).toBeLessThan(24);
+
+    await rows.first().getByRole('button').click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('Complete log')).toBeVisible();
+    const opened = await page.evaluate(measure);
+    expect(opened.docHeight).toBeLessThanOrEqual(opened.height);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+
+    await page.goto('/leadgen/costs');
+    await expect(page.locator('.costs-body tbody tr').first()).toBeVisible();
+    const costs = await page.evaluate(measure);
+    expect(costs.docHeight).toBeLessThanOrEqual(costs.height);
+    expect(costs.nested).toEqual([]);
+    expect(
+      await page.locator('.costs-body').evaluate((el) => el.scrollHeight > el.clientHeight),
+    ).toBe(true);
+    expect((await page.locator('.dp-header').boundingBox())!.height).toBeLessThanOrEqual(60);
+  });
+}

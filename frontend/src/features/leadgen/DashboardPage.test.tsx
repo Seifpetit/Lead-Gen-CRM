@@ -893,7 +893,7 @@ describe('Runs section', () => {
     expect(within(row).getByText('Sfax')).toBeVisible();
     expect(within(row).getByText('$3.21 of $10.00')).toBeVisible();
     // 40 new places plus 4 found again from earlier runs: both were found by this run.
-    expect(within(row).getByText('44 found, 6 leads')).toBeVisible();
+    expect(within(row).getByText('44 places found, 6 leads')).toBeVisible();
     expect(row.querySelector('progress')).not.toBeNull();
   });
 
