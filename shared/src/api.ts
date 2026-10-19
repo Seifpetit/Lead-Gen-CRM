@@ -1,6 +1,14 @@
 // Request and response shapes of the HTTP API (backend/routes). Dates are ISO 8601 strings.
 // Every amount is in USD. Anything computed from assumptions is labelled an estimate.
-import type { CrmStage, Lead, Run, RunMode, RunStage } from './index.js';
+import type {
+  BoardStageKey,
+  CrmPipeline,
+  CrmStage,
+  Lead,
+  Run,
+  RunMode,
+  RunStage,
+} from './index.js';
 
 export interface ApiError {
   error: string;
@@ -327,7 +335,7 @@ export interface ApifyEventView {
 export type DropReason = 'outside_region' | 'already_known' | 'no_contact' | 'no_email_found';
 
 export type NoDecisionMakerReason =
-  'no_people_returned' | 'no_matching_title' | 'not_current' | 'suppressed';
+  'no_people_returned' | 'no_matching_title' | 'not_current' | 'suppressed' | 'removed';
 
 /** What one step's result came to, written when the result was applied. */
 export interface StepSummary {
@@ -418,4 +426,66 @@ export interface RegionGeometry {
   bounds: { south: number; west: number; north: number; east: number } | null;
   outline: MapOutline | null;
   outlineSource: 'osm' | 'bounds' | null;
+}
+
+// ---------------------------------------------------------------------------------------
+// CRM boards
+
+export interface BoardStage {
+  key: BoardStageKey;
+  name: string;
+  /** The column starts collapsed (Noise). */
+  collapsedByDefault: boolean;
+}
+
+/** One card on a board: a company on the Companies board, a decision-maker on the People board. */
+export interface CrmCard {
+  id: string;
+  pipeline: CrmPipeline;
+  stage: BoardStageKey;
+  /** When the card entered its current stage; "days in stage" counts from here. */
+  stageEnteredAt: string;
+  /** Set only in Noise: when the card was removed, when it will be deleted, and where it came from. */
+  noiseAt: string | null;
+  purgeAt: string | null;
+  removedFrom: BoardStageKey | null;
+  company: {
+    id: string;
+    name: string;
+    sector: string | null;
+    website: string | null;
+    phone: string | null;
+    email: string | null;
+  };
+  /** The decision-maker; null on the Companies board. */
+  person: {
+    id: string;
+    fullName: string;
+    title: string | null;
+    email: string | null;
+    phone: string | null;
+    linkedinUrl: string | null;
+  } | null;
+  /** Best lead score of the company (Companies board) or of this person's lead (People board). */
+  score: number | null;
+}
+
+export interface CrmBoard {
+  pipeline: CrmPipeline;
+  stages: BoardStage[];
+  cards: CrmCard[];
+}
+
+export interface DecisionMakerInput {
+  fullName: string;
+  title?: string;
+  email?: string;
+  phone?: string;
+  linkedinUrl?: string;
+}
+
+/** The company moved to Decision-maker identified and the new person card (stage New). */
+export interface AddDecisionMakerResult {
+  company: CrmCard;
+  person: CrmCard;
 }

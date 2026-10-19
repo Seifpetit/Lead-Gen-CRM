@@ -21,6 +21,7 @@ import {
   runSpendByProvider,
   settleStepCosts,
 } from '../data/costLedger.js';
+import { isCompanyRemoved, isPersonRemoved } from '../data/crmBoards.js';
 import { upsertLead } from '../data/crmLeads.js';
 import { withTransaction, type Db, type Queryable } from '../data/db.js';
 import { insertEvidence } from '../data/evidence.js';
@@ -956,6 +957,19 @@ export class Orchestrator {
       const email = first(place.emails);
       // The cell sits inside the region's bounds; the governorate is inferred from it.
       const governorate: Sourced<string> = { ...place.name, value: run.region, kind: 'estimate' };
+      // A company the user removed and the daily purge deleted leaves only a marker: skip it
+      // instead of finding it (and paying for it) again.
+      if (
+        await isCompanyRemoved(tx, userId, {
+          placeId: place.placeId?.value ?? null,
+          name: place.name.value,
+          phone: phone?.value ?? null,
+          governorate: run.region,
+        })
+      ) {
+        alreadyKnown++;
+        continue;
+      }
       const { company, created } = await upsertCompany(
         tx,
         userId,
@@ -1050,7 +1064,13 @@ export class Orchestrator {
       await this.recordLlmCosts(tx, userId, run.id, rc.regionCellId, title.costs);
       let contactId: string | null = null;
       let suppressed = false;
+      let removed = false;
       if (title.roleClass && role.current) {
+        removed = person.linkedinPublicId
+          ? await isPersonRemoved(tx, userId, { linkedinPublicId: person.linkedinPublicId })
+          : false;
+      }
+      if (title.roleClass && role.current && !removed) {
         const titleValue = role.position?.title ?? person.headline?.value ?? null;
         try {
           const { contact } = await upsertContact(
@@ -1080,16 +1100,20 @@ export class Orchestrator {
         }
       }
       if (!contactId) {
-        const code: NoDecisionMakerReason = suppressed
-          ? 'suppressed'
-          : !title.roleClass
-            ? 'no_matching_title'
-            : 'not_current';
-        const why = suppressed
-          ? 'on the suppression list'
-          : !title.roleClass
-            ? `title not a decision-maker role (${title.method}: ${title.reasons.join('; ')})`
-            : `not verified as current (${role.reason})`;
+        const code: NoDecisionMakerReason = removed
+          ? 'removed'
+          : suppressed
+            ? 'suppressed'
+            : !title.roleClass
+              ? 'no_matching_title'
+              : 'not_current';
+        const why = removed
+          ? 'removed earlier from the CRM'
+          : suppressed
+            ? 'on the suppression list'
+            : !title.roleClass
+              ? `title not a decision-maker role (${title.method}: ${title.reasons.join('; ')})`
+              : `not verified as current (${role.reason})`;
         rejected.push({
           name: person.fullName.value,
           headline: person.headline?.value ?? null,

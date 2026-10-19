@@ -11,6 +11,7 @@ import {
   LinkedinPeopleFinder,
   ProfileSearchFinder,
 } from './providers/linkedin.js';
+import { startNoisePurge } from './runner/noisePurge.js';
 import { Orchestrator } from './runner/orchestrator.js';
 
 const env = loadEnv();
@@ -55,6 +56,7 @@ const app = await buildApp({
   runner,
   paidRunsEnabled: env.PAID_RUNS_ENABLED,
   webhookSecret: env.APIFY_WEBHOOK_SECRET ?? null,
+  noiseRetentionDays: env.NOISE_RETENTION_DAYS,
   logger: { level: 'info', redact: LOG_REDACT },
 });
 
@@ -65,6 +67,8 @@ if (env.PAID_RUNS_ENABLED) {
     runner.pollAll().catch((err) => app.log.error({ err }, 'poll failed'));
   }, 30_000).unref();
 }
+// Removed CRM cards are deleted after NOISE_RETENTION_DAYS, once now and then every day.
+startNoisePurge(db, env.NOISE_RETENTION_DAYS, (data, message) => app.log.info(data, message));
 if (env.DEV_ADMIN_LOGIN) {
   app.log.warn(
     'DEV_ADMIN_LOGIN is ON: the login test/test is accepted. Local development only; never deploy this.',

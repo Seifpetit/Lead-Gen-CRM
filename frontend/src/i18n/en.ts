@@ -310,6 +310,7 @@ export const en = {
   'apify.nodm.no_matching_title': 'no matching title ({count})',
   'apify.nodm.not_current': 'not shown as currently working there ({count})',
   'apify.nodm.suppressed': 'on the do-not-contact list ({count})',
+  'apify.nodm.removed': 'removed earlier from your CRM ({count})',
   'apify.step.cost': 'Cost {cost}',
   'apify.step.duration': 'Took {duration}',
   'apify.step.console': 'Apify run',

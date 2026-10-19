@@ -40,6 +40,7 @@ export async function buildApp(deps: {
   /** Paid runs stay off until the pilot; see routes/deps.ts. */
   paidRunsEnabled?: boolean;
   webhookSecret?: string | null;
+  noiseRetentionDays?: number;
   logger?: FastifyServerOptions['logger'];
 }) {
   const app = Fastify({ logger: deps.logger ?? false, trustProxy: false });
@@ -80,6 +81,7 @@ export async function buildApp(deps: {
     runner: deps.runner,
     paidRunsEnabled: deps.paidRunsEnabled ?? false,
     webhookSecret: deps.webhookSecret ?? null,
+    noiseRetentionDays: deps.noiseRetentionDays ?? 30,
   });
   return app;
 }

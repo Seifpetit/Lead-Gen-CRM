@@ -39,6 +39,8 @@ const EnvSchema = z.object({
   /** Most the classifier may spend on one run, in USD. */
   CLASSIFIER_RUN_CAP_USD: z.coerce.number().positive().default(0.5),
   /** A session ends after this many hours without a request. */
+  // Days a removed CRM card waits in Noise before the daily job deletes it (a marker stays).
+  NOISE_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
   SESSION_IDLE_HOURS: z.coerce.number().positive().default(12),
   /** A session ends this many days after sign-in, however active. */
   SESSION_MAX_DAYS: z.coerce.number().positive().default(7),
