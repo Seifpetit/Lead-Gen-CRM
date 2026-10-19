@@ -16,6 +16,7 @@ import {
   type RoleClass,
   type SortDirection,
 } from '@lead-gen-crm/shared';
+import { cityFromAddress } from '@lead-gen-crm/shared';
 import { FREIGHT_SECTORS } from '../config/sectors.js';
 import { withTransaction, type Queryable } from './db.js';
 import type { UserId } from './ids.js';
@@ -84,6 +85,11 @@ interface CardRow {
   person_phone: string | null;
   linkedin_url: string | null;
   photo_url: string | null;
+  category: string | null;
+  address: string | null;
+  lat: number | null;
+  lng: number | null;
+  governorate: string;
   image_url: string | null;
   image_source: 'og' | 'maps' | null;
   created_at: Date;
@@ -98,7 +104,7 @@ const CARD_SELECT = `
   SELECT k.id, k.user_id, k.pipeline, k.stage, k.stage_entered_at, k.noise_at, k.noise_from_stage,
          k.company_id, k.contact_id,
          c.name AS company_name, c.sector, c.website, c.phone AS company_phone, c.email AS company_email,
-         c.image_url, c.image_source,
+         c.image_url, c.image_source, c.category, c.address, c.lat, c.lng,
          p.full_name, p.title, p.email AS person_email, p.phone AS person_phone, p.linkedin_url,
          p.photo_url, k.created_at, c.governorate,
          coalesce(p.created_at, c.created_at) AS found_at,
@@ -139,6 +145,10 @@ function toCard(r: CardRow, retentionDays: number): CrmCard {
       email: r.company_email,
       imageUrl: r.image_url,
       imageSource: r.image_source,
+      regionId: r.governorate,
+      city: cityFromAddress(r.address),
+      category: r.category,
+      location: r.lat !== null && r.lng !== null ? { lat: r.lat, lng: r.lng } : null,
     },
     person: r.contact_id
       ? {

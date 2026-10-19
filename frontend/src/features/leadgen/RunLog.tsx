@@ -1,3 +1,4 @@
+import { regionLabel } from '@lead-gen-crm/shared';
 import type { ApifyLogRun, ApifyStepView } from '@lead-gen-crm/shared';
 import { Fragment } from 'react';
 import { ProgressTrack } from '../../components/shared/ProgressTrack.js';
@@ -72,7 +73,7 @@ export function RunLog({ entry }: { entry: ApifyLogRun }) {
   return (
     <li className="log-run">
       <div className="log-run-head">
-        <strong>{t('apify.run', { region: run.region })}</strong>
+        <strong>{t('apify.run', { region: regionLabel(run.region) })}</strong>
         <StatusBadge status={run.status} />
       </div>
       {run.error && (
@@ -82,7 +83,7 @@ export function RunLog({ entry }: { entry: ApifyLogRun }) {
       )}
       <ProgressTrack
         value={cap > 0 ? run.spentUsd / cap : 0}
-        label={t('apify.timeline', { region: run.region })}
+        label={t('apify.timeline', { region: regionLabel(run.region) })}
         valueText={spent}
         checkpoints={CHECKPOINTS}
         startLabel={t('dash.progress.start')}

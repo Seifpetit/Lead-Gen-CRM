@@ -1,3 +1,4 @@
+import { regionLabel } from '@lead-gen-crm/shared';
 import { runProgress, type RunProgress, type RunSummary } from '@lead-gen-crm/shared';
 import type { StringKey, Translate } from '../../../i18n/index.js';
 import { isActive } from '../runParts.js';
@@ -29,7 +30,8 @@ export function describeRun(t: Translate, run: RunSummary): RunView {
         : 'live.progress.text';
   return {
     sentence:
-      run.liveMessage ?? (active ? t('live.starting') : t('run.title', { region: run.region })),
+      run.liveMessage ??
+      (active ? t('live.starting') : t('run.title', { region: regionLabel(run.region) })),
     progress,
     percent,
     progressText: t(key, { percent, step }),

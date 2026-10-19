@@ -1,5 +1,5 @@
-/** A card is a fixed 88px tall, so a column can place any card without measuring it. */
-export const CARD_HEIGHT = 88;
+/** A card is a fixed 112px tall, so a column can place any card without measuring it. */
+export const CARD_HEIGHT = 112;
 export const CARD_GAP = 8;
 /** The room one card takes in a column: its height and the gap under it. */
 export const SLOT = CARD_HEIGHT + CARD_GAP;

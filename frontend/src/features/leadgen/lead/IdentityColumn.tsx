@@ -1,22 +1,14 @@
 import type { CompanyCardDetail, Evidence, Lead } from '@lead-gen-crm/shared';
-import {
-  Copy,
-  Globe,
-  Info,
-  Mail,
-  MapPin,
-  MapPinned,
-  Phone,
-  SquareArrowOutUpRight,
-} from 'lucide-react';
+import { regionLabel } from '@lead-gen-crm/shared';
+import { Globe, Info, Mail, MapPin, MapPinned, Phone, SquareArrowOutUpRight } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { useToast } from '../../../components/shared/Toast.js';
 import { Tip } from '../../../components/shared/Tip.js';
-import { useT, type StringKey } from '../../../i18n/index.js';
+import { useT } from '../../../i18n/index.js';
 import { evidenceFor, safeHref } from '../../../lib/format.js';
 import { channelHref, mapsSourceUrl } from '../../../lib/lead.js';
 import { CompanyThumb } from '../../crm/BoardCard.js';
-import { EvidenceDot } from './EvidenceDot.js';
+import { CopyButton } from './CopyButton.js';
+import { DotLegend, EvidenceDot } from './EvidenceDot.js';
 import { SourcesPopover } from './SourcesPopover.js';
 
 const ICON = 16;
@@ -26,6 +18,7 @@ function Row({
   label,
   evidence,
   actions,
+  empty = false,
   children,
 }: {
   icon: ReactNode;
@@ -33,10 +26,12 @@ function Row({
   /** Left out for a value with no source to point at. */
   evidence?: Evidence | null | undefined;
   actions?: ReactNode;
+  /** Nothing to show for this channel: the row is greyed. */
+  empty?: boolean;
   children: ReactNode;
 }) {
   return (
-    <li className="lead-row">
+    <li className={`lead-row${empty ? ' is-empty' : ''}`}>
       <span className="lead-row-icon" aria-hidden="true">
         {icon}
       </span>
@@ -45,32 +40,6 @@ function Row({
       {evidence !== undefined && <EvidenceDot kind={evidence?.kind ?? null} />}
       {actions}
     </li>
-  );
-}
-
-function CopyButton({ value, what }: { value: string; what: StringKey }) {
-  const t = useT();
-  const toast = useToast();
-  const name = t(what);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      toast.show(t('leadView.copied', { what: name }));
-    } catch {
-      toast.show(t('leadView.copyFailed'), 'error');
-    }
-  };
-  const label = t('leadView.copy', { what: name });
-  return (
-    <button
-      type="button"
-      className="button button-icon button-small"
-      aria-label={label}
-      title={label}
-      onClick={() => void copy()}
-    >
-      <Copy size={14} aria-hidden="true" />
-    </button>
   );
 }
 
@@ -87,12 +56,16 @@ export function IdentityColumn({ lead, detail }: { lead: Lead; detail: CompanyCa
     <div className="lead-identity">
       <div className="lead-picture">
         <CompanyThumb card={detail.card} size={112} />
-        <SourcesPopover company={company.evidence} person={contact?.evidence ?? []} />
+        <span className="lead-picture-tools">
+          <DotLegend />
+          <SourcesPopover company={company.evidence} person={contact?.evidence ?? []} />
+        </span>
       </div>
       <ul className="lead-rows">
         <Row
           icon={<Phone size={ICON} />}
           label={t('leadView.row.phone')}
+          empty={!phone}
           evidence={phone ? evidenceFor(company.evidence, 'phone', phone) : undefined}
           actions={
             phone && (
@@ -126,6 +99,7 @@ export function IdentityColumn({ lead, detail }: { lead: Lead; detail: CompanyCa
         <Row
           icon={<Mail size={ICON} />}
           label={t('leadView.row.email')}
+          empty={!email}
           evidence={email ? evidenceFor(company.evidence, 'email', email) : undefined}
           actions={email && <CopyButton value={email} what="leadView.what.email" />}
         >
@@ -140,6 +114,7 @@ export function IdentityColumn({ lead, detail }: { lead: Lead; detail: CompanyCa
         <Row
           icon={<Globe size={ICON} />}
           label={t('leadView.row.website')}
+          empty={!site}
           evidence={
             company.website ? evidenceFor(company.evidence, 'website', company.website) : undefined
           }
@@ -158,7 +133,11 @@ export function IdentityColumn({ lead, detail }: { lead: Lead; detail: CompanyCa
             missing
           )}
         </Row>
-        <Row icon={<MapPinned size={ICON} />} label={t('leadView.row.maps')}>
+        <Row
+          icon={<MapPinned size={ICON} />}
+          label={t('leadView.row.maps')}
+          empty={!(mapsUrl && safeHref(mapsUrl))}
+        >
           {mapsUrl && safeHref(mapsUrl) ? (
             <a href={safeHref(mapsUrl) ?? undefined} target="_blank" rel="noreferrer noopener">
               {t('lead.company.source.maps')}
@@ -169,7 +148,7 @@ export function IdentityColumn({ lead, detail }: { lead: Lead; detail: CompanyCa
           )}
         </Row>
         <Row icon={<MapPin size={ICON} />} label={t('leadView.row.region')}>
-          {company.governorate || missing}
+          {company.governorate ? regionLabel(company.governorate) : missing}
         </Row>
       </ul>
     </div>

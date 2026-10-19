@@ -92,7 +92,7 @@ describe('LogModal', () => {
     expect(rows[1]).toHaveAttribute('data-technical', 'true');
     expect(rows[2]).toHaveAttribute('data-level', 'warn');
     expect(rows[3]!.querySelector('.term-level')).toHaveTextContent('ERROR');
-    expect(screen.getByRole('dialog', { name: 'All logs: run in sfax' })).toBeVisible();
+    expect(screen.getByRole('dialog', { name: 'All logs: run in Sfax' })).toBeVisible();
   });
 
   it('reads every page of a long log', async () => {

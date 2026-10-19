@@ -66,6 +66,15 @@ sudo -u postgres psql -c "CREATE ROLE leadgen LOGIN SUPERUSER PASSWORD 'leadgen'
 CI (`.github/workflows/ci.yml`) runs a `postgres:16` service container, then format check,
 lint, typecheck and tests on every pull request and push to main.
 
+## Location maps
+
+A company's page shows an OpenStreetMap close-up (drawn with [Leaflet](https://leafletjs.com),
+BSD-2) next to a small Tunisia map. The tiles are fetched by the browser straight from
+`tile.openstreetmap.org` under OpenStreetMap's [tile usage policy](https://operations.osmfoundation.org/policies/tiles/),
+with the required credit on the map: © OpenStreetMap contributors. There is no API key, nothing is
+stored but the company's latitude and longitude, and no Google service is called (the "Open in
+Google Maps" link is a plain link).
+
 ## Data and licences
 
 The 24 governorate outlines come from [geoBoundaries](https://www.geoboundaries.org) (gbOpen,

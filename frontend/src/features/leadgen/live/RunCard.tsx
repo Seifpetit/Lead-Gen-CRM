@@ -1,8 +1,10 @@
+import { regionLabel } from '@lead-gen-crm/shared';
 import type { RunSummary } from '@lead-gen-crm/shared';
 import { ScrollText } from 'lucide-react';
 import { useState } from 'react';
 import { Card } from '../../../components/shared/Card.js';
 import { ProgressTrack } from '../../../components/shared/ProgressTrack.js';
+import { runResultText } from '../runResult.js';
 import { useT } from '../../../i18n/index.js';
 import { formatDateTime, formatUsd } from '../../../lib/format.js';
 import { useThrottled } from '../../../lib/useThrottled.js';
@@ -51,8 +53,9 @@ export function RunCard({
         actions={<StatusBadge status={run.status} />}
       >
         <p className="run-card-meta muted">
-          {t('runs.meta', { region: run.region, time: formatDateTime(run.createdAt) })}
+          {t('runs.meta', { region: regionLabel(run.region), time: formatDateTime(run.createdAt) })}
         </p>
+        <p className="run-card-result">{runResultText(t, run)}</p>
         <p className="visually-hidden" aria-live="polite">
           {spoken}
         </p>
@@ -68,7 +71,7 @@ export function RunCard({
               size="thin"
               tone="teal"
               value={view.progress.overall}
-              label={t('live.progress', { region: run.region })}
+              label={t('live.progress', { region: regionLabel(run.region) })}
               valueText={view.progressText}
             />
             <div className="run-card-spend">
@@ -76,7 +79,7 @@ export function RunCard({
                 size="thin"
                 tone="purple"
                 value={spendShare}
-                label={t('live.spend', { region: run.region })}
+                label={t('live.spend', { region: regionLabel(run.region) })}
                 valueText={spent}
               />
               <span>{spent}</span>

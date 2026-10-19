@@ -1,3 +1,4 @@
+import { SLOT } from './boardLayout.js';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -20,7 +21,7 @@ afterEach(() => {
 });
 
 type Point = { x: number; y: number };
-const at = (column: number, row = 0): Point => ({ x: column * 300 + 100, y: 48 + row * 96 + 10 });
+const at = (column: number, row = 0): Point => ({ x: column * 300 + 100, y: 48 + row * SLOT + 10 });
 
 /** A mouse press on a card, then moves; resolves once each step has been drawn. */
 async function press(el: Element, from: Point) {
@@ -132,14 +133,14 @@ describe('dragging a card', () => {
     await press(alpha, at(0));
     await moveTo({ x: at(0).x + 20, y: at(0).y });
     // Over the first slot of the second column: the card below slides down a slot.
-    await moveTo({ x: at(1).x, y: 48 + 1 * 96 + 5 });
+    await moveTo({ x: at(1).x, y: 48 + 1 * SLOT + 5 });
 
     expect(alpha).toHaveClass('is-dragging');
     expect(document.body).toHaveClass('is-dragging-card');
     expect(column('Investigating')).toHaveClass('is-over');
     expect(column('Found')).not.toHaveClass('is-over');
     const slots = [...column('Investigating').querySelectorAll<HTMLElement>('.kanban-slot')];
-    expect(slots.map((s) => s.style.transform)).toEqual(['', 'translateY(96px)']);
+    expect(slots.map((s) => s.style.transform)).toEqual(['', `translateY(${SLOT}px)`]);
     expect(screen.getByText('Alpha Textile over Investigating, place 2 of 3.')).toBeInTheDocument();
 
     // Back out of every column: no highlight, no gap.
@@ -160,8 +161,8 @@ describe('dragging a card', () => {
     const alpha = await screen.findByRole('group', { name: 'Alpha Textile' });
     await press(alpha, at(0));
     await moveTo({ x: at(0).x + 20, y: at(0).y });
-    await moveTo({ x: at(1).x, y: 48 + 1 * 96 });
-    await release({ x: at(1).x, y: 48 + 1 * 96 });
+    await moveTo({ x: at(1).x, y: 48 + 1 * SLOT });
+    await release({ x: at(1).x, y: 48 + 1 * SLOT });
     expect(drawn('Investigating')).toEqual(['One', 'Alpha Textile', 'Two']);
     expect(within(column('Found')).getByLabelText('1 in total')).toBeInTheDocument();
     expect(within(column('Investigating')).getByLabelText('3 in total')).toBeInTheDocument();
@@ -198,8 +199,8 @@ describe('dragging a card', () => {
     expect(within(column('Investigating')).getByLabelText('120 in total')).toBeInTheDocument();
     await press(alpha, at(0));
     await moveTo({ x: at(0).x + 20, y: at(0).y });
-    await moveTo({ x: at(1).x, y: 48 + 2 * 96 });
-    await release({ x: at(1).x, y: 48 + 2 * 96 });
+    await moveTo({ x: at(1).x, y: 48 + 2 * SLOT });
+    await release({ x: at(1).x, y: 48 + 2 * SLOT });
 
     expect(drawn('Investigating').slice(0, 4)).toEqual([
       'Company 001',

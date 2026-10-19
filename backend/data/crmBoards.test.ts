@@ -193,6 +193,36 @@ describe('the Companies board', () => {
   });
 });
 
+describe('where a card says the company is', () => {
+  it('carries the region, the city read from the address, the category and the coordinates', async () => {
+    await upsertCompany(db, user, {
+      name: fact('Alpha Huiles'),
+      governorate: fact('sfax'),
+      googlePlaceId: fact('place-alpha'),
+      category: fact('Corporate office'),
+      address: fact('Route de Tunis km 3, 3000 SAKIET EZZIT, Tunisia'),
+      location: { lat: 34.8, lng: 10.7 },
+    });
+    const card = await getCard(db, user, await companyCard(), RETENTION);
+    expect(card!.company).toMatchObject({
+      regionId: 'sfax',
+      city: 'Sakiet Ezzit',
+      category: 'Corporate office',
+      location: { lat: 34.8, lng: 10.7 },
+    });
+  });
+
+  it('says null for what Google did not give', async () => {
+    const card = await getCard(db, user, await companyCard(), RETENTION);
+    expect(card!.company).toMatchObject({
+      regionId: 'sfax',
+      city: null,
+      category: null,
+      location: null,
+    });
+  });
+});
+
 describe('the People board', () => {
   async function person(email = 'sami@alpha.tn') {
     const { person } = await addDecisionMaker(

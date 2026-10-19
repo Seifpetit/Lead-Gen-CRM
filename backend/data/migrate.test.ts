@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Db } from './db.js';
 import { MIGRATIONS, migrateDown, migrateUp } from './migrate.js';
-import { upsertCompany } from './companies.js';
 import { createRun } from './runs.js';
 import { seedReference } from './seed.js';
 import { makeUser, openTestDb } from './testDb.js';
@@ -13,6 +12,17 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.end();
 });
+
+/** A company row as the old schema had it: written by hand, since the app now writes newer columns. */
+async function oldCompany(userId: string, name: string): Promise<string> {
+  return (
+    await db.query<{ id: string }>(
+      `INSERT INTO companies (user_id, name, normalized_name, governorate)
+       VALUES ($1, $2, lower($2), 'sfax') RETURNING id`,
+      [userId, name],
+    )
+  ).rows[0]!.id;
+}
 
 async function tables(): Promise<string[]> {
   const { rows } = await db.query<{ table_name: string }>(
@@ -69,19 +79,12 @@ describe('migrations', () => {
   });
 
   it('moves existing leads onto the Companies board in Found, one card per company', async () => {
-    await migrateDown(db, 4); // back to 008, before the boards
+    await migrateDown(db, 5); // back to 008, before the boards
     expect(await tables()).not.toContain('crm_cards');
     await seedReference(db, {});
     const user = await makeUser(db);
     const other = await makeUser(db);
-    const src = { sourceUrl: 'https://example.tn', fetchedAt: new Date(), kind: 'fact' as const };
-    const company = async (u: typeof user, name: string) =>
-      (
-        await upsertCompany(db, u, {
-          name: { ...src, value: name },
-          governorate: { ...src, value: 'sfax' },
-        })
-      ).company.id;
+    const company = (u: typeof user, name: string) => oldCompany(u, name);
     const [a, b, c, noLead] = [
       await company(user, 'Alpha'),
       await company(user, 'Beta'),
@@ -111,6 +114,7 @@ describe('migrations', () => {
       '010_board_images',
       '011_company_notes_history',
       '012_run_live',
+      '013_company_place',
     ]);
     const { rows } = await db.query<{
       user_id: string;
@@ -145,8 +149,50 @@ describe('migrations', () => {
     expect((await db.query('SELECT 1 FROM crm_leads')).rowCount).toBe(4);
     expect((await db.query("SELECT 1 FROM crm_cards WHERE pipeline = 'people'")).rowCount).toBe(0);
   });
+  it('gives companies found before 013 their coordinates, category and address from the stored place', async () => {
+    await migrateDown(db, 1); // back to 012, before the place columns
+    await seedReference(db, {});
+    const user = await makeUser(db);
+    const run = await createRun(db, user, { regionId: 'sfax', budgetCapUsd: 2 });
+    const add = async (name: string, place: object | null) => {
+      const id = await oldCompany(user, name);
+      await db.query(
+        `INSERT INTO run_companies (run_id, company_id, user_id, is_new, state, payload)
+         VALUES ($1, $2, $3, true, 'discovered', $4)`,
+        [run.id, id, user, JSON.stringify(place ? { place } : {})],
+      );
+      return id;
+    };
+    const full = await add('Full', {
+      location: { lat: 34.74, lng: 10.76 },
+      category: { value: 'Corporate office' },
+      address: { value: 'Route de Tunis, 3000 Sfax, Tunisia' },
+    });
+    const noPlace = await add('Typed by hand', null);
+    const badLocation = await add('Out of range', { location: { lat: 999, lng: 10 } });
+
+    expect(await migrateUp(db)).toEqual(['013_company_place']);
+    const read = async (id: string) =>
+      (await db.query('SELECT lat, lng, category, address FROM companies WHERE id = $1', [id]))
+        .rows[0];
+    expect(await read(full)).toEqual({
+      lat: 34.74,
+      lng: 10.76,
+      category: 'Corporate office',
+      address: 'Route de Tunis, 3000 Sfax, Tunisia',
+    });
+    expect(await read(noPlace)).toEqual({ lat: null, lng: null, category: null, address: null });
+    // A coordinate that cannot be real is left out rather than failing the migration.
+    expect(await read(badLocation)).toEqual({
+      lat: null,
+      lng: null,
+      category: null,
+      address: null,
+    });
+  });
+
   it('turns the provider events of runs from before the live log into technical log lines', async () => {
-    await migrateDown(db, 1); // back to 011, before run_log
+    await migrateDown(db, 2); // back to 011, before run_log
     expect(await tables()).not.toContain('run_log');
     await seedReference(db, {});
     const user = await makeUser(db);
@@ -168,7 +214,7 @@ describe('migrations', () => {
     await event('restarting', 'ran out of memory', '2026-10-18T09:01:00Z');
     await event('failed', 'gave up', '2026-10-18T09:02:00Z');
 
-    expect(await migrateUp(db)).toEqual(['012_run_live']);
+    expect(await migrateUp(db)).toEqual(['012_run_live', '013_company_place']);
     const { rows } = await db.query<{
       level: string;
       technical: boolean;

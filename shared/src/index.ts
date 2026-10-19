@@ -38,6 +38,15 @@ export interface Company {
   phoneForeign?: boolean;
   email: string | null;
   linkedinUrl: string | null;
+  /** Google's own category for the business ("Corporate office"), when stored. */
+  category?: string | null;
+  address?: string | null;
+  /** The city read from the address, in title case. */
+  city?: string | null;
+  /** Where the business is, as numbers; null when Google gave none. */
+  location?: { lat: number; lng: number } | null;
+  /** Thumbnail address (never the picture itself); null when none is known. */
+  imageUrl?: string | null;
   evidence: Evidence[];
 }
 
@@ -156,3 +165,4 @@ export interface Run {
 
 export * from './api.js';
 export * from './checkpoints.js';
+export * from './places.js';

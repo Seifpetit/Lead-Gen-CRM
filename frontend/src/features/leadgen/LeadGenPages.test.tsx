@@ -83,7 +83,7 @@ describe('Lead Gen sidebar and pages', () => {
     });
     expect(link).toHaveAttribute('href', '/leadgen/runs/run-live');
     const runs = await screen.findByRole('region', { name: 'Runs' });
-    const row = within(runs).getAllByRole('link', { name: 'Open run for sfax' })[0]!;
+    const row = within(runs).getAllByRole('link', { name: 'Open run for Sfax' })[0]!;
     expect(row).toHaveAttribute('href', '/leadgen/runs/run-live');
     expect(within(row).getByText('$0.50 of $2.00')).toBeVisible();
   });

@@ -110,6 +110,10 @@ const beta = companyCard({
     email: null,
     imageUrl: null,
     imageSource: null,
+    regionId: 'sfax',
+    city: null,
+    category: null,
+    location: null,
   },
 });
 const amel = personCard({ id: 'm' });
@@ -216,8 +220,16 @@ describe('Recent leads cards', () => {
       '/leadgen/runs/run-1/leads/lead-a',
     );
     expect(within(tile).getByText('Found')).toBeVisible();
-    expect(within(tile).getByLabelText('Score 72')).toBeVisible();
-    expect(within(tile).getByText('found 2d ago')).toBeVisible();
+    expect(within(tile).getByText('Score 72')).toBeVisible();
+    // The city and category replace the repeated "found today"; the date is in the tooltip.
+    const sub = within(tile).getByText('Sfax · Corporate office');
+    expect(sub).toBeVisible();
+    expect(sub).toHaveAttribute('title', expect.stringContaining('Found'));
+    // The phone is shown in full, the email and website as domains.
+    expect(within(tile).getByText('+216 74 111 222')).toBeVisible();
+    expect(
+      within(tile).getByText('a.example.test', { selector: '.channel-email .channel-text' }),
+    ).toBeVisible();
     expect(within(tile).getByRole('link', { name: /Phone/ })).toBeVisible();
     // No phone or website: the icons are there but dimmed and named.
     const bare = within(grid()).getByText('Second Freight').closest('li')!;
@@ -228,7 +240,7 @@ describe('Recent leads cards', () => {
   it('opens the company page when a card is clicked', async () => {
     const { user } = await setup();
     const tile = within(grid()).getByText('Fixture Transport SARL').closest('li')!;
-    await user.click(within(tile).getByText('found 2d ago'));
+    await user.click(within(tile).getByText('Sfax · Corporate office'));
     expect(screen.getByLabelText('Location')).toHaveTextContent('/leadgen/runs/run-1/leads/lead-a');
   });
 
@@ -246,6 +258,10 @@ describe('Recent leads cards', () => {
         email: null,
         imageUrl: 'https://img.example.test/og.jpg',
         imageSource: 'og',
+        regionId: 'sfax',
+        city: null,
+        category: null,
+        location: null,
       },
     });
     await setup([withImage]);
@@ -280,13 +296,13 @@ describe('Recent leads cards', () => {
   it('makes the cards compact, with a smaller picture and no found date or contact icons', async () => {
     const { user } = await setup();
     const filters = await openFilters(user);
-    expect(within(grid()).getByText('found 2d ago')).toBeVisible();
+    expect(within(grid()).getByText('+216 74 111 222')).toBeVisible();
     await user.click(within(filters).getByRole('radio', { name: 'Compact' }));
-    expect(within(grid()).queryByText('found 2d ago')).toBeNull();
+    expect(within(grid()).queryByText('+216 74 111 222')).toBeNull();
     expect(tile('Fixture Transport SARL')).toHaveClass('tile-compact');
     expect(tile('Fixture Transport SARL').querySelector('.thumb')).toHaveStyle({ width: '36px' });
     await user.click(within(filters).getByRole('radio', { name: 'Comfortable' }));
-    expect(within(grid()).getByText('found 2d ago')).toBeVisible();
+    expect(within(grid()).getByText('+216 74 111 222')).toBeVisible();
   });
 
   it('searches in the header, and filters by score and Found through the server', async () => {
@@ -800,7 +816,7 @@ describe('Create run', () => {
     // The estimate ($3.50) is above the $2.00 cap, so there is one more question.
     await user.click(await within(dialog).findByRole('button', { name: 'Yes, start the run' }));
 
-    expect(await screen.findByText('Run started in sfax.')).toBeVisible();
+    expect(await screen.findByText('Run started in Sfax.')).toBeVisible();
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(server.to('POST /api/runs')[0]!.body).toEqual({
       regionId: 'sfax',
@@ -873,12 +889,12 @@ describe('Runs section', () => {
   it('lists compact rows with region, status, spend against the cap and found to leads', async () => {
     await setup();
     const section = screen.getByRole('region', { name: 'Runs' });
-    const row = within(section).getByRole('link', { name: 'Open run for sfax' });
+    const row = within(section).getByRole('link', { name: 'Open run for Sfax' });
     expect(row).toHaveAttribute('href', '/leadgen/runs/run-1');
-    expect(within(row).getByText('sfax')).toBeVisible();
+    expect(within(row).getByText('Sfax')).toBeVisible();
     expect(within(row).getByText('$3.21 of $10.00')).toBeVisible();
     // 40 new places plus 4 found again from earlier runs: both were found by this run.
-    expect(within(row).getByText('44 found → 6 leads')).toBeVisible();
+    expect(within(row).getByText('44 found, 6 leads')).toBeVisible();
     expect(row.querySelector('progress')).not.toBeNull();
   });
 

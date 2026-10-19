@@ -1,4 +1,4 @@
-import type { RunPreview } from '@lead-gen-crm/shared';
+import { regionLabel, type RunPreview } from '@lead-gen-crm/shared';
 import { useId } from 'react';
 import { useT } from '../../../i18n/index.js';
 import { formatNumber } from '../../../lib/format.js';
@@ -25,10 +25,6 @@ export function wordingsProblem(wordings: string[]): 'tooMany' | 'tooLong' | nul
  * Everything most runs do not need, behind one closed "Advanced": extra searches typed in, the
  * searches that will run (grouped by cell), and how the estimate was made.
  */
-/** "ben-arous" as "Ben Arous". */
-const regionName = (id: string): string =>
-  id.replace(/-/g, ' ').replace(/\b\p{L}/gu, (c) => c.toLocaleUpperCase());
-
 export function AdvancedSection({
   preview,
   stale,
@@ -102,7 +98,7 @@ export function AdvancedSection({
                 <h4>
                   {t('plan.cell', {
                     cell: list[0]!.regionId
-                      ? `${regionName(list[0]!.regionId)} ${list[0]!.cellKey}`
+                      ? `${regionLabel(list[0]!.regionId)} ${list[0]!.cellKey}`
                       : list[0]!.cellKey,
                   })}
                 </h4>

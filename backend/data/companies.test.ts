@@ -213,6 +213,59 @@ describe('upsertCompany evidence', () => {
   });
 });
 
+describe('where the business is', () => {
+  const where = { lat: 34.74, lng: 10.76 };
+
+  it('stores coordinates as numbers, the category and the address, with evidence for the texts', async () => {
+    const { company: c } = await upsertCompany(
+      db,
+      user,
+      company({
+        googlePlaceId: fact('place-1'),
+        location: where,
+        category: fact('Corporate office'),
+        address: fact('Route de Tunis, 3000 Sfax, Tunisia'),
+      }),
+    );
+    expect(c).toMatchObject({
+      location: where,
+      category: 'Corporate office',
+      address: 'Route de Tunis, 3000 Sfax, Tunisia',
+    });
+    const fields = (await listEvidence(db, user, { companyId: c.id })).map((e) => e.field);
+    expect(fields).toEqual(expect.arrayContaining(['category', 'address']));
+    // The coordinates are plain numbers on the row, not sourced text.
+    expect(fields).not.toContain('location');
+  });
+
+  it('keeps them when a later sighting has none, and replaces them when it has new ones', async () => {
+    const first = await upsertCompany(
+      db,
+      user,
+      company({ googlePlaceId: fact('place-1'), location: where, category: fact('Usine') }),
+    );
+    await upsertCompany(db, user, company({ googlePlaceId: fact('place-1') }));
+    expect((await getCompany(db, user, first.company.id))!).toMatchObject({
+      location: where,
+      category: 'Usine',
+    });
+    await upsertCompany(
+      db,
+      user,
+      company({ googlePlaceId: fact('place-1'), location: { lat: 35, lng: 11 } }),
+    );
+    expect((await getCompany(db, user, first.company.id))!.location).toEqual({ lat: 35, lng: 11 });
+  });
+
+  it('is null when Google gave nothing, and refuses a coordinate that cannot exist', async () => {
+    const { company: c } = await upsertCompany(db, user, company());
+    expect(c).toMatchObject({ location: null, category: null, address: null });
+    await expect(
+      upsertCompany(db, user, company({ name: 'Nowhere', location: { lat: 123, lng: 10 } })),
+    ).rejects.toThrow();
+  });
+});
+
 describe('provider refresh', () => {
   it('stores source provider and refresh date without making them evidence', async () => {
     const refreshBy = new Date('2026-10-31T00:00:00Z');

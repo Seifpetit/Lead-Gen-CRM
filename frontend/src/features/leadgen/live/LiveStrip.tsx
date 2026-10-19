@@ -1,3 +1,4 @@
+import { regionLabel } from '@lead-gen-crm/shared';
 import type { RunSummary } from '@lead-gen-crm/shared';
 import { Link } from 'react-router';
 import { ProgressTrack } from '../../../components/shared/ProgressTrack.js';
@@ -17,7 +18,11 @@ function StripRow({ run }: { run: RunSummary }) {
   return (
     <li className="strip-row">
       <StatusBadge status={run.status} />
-      <Link className="strip-sentence" to={`/leadgen/runs/${run.id}`} title={run.region}>
+      <Link
+        className="strip-sentence"
+        to={`/leadgen/runs/${run.id}`}
+        title={regionLabel(run.region)}
+      >
         {view.sentence}
       </Link>
       <span className="strip-bar">
@@ -25,7 +30,7 @@ function StripRow({ run }: { run: RunSummary }) {
           size="thin"
           tone="teal"
           value={view.progress.overall}
-          label={t('live.progress', { region: run.region })}
+          label={t('live.progress', { region: regionLabel(run.region) })}
           valueText={view.progressText}
         />
       </span>
@@ -44,7 +49,7 @@ function StripRow({ run }: { run: RunSummary }) {
 export function LiveStrip({ runs }: { runs: readonly RunSummary[] }) {
   const t = useT();
   const spoken = useThrottled(
-    runs.map((run) => `${run.region}: ${describeRun(t, run).sentence}`).join(' '),
+    runs.map((run) => `${regionLabel(run.region)}: ${describeRun(t, run).sentence}`).join(' '),
     ANNOUNCE_MS,
   );
   if (runs.length === 0) return null;

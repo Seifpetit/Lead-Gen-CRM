@@ -17,6 +17,7 @@ import type {
   StepSummary,
 } from '@lead-gen-crm/shared';
 import { RUN_STAGES } from '@lead-gen-crm/shared';
+import { cityFromAddress } from '@lead-gen-crm/shared';
 import { getCompany } from './companies.js';
 import { getContact } from './contacts.js';
 import type { Queryable } from './db.js';
@@ -293,6 +294,11 @@ async function companyView(db: Queryable, userId: UserId, id: string): Promise<C
     phoneForeign: c.phoneForeign,
     email: c.email,
     linkedinUrl: c.linkedinUrl,
+    category: c.category,
+    address: c.address,
+    city: cityFromAddress(c.address),
+    location: c.location,
+    imageUrl: c.imageUrl,
     evidence: await listEvidence(db, userId, { companyId: id }),
   };
 }

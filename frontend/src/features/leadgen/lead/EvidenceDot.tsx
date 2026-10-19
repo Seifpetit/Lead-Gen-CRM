@@ -2,6 +2,20 @@ import type { EvidenceKind } from '@lead-gen-crm/shared';
 import { Tip } from '../../../components/shared/Tip.js';
 import { useT } from '../../../i18n/index.js';
 
+/** One tooltip that explains all three dots, for the column that shows them. */
+export function DotLegend() {
+  const t = useT();
+  return (
+    <Tip label={t('leadView.dot.legend')} text={t('leadView.dot.legend.text')}>
+      <span className="dot-legend" aria-hidden="true">
+        <span className="dot dot-fact" />
+        <span className="dot dot-estimate" />
+        <span className="dot dot-none" />
+      </span>
+    </Tip>
+  );
+}
+
 /** Fact or Estimate as a small colored dot; the explanation is its tooltip. */
 export function EvidenceDot({ kind }: { kind: EvidenceKind | null }) {
   const t = useT();

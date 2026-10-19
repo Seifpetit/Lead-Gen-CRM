@@ -76,7 +76,7 @@ describe('Apify log widget', () => {
       <ApifyLogWidget refreshKey={0} />,
       fakeServer({ 'GET /api/apify/log': logWith('running') }),
     );
-    const runs = await screen.findByText('Run in sfax');
+    const runs = await screen.findByText('Run in Sfax');
     expect(runs).toBeInTheDocument();
     expect(screen.getAllByText('Running').length).toBeGreaterThan(0);
   });
@@ -217,7 +217,7 @@ describe('Apify log widget', () => {
     let state: Parameters<typeof step>[0] = 'running';
     const server = fakeServer({ 'GET /api/apify/log': () => logWith(state) });
     renderWith(<ApifyLogWidget refreshKey={0} />, server);
-    await screen.findByText('Run in sfax');
+    await screen.findByText('Run in Sfax');
     expect(screen.queryByText('Finished')).not.toBeInTheDocument();
 
     state = 'finished';
@@ -233,11 +233,11 @@ describe('Apify log widget', () => {
         fail ? { status: 500, body: { error: 'internal' } } : logWith('running'),
     });
     renderWith(<ApifyLogWidget refreshKey={0} />, server);
-    await screen.findByText('Run in sfax');
+    await screen.findByText('Run in Sfax');
     fail = true;
     await act(() => vi.advanceTimersByTimeAsync(APIFY_LOG_POLL_MS + 100));
     expect(await screen.findByText(/Showing the last known state/)).toBeInTheDocument();
-    expect(screen.getByText('Run in sfax')).toBeInTheDocument();
+    expect(screen.getByText('Run in Sfax')).toBeInTheDocument();
   });
 
   it('says what it is doing right now, with a spinner, while a step is out', async () => {
@@ -280,7 +280,7 @@ describe('Apify log widget', () => {
         'GET /api/apify/log': { ...between, runs: [{ ...between.runs[0]!, run: run() }] },
       }),
     );
-    await screen.findByText('Run in sfax');
+    await screen.findByText('Run in Sfax');
     expect(screen.queryByText('Right now')).not.toBeInTheDocument();
   });
 
@@ -336,7 +336,7 @@ describe('Apify log widget', () => {
     expect(
       screen.getByText('Cost checkpoint: 75% of the spend cap reached ($1.50 of $2.00)'),
     ).toBeInTheDocument();
-    expect(screen.getByRole('progressbar', { name: 'Spend of the run in sfax' })).toHaveAttribute(
+    expect(screen.getByRole('progressbar', { name: 'Spend of the run in Sfax' })).toHaveAttribute(
       'aria-valuenow',
       '80',
     );

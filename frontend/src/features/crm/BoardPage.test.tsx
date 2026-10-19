@@ -28,8 +28,12 @@ describe('Companies board', () => {
     }
     const alpha = within(card('Alpha Textile'));
     expect(within(column('Found')).getByText('Alpha Textile')).toBeInTheDocument();
-    // The sector's name and the days in the stage, on one line under the name.
-    expect(alpha.getByText('Textile · 3d')).toBeInTheDocument();
+    // The city and Google's category under the name; the sector and the rest are in the tooltip.
+    expect(alpha.getByText('Sfax · Corporate office')).toBeInTheDocument();
+    expect(alpha.getByText('Sfax · Corporate office')).toHaveAttribute(
+      'title',
+      expect.stringContaining('Textile'),
+    );
     expect(alpha.getByRole('link', { name: 'Website of Alpha Textile' })).toHaveAttribute(
       'href',
       'https://www.alpha.example.test/',
@@ -42,7 +46,7 @@ describe('Companies board', () => {
       'href',
       'mailto:contact@alpha.example.test',
     );
-    expect(alpha.getByLabelText('Score 72')).toHaveTextContent('72');
+    expect(alpha.getByText('Score 72')).toBeVisible();
     // The whole card is the drag handle.
     expect(card('Alpha Textile')).toHaveAttribute('aria-roledescription', 'draggable card');
     // The count in a header is the column's true total; Noise starts collapsed.

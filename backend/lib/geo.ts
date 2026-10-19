@@ -288,3 +288,21 @@ export function simplifyOutline(outline: Outline, toleranceDeg: number): Outline
     ? { type: 'Polygon', coordinates: polys[0]! }
     : { type: 'MultiPolygon', coordinates: polys };
 }
+
+const EARTH_RADIUS_KM = 6371.0088;
+
+/**
+ * The great-circle distance in kilometres between two points (haversine). Ready for a future
+ * "distance from my address" line; nothing calls it yet.
+ */
+export function haversineKm(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const rad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLng = rad(b.lng - a.lng);
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(h)));
+}
