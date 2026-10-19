@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { currentUser } from '../auth/plugin.js';
 import { markProviderOk } from '../data/appErrors.js';
 import { runSummaries } from '../data/views.js';
-import { buildHealth } from '../lib/health.js';
+import { buildHealth } from '../runner/healthView.js';
 import type { RouteDeps } from './deps.js';
 import { notFound, uuidParam } from './http.js';
 

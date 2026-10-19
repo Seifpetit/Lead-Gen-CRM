@@ -39,7 +39,7 @@ import { getRegionBounds, getRegionOutline } from '../data/regions.js';
 import { FREIGHT_SECTORS } from '../config/sectors.js';
 import { cellOverlap, placeInOutline } from '../lib/geo.js';
 import { liveMessages, type SearchFacts } from '../lib/liveMessages.js';
-import type { ErrorReporter } from '../lib/errorReporter.js';
+import type { ErrorReporter } from './errorReporter.js';
 import { classifyProviderFailure, type ProviderFailure } from '../lib/providerFailure.js';
 import { redactSecrets } from '../lib/redact.js';
 import {

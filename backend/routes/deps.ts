@@ -1,6 +1,6 @@
 import type { Db } from '../data/db.js';
-import type { ErrorReporter } from '../lib/errorReporter.js';
-import type { DailyJumpConfig, HealthFacts } from '../lib/health.js';
+import type { ErrorReporter } from '../runner/errorReporter.js';
+import type { DailyJumpConfig, HealthFacts } from '../runner/healthView.js';
 import type { Orchestrator } from '../runner/orchestrator.js';
 import type { Watchdog } from '../runner/watchdog.js';
 

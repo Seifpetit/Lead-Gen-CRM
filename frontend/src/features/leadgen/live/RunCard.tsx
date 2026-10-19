@@ -9,6 +9,7 @@ import { useT } from '../../../i18n/index.js';
 import { formatDateTime, formatUsd } from '../../../lib/format.js';
 import { useThrottled } from '../../../lib/useThrottled.js';
 import { Checkpoints } from './Checkpoints.js';
+import { RunProblem } from './RunProblem.js';
 import { describeRun } from './runView.js';
 import { StopRunDialog } from './StopRunDialog.js';
 import { ANNOUNCE_MS } from './LiveStrip.js';
@@ -85,6 +86,7 @@ export function RunCard({
             </div>
           </div>
         )}
+        <RunProblem run={run} onChanged={onChanged} showStop={false} />
         {run.error && (
           <p className="form-error" role="alert">
             {t('runs.error', { message: run.error })}

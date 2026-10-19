@@ -1,0 +1,133 @@
+/* Health: the Settings tab that says whether everything works. Scrolls inside its panel. */
+.health {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+}
+.health h2 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-h4, 1rem);
+}
+.health-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 2px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.health-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+.health-row + .health-row {
+  border-top: 2px solid var(--ink);
+}
+.health-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.health-reason {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.health-row[data-state='down'] {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+.health-row[data-state='degraded'],
+.health-row[data-state='warn'],
+.health-row[data-state='fail'] {
+  background: var(--yellow);
+  color: var(--ink);
+}
+.health-row .muted {
+  color: inherit;
+}
+.health .badge {
+  border: 2px solid var(--ink);
+  background: var(--surface);
+  color: var(--ink);
+}
+.health-migrations {
+  margin-top: var(--space-2);
+}
+.health-migrations h3 {
+  margin: 0 0 var(--space-1);
+  font-size: 1rem;
+}
+.health-errors td,
+.health-errors th {
+  vertical-align: top;
+}
+.health-errors pre {
+  margin: var(--space-1) 0 0;
+  max-width: 100%;
+  overflow-x: auto;
+  font-size: 12px;
+}
+.health-checked {
+  margin: 0;
+  font-size: var(--fs-caption);
+}
+
+/* Settings: one panel with General and Health tabs; only the tab's content scrolls. */
+.settings-panel .tabs {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.settings-panel .tablist {
+  flex: none;
+  margin: 0;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-bottom: var(--bw) solid var(--ink);
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.settings-panel [role='tabpanel'] {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.settings-general {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+
+/* A problem that needs attention, on every screen, above the page. */
+.health-notice {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+  padding: var(--space-1) var(--space-4);
+  border-bottom: var(--bw) solid var(--ink);
+  background: var(--yellow);
+  color: var(--ink);
+  font-weight: 700;
+}
+.health-notice ul {
+  flex: 1 1 280px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.health-notice a {
+  color: var(--ink);
+  text-decoration: underline;
+}

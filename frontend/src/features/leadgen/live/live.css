@@ -21,8 +21,50 @@
   min-height: 36px;
   padding: var(--space-1) var(--space-4);
 }
-.strip-row + .strip-row {
+.strip-item + .strip-item {
   border-top: 2px solid var(--ink);
+}
+.strip-ended {
+  background: var(--surface);
+}
+.strip-row-ended {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.strip-note {
+  margin: 0;
+  padding: var(--space-1) var(--space-4);
+  border-top: 2px solid var(--ink);
+  font-size: var(--fs-caption);
+}
+
+/* ---- What is wrong with a run: plain words, since when, and what to do -------------------- */
+.run-problem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-4);
+  border-top: 2px solid var(--ink);
+  background: var(--yellow);
+  color: var(--ink);
+  font-weight: 700;
+}
+.run-problem[data-kind='retrying'] {
+  background: var(--accent-tint);
+}
+.run-problem-text {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.run-problem .muted {
+  color: var(--ink);
+  font-weight: 400;
+}
+.run-card .run-problem {
+  margin: var(--space-2) 0;
+  border: 2px solid var(--ink);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
 }
 .strip-sentence {
   min-width: 0;

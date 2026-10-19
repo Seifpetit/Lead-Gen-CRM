@@ -11,7 +11,7 @@ import type { Queryable } from '../data/db.js';
 import type { UserId } from '../data/ids.js';
 import { pendingMigrations, type Migration } from '../data/migrate.js';
 import { dailyActualSpend } from '../data/runHealth.js';
-import { dailySpendJump } from './anomaly.js';
+import { dailySpendJump } from '../lib/anomaly.js';
 
 /** What the server was started with, as yes or no: never the values themselves. */
 export interface HealthFacts {

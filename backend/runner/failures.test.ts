@@ -10,7 +10,7 @@ import { listSteps } from '../data/runSteps.js';
 import { getRun } from '../data/runs.js';
 import { makeUser, openTestDb, resetData } from '../data/testDb.js';
 import type { Bounds } from '../lib/geo.js';
-import { ErrorReporter } from '../lib/errorReporter.js';
+import { ErrorReporter } from './errorReporter.js';
 import { HttpError } from '../httpClient.js';
 import type { DiscoveryQuery } from '../providers/types.js';
 import { fakeProviders } from '../test/fakeProviders.js';

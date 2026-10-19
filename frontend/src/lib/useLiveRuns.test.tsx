@@ -34,6 +34,18 @@ describe('useLiveRuns with an event stream', () => {
     expect(server.to('GET /api/runs/live')).toHaveLength(0);
   });
 
+  it('carries the runs that just ended, and keeps them after the stream drops and polling takes over', async () => {
+    vi.useFakeTimers();
+    const failed = run({ id: 'f', status: 'failed', error: 'Apify is out of credit' });
+    const { result } = setup(() => ({ runs: [], ended: [failed] }));
+    act(() => lastStream().emit('runs', { runs: [], ended: [failed] }));
+    expect(result.current.ended.map((r) => r.id)).toEqual(['f']);
+    act(() => lastStream().fail());
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(result.current.mode).toBe('polling');
+    expect(result.current.ended.map((r) => r.id)).toEqual(['f']);
+  });
+
   it('ignores an event it cannot read', () => {
     const { result } = setup(() => ({ runs: [] }));
     act(() => lastStream().emit('runs', 'not json'));

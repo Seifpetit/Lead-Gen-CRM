@@ -4,7 +4,7 @@ import { EnvError, loadEnv, type Env } from './config/env.js';
 import { explainEnvError } from './config/envMessage.js';
 import { createDb } from './data/db.js';
 import { pendingMigrations } from './data/migrate.js';
-import { ErrorReporter } from './lib/errorReporter.js';
+import { ErrorReporter } from './runner/errorReporter.js';
 import { createSentryReporter } from './lib/sentry.js';
 import { Watchdog } from './runner/watchdog.js';
 import { createClassifier } from './providers/anthropicClassifier.js';

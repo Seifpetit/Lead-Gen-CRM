@@ -16,7 +16,7 @@ import { setMonthlyCap } from '../data/userBudget.js';
 import { openTestDb, resetData } from '../data/testDb.js';
 import { dismissalFeedback } from '../data/views.js';
 import type { Bounds } from '../lib/geo.js';
-import { ErrorReporter } from '../lib/errorReporter.js';
+import { ErrorReporter } from '../runner/errorReporter.js';
 import { listErrors } from '../data/appErrors.js';
 import { signStep } from '../runner/webhooks.js';
 import { testRunner } from '../test/testRunner.js';

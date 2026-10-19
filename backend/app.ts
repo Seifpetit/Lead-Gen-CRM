@@ -7,13 +7,13 @@ import type { Db } from './data/db.js';
 import csrfPlugin from './routes/csrf.js';
 import { ApiError } from './routes/http.js';
 import { registerRoutes } from './routes/index.js';
-import type { ErrorReporter } from './lib/errorReporter.js';
+import type { ErrorReporter } from './runner/errorReporter.js';
 import {
   DEFAULT_DAILY_JUMP,
   DEFAULT_HEALTH_FACTS,
   type DailyJumpConfig,
   type HealthFacts,
-} from './lib/health.js';
+} from './runner/healthView.js';
 import type { Orchestrator } from './runner/orchestrator.js';
 import { Watchdog } from './runner/watchdog.js';
 

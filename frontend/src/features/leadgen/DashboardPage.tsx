@@ -150,7 +150,13 @@ export function DashboardPage() {
           </div>
         </header>
 
-        <LiveStrip runs={activeRuns} />
+        <LiveStrip
+          runs={activeRuns}
+          ended={live.ended}
+          mode={live.mode}
+          unreachable={live.error !== null}
+          onChanged={refresh}
+        />
 
         <LeadsPanel
           regionId={regionId}

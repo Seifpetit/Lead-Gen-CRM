@@ -11,9 +11,9 @@ import {
   classifyProviderFailure,
   healthAfterFailure,
   type ProviderFailure,
-} from './providerFailure.js';
-import { redactSecrets } from './redact.js';
-import type { Reporter } from './sentry.js';
+} from '../lib/providerFailure.js';
+import { redactSecrets } from '../lib/redact.js';
+import type { Reporter } from '../lib/sentry.js';
 
 export interface ErrorContext {
   userId?: UserId | null;

@@ -4,7 +4,7 @@ import type { Db } from '../data/db.js';
 import type { UserId } from '../data/ids.js';
 import { MIGRATIONS } from '../data/migrate.js';
 import { makeUser, openTestDb, resetData } from '../data/testDb.js';
-import { buildChecks, buildHealth, DEFAULT_HEALTH_FACTS } from './health.js';
+import { buildChecks, buildHealth, DEFAULT_HEALTH_FACTS } from './healthView.js';
 
 let db: Db;
 let user: UserId;
