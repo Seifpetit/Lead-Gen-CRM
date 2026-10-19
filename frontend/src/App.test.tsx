@@ -22,14 +22,14 @@ describe('App', () => {
         .getAllByRole('link')
         .map((a) => a.textContent),
     ).toEqual(['Lead Gen', 'CRM']);
-    expect(screen.getByText('seif@example.test')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: 'Dashboard', level: 1 })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /seif@example.test/ }));
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument();
   });
 
-  it('shows the dashboard cards and previous runs', async () => {
+  it('shows the leads, the two charts and previous runs', async () => {
     renderApp(fakeServer(signedIn), '/leadgen');
-    for (const name of ['Create run (0/2)', 'Results', 'Runs']) {
+    for (const name of ['Recent leads', 'Leads per day', 'Leads by sector', 'Runs']) {
       expect(await screen.findByRole('region', { name })).toBeInTheDocument();
     }
   });
@@ -44,6 +44,7 @@ describe('App', () => {
   it('signs out through the API and returns to the sign-in screen', async () => {
     const server = fakeServer({ ...signedIn, 'POST /api/auth/logout': { status: 204 } });
     renderApp(server, '/leadgen');
+    await userEvent.click(await screen.findByRole('button', { name: /seif@example.test/ }));
     await userEvent.click(await screen.findByRole('button', { name: 'Sign out' }));
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
     expect(server.to('POST /api/auth/logout')).toHaveLength(1);

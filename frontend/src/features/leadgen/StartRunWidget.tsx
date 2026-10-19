@@ -43,7 +43,7 @@ export function StartRunWidget({
   onStarted,
   prefill,
 }: {
-  onStarted: () => void;
+  onStarted: (run: RunSummary) => void;
   /** Set by the coverage widgets; each new object (a fresh click) is applied once. */
   prefill?: (StartPrefill & { nonce: number }) | null;
 }) {
@@ -141,7 +141,7 @@ export function StartRunWidget({
       });
       setStarted(run);
       setConfirming(false);
-      onStarted();
+      onStarted(run);
       preview.reload();
     } catch (err) {
       setStartError(err);

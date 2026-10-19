@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router';
 import { App } from '../App.js';
 import { ApiProvider } from '../api/context.js';
+import { ToastProvider } from '../components/shared/Toast.js';
 import { I18nProvider } from '../i18n/index.js';
 import type { FakeServer } from './fakeServer.js';
 
@@ -11,7 +12,9 @@ export function renderWith(ui: ReactElement, server: FakeServer, route = '/') {
   return render(
     <I18nProvider>
       <ApiProvider api={server.api}>
-        <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
+        <ToastProvider>
+          <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
+        </ToastProvider>
       </ApiProvider>
     </I18nProvider>,
   );

@@ -1,99 +1,182 @@
-import type { RunFunnel, RunSummary } from '@lead-gen-crm/shared';
-import { useCallback, useState } from 'react';
+import type { Coverage, Lead, RunSummary } from '@lead-gen-crm/shared';
+import { Plus } from 'lucide-react';
+import { useCallback, useId, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useApi } from '../../api/context.js';
 import { LogList } from '../../components/shared/LogList.js';
 import { ProgressTrack } from '../../components/shared/ProgressTrack.js';
 import { SectionTitle } from '../../components/shared/SectionTitle.js';
-import { StatTile } from '../../components/shared/StatTile.js';
-import { EmptyState, ErrorState, LoadingState } from '../../components/states.js';
-import { Card } from '../../components/shared/Card.js';
+import { useToast } from '../../components/shared/Toast.js';
+import { ErrorState, LoadingState } from '../../components/states.js';
 import { useT } from '../../i18n/index.js';
-import { formatNumber, formatUsd } from '../../lib/format.js';
+import { formatUsd } from '../../lib/format.js';
 import { useResource } from '../../lib/useResource.js';
+import { CreateRunModal } from './CreateRunModal.js';
+import { DashboardCharts } from './DashboardCharts.js';
+import { LeadsCard } from './LeadsCard.js';
 import { RightNow } from './RightNow.js';
+import { RunsWidget } from './RunsWidget.js';
 import { StepLine } from './StepLine.js';
 import { CHECKPOINTS, MAX_ACTIVE_RUNS, StatusBadge } from './runParts.js';
-import { RunsWidget } from './RunsWidget.js';
-import { StartRunWidget } from './StartRunWidget.js';
+import { useErrorToast } from './useErrorToast.js';
+import { useLeadMoves } from './useLeadMoves.js';
 
-/** Where the cost checkpoints sit along the bar, as shares of the spend cap. */
 const ACTIVE_POLL_MS = 5_000;
+const LEAD_PAGE = 100;
+/** Pages of leads read at most: enough for the charts to be true without reading without end. */
+const LEAD_PAGES = 10;
 
-const total = (runs: RunSummary[], key: keyof RunFunnel) =>
-  runs.reduce((sum, r) => sum + r.funnel[key], 0);
+interface LoadedLeads {
+  items: Lead[];
+  total: number;
+}
 
 export function DashboardPage() {
   const t = useT();
   const api = useApi();
+  const toast = useToast();
+  const regionSelect = useId();
   // Starting a run changes what every card shows; bumping this makes them reload.
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = useCallback(() => setRefreshKey((n) => n + 1), []);
   const [creating, setCreating] = useState(false);
+  const [regionId, setRegionId] = useState('');
 
+  const regions = useResource(() => api.regions.list({ limit: 100 }));
   const active = useResource(() => api.runs.list({ status: ['pending', 'running'], limit: 10 }), {
     pollMs: ACTIVE_POLL_MS,
     deps: [refreshKey],
   });
-  const all = useResource(() => api.runs.list({ limit: 100 }), {
+  const runs = useResource(() => api.runs.list({ limit: 100 }), {
     pollMs: 10_000,
     deps: [refreshKey],
   });
+  const coverage = useResource<Coverage>(() => api.coverage.get(), { deps: [refreshKey] });
+  const leads = useResource<LoadedLeads>(
+    async () => {
+      const items: Lead[] = [];
+      let total = 0;
+      let offset: number | null = 0;
+      for (let i = 0; i < LEAD_PAGES && offset !== null; i++) {
+        const page = await api.leads.list({
+          limit: LEAD_PAGE,
+          offset,
+          ...(regionId !== '' ? { regionId } : {}),
+        });
+        items.push(...page.items);
+        total = page.total;
+        offset = page.nextOffset;
+      }
+      return { items, total };
+    },
+    { pollMs: 30_000, deps: [regionId, refreshKey] },
+  );
+  useErrorToast(leads.error);
+  useErrorToast(active.error);
+
+  const saved = useCallback(
+    (lead: Lead) =>
+      leads.setData((cur) =>
+        cur ? { ...cur, items: cur.items.map((l) => (l.id === lead.id ? lead : l)) } : cur,
+      ),
+    // `setData` is stable.
+    [leads.setData],
+  );
+  const moves = useLeadMoves({ onSaved: saved });
+  const { show } = moves;
+  const shownLeads = useMemo(() => show(leads.data?.items ?? []), [show, leads.data]);
+  // Rounded to the minute so the charts do not redraw on every render.
+  const now = Math.floor(Date.now() / 60_000) * 60_000;
+
+  const runStarted = useMemo(
+    () => new Map((runs.data?.items ?? []).map((r) => [r.id, r.createdAt])),
+    [runs.data],
+  );
+  const sectorNames = useMemo(
+    () => new Map((coverage.data?.sectors ?? []).map((s) => [s.id, s.name])),
+    [coverage.data],
+  );
   const activeRuns = active.data?.items ?? [];
 
-  return (
-    <main id="main" className="page">
-      <SectionTitle level={1}>{t('side.dashboard')}</SectionTitle>
-      <div className="dash-cards">
-        <Card
-          title={t('dash.create.title', { active: activeRuns.length, max: MAX_ACTIVE_RUNS })}
-          className="run-card"
-        >
-          {active.error !== null && !active.data ? (
-            <ErrorState error={active.error} onRetry={active.reload} />
-          ) : !active.data ? (
-            <LoadingState />
-          ) : (
-            <>
-              {activeRuns.length === 0 ? (
-                <EmptyState title={t('dash.noActive')} />
-              ) : (
-                <ul className="active-list">
-                  {activeRuns.map((run) => (
-                    <li key={run.id}>
-                      <Link to={`/leadgen/runs/${run.id}`}>
-                        {t('dash.runActive', { region: run.region })}
-                      </Link>{' '}
-                      <StatusBadge status={run.status} />
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <button
-                type="button"
-                className="create-run"
-                aria-expanded={creating}
-                disabled={activeRuns.length >= MAX_ACTIVE_RUNS}
-                onClick={() => setCreating(true)}
-              >
-                {t('dash.create')}
-              </button>
-            </>
-          )}
-        </Card>
-        <ResultsCard runs={all.data?.items ?? []} loading={all.loading && !all.data} />
-      </div>
+  function created(run: RunSummary) {
+    setCreating(false);
+    toast.show(t('create.toast', { region: run.region }));
+    refresh();
+  }
 
-      {creating && (
-        <div className="start-panel">
-          <div className="start-panel-bar">
-            <button type="button" className="button" onClick={() => setCreating(false)}>
-              {t('dash.create.close')}
-            </button>
-          </div>
-          <StartRunWidget onStarted={refresh} />
+  return (
+    <main id="main" className="page dash">
+      <header className="dash-top">
+        <SectionTitle level={1}>{t('side.dashboard')}</SectionTitle>
+        <div className="dash-controls">
+          <label htmlFor={regionSelect} className="visually-hidden">
+            {t('dash.region')}
+          </label>
+          <select id={regionSelect} value={regionId} onChange={(e) => setRegionId(e.target.value)}>
+            <option value="">{t('dash.region.all')}</option>
+            {(regions.data?.items ?? []).map((r) => (
+              <option key={r.regionId} value={r.regionId}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="button button-primary button-icon-text"
+            disabled={activeRuns.length >= MAX_ACTIVE_RUNS}
+            title={
+              activeRuns.length >= MAX_ACTIVE_RUNS
+                ? t('dash.create.full', { max: MAX_ACTIVE_RUNS })
+                : t('dash.create')
+            }
+            onClick={() => setCreating(true)}
+          >
+            <Plus size={14} aria-hidden="true" />
+            {t('dash.create')}
+          </button>
         </div>
+      </header>
+
+      {activeRuns.length > 0 && (
+        <p className="active-banner" role="status">
+          {activeRuns.map((run) => (
+            <span key={run.id}>
+              <Link to={`/leadgen/runs/${run.id}`}>
+                {t('dash.runActive', { region: run.region })}
+              </Link>{' '}
+              <StatusBadge status={run.status} />
+            </span>
+          ))}
+        </p>
       )}
+
+      <div className="dash-grid">
+        <div className="dash-wide">
+          {leads.loading && !leads.data ? (
+            <LoadingState />
+          ) : leads.error !== null && !leads.data ? (
+            <ErrorState error={leads.error} onRetry={leads.reload} />
+          ) : (
+            <LeadsCard
+              leads={shownLeads}
+              total={leads.data?.total ?? 0}
+              runStarted={runStarted}
+              sectorNames={sectorNames}
+              onMove={(chosen, stage) => void moves.moveMany(chosen, stage)}
+              onCreateRun={() => setCreating(true)}
+            />
+          )}
+        </div>
+        <div className="dash-wide">
+          <DashboardCharts
+            leads={shownLeads}
+            runStarted={runStarted}
+            coverage={coverage.data}
+            regionId={regionId}
+            now={now}
+          />
+        </div>
+      </div>
 
       {activeRuns.map((run) => (
         <ActiveRun key={run.id} run={run} refreshKey={refreshKey} />
@@ -102,36 +185,15 @@ export function DashboardPage() {
       <div className="dashboard single">
         <RunsWidget refreshKey={refreshKey} />
       </div>
-    </main>
-  );
-}
 
-function ResultsCard({ runs, loading }: { runs: RunSummary[]; loading: boolean }) {
-  const t = useT();
-  return (
-    <Card title={t('dash.results.title')} className="results-card">
-      {loading ? (
-        <LoadingState />
-      ) : (
-        <dl className="funnel results-counts">
-          <StatTile
-            label={t('dash.results.companies')}
-            value={formatNumber(total(runs, 'discovered'))}
-          />
-          <StatTile
-            label={t('dash.results.people')}
-            value={formatNumber(total(runs, 'peopleFound'))}
-          />
-          <StatTile
-            label={t('dash.results.channels')}
-            value={formatNumber(total(runs, 'enriched'))}
-          />
-        </dl>
+      {creating && (
+        <CreateRunModal
+          regionId={regionId}
+          onCreated={created}
+          onCancel={() => setCreating(false)}
+        />
       )}
-      <Link className="button" to="/crm">
-        {t('dash.results.open')}
-      </Link>
-    </Card>
+    </main>
   );
 }
 

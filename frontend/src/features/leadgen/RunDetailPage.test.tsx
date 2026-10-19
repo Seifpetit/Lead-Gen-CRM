@@ -144,6 +144,6 @@ describe('Run detail', () => {
   it('says so when the run does not exist', async () => {
     show({ 'GET /api/runs/run-1': { status: 404, body: { error: 'not_found' } } });
     expect(await screen.findByRole('alert')).toHaveTextContent('no longer exists');
-    expect(screen.getByRole('link', { name: 'Back to Lead Gen' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Back' })).toBeInTheDocument();
   });
 });

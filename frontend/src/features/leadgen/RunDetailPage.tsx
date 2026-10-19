@@ -1,9 +1,10 @@
 import type { Lead, RunDetail } from '@lead-gen-crm/shared';
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import { useApi } from '../../api/context.js';
 import { ApiRequestError } from '../../api/client.js';
 import { Modal } from '../../components/Modal.js';
+import { Breadcrumb } from '../../components/shared/Breadcrumb.js';
 import { EmptyState, ErrorState, LoadingState } from '../../components/states.js';
 import { useT } from '../../i18n/index.js';
 import { describeError } from '../../lib/errors.js';
@@ -53,9 +54,11 @@ export function RunDetailPage() {
     const missing = run.error instanceof ApiRequestError && run.error.status === 404;
     return (
       <main id="main" className="page">
-        <p>
-          <Link to="/leadgen">{t('run.back')}</Link>
-        </p>
+        <Breadcrumb
+          label={t('crumb.label')}
+          backLabel={t('common.back')}
+          crumbs={[{ label: t('side.dashboard'), to: '/leadgen' }, { label: t('crumb.run') }]}
+        />
         <ErrorState error={run.error} {...(missing ? {} : { onRetry: run.reload })} />
       </main>
     );
@@ -99,9 +102,14 @@ export function RunDetailPage() {
   const active = isActive(data.status);
   return (
     <main id="main" className="page">
-      <p>
-        <Link to="/leadgen">{t('run.back')}</Link>
-      </p>
+      <Breadcrumb
+        label={t('crumb.label')}
+        backLabel={t('common.back')}
+        crumbs={[
+          { label: t('side.dashboard'), to: '/leadgen' },
+          { label: t('run.title', { region: data.region }) },
+        ]}
+      />
       <header className="run-head">
         <h1>{t('run.title', { region: data.region })}</h1>
         <StatusBadge status={data.status} />
