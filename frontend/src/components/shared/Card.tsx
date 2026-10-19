@@ -9,6 +9,7 @@ export function Card({
   actions,
   className = '',
   anchor,
+  tone,
   children,
 }: {
   title: string;
@@ -16,6 +17,8 @@ export function Card({
   className?: string;
   /** Element id, so other parts of the page can scroll here. */
   anchor?: string;
+  /** Colour of the header band. Left out, the stylesheet picks one by the kind of card. */
+  tone?: 'yellow' | 'purple' | 'teal' | 'coral' | 'orange' | 'sky' | 'blush';
   children: ReactNode;
 }) {
   const id = useId();
@@ -24,6 +27,7 @@ export function Card({
       className={`widget ${className}`.trim()}
       aria-labelledby={id}
       {...(anchor ? { id: anchor } : {})}
+      {...(tone ? { 'data-tone': tone } : {})}
     >
       <header className="widget-header">
         <h2 id={id}>{title}</h2>

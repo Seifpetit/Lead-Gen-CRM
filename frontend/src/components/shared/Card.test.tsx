@@ -20,4 +20,13 @@ describe('Card', () => {
     const { container } = render(<Card title="Plain">x</Card>);
     expect(container.querySelector('.widget-actions')).toBeNull();
   });
+
+  it('marks the colour of its header band when given a tone', () => {
+    render(
+      <Card title="Costs" tone="orange">
+        x
+      </Card>,
+    );
+    expect(screen.getByRole('region', { name: 'Costs' })).toHaveAttribute('data-tone', 'orange');
+  });
 });
