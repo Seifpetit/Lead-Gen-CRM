@@ -35,6 +35,10 @@ export interface LinkedinItem {
   name?: string;
   headline?: string;
   position?: string;
+  /** Profile photo, as an address or an object holding one; field names vary by Actor. */
+  photo?: string | { url?: string };
+  pictureUrl?: string;
+  profilePicture?: string | { url?: string };
   location?: string | { linkedinText?: string; text?: string };
   currentPosition?: {
     companyName?: string;
@@ -53,6 +57,15 @@ export interface LinkedinItem {
     duration?: string;
   }[];
   scrapedAt?: string;
+}
+
+/** The photo address if the item has one: a string or an object with `url`, http(s) only. */
+function photoOf(item: LinkedinItem): string | null {
+  for (const v of [item.photo, item.pictureUrl, item.profilePicture]) {
+    const url = httpUrl(typeof v === 'string' ? v : v?.url);
+    if (url) return url;
+  }
+  return null;
 }
 
 const PRESENT = /^(present|now|current|aujourd.?hui|actuel(le)?|en cours)$/i;
@@ -154,6 +167,7 @@ export function mapPeople(
       linkedinUrl: fact(url)!,
       linkedinPublicId: publicId,
       location: fact(location),
+      photoUrl: photoOf(item),
       positions,
     });
   }

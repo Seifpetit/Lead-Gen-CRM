@@ -220,8 +220,12 @@ const CASES: RouteCase[] = [
     url: (i) => `/api/leads/${i.lead}/objection`,
     body: { reason: 'asked not to be contacted' },
   },
-  { method: 'GET', pattern: '/api/crm/companies', url: () => '/api/crm/companies' },
-  { method: 'GET', pattern: '/api/crm/people', url: () => '/api/crm/people' },
+  { method: 'GET', pattern: '/api/crm/:pipeline', url: () => '/api/crm/companies' },
+  {
+    method: 'GET',
+    pattern: '/api/crm/:pipeline/cards',
+    url: () => '/api/crm/companies/cards',
+  },
   {
     method: 'POST',
     pattern: '/api/crm/cards/:id/move',
@@ -266,7 +270,7 @@ const PUBLIC = [
 async function ids(): Promise<Ids> {
   const leads = (await call(alice, 'GET', '/api/leads')).json().items;
   const cell = (await listCells(db, 'sfax', { leafOnly: true }))[0]!;
-  const card = (await call(alice, 'GET', '/api/crm/companies')).json().cards[0].id;
+  const card = (await call(alice, 'GET', '/api/crm/companies')).json().stages[0].cards[0].id;
   return { run: seededRun, lead: leads[0].id, card, region: 'sfax', cell: cell.id };
 }
 
@@ -335,6 +339,7 @@ describe('every route', () => {
     const withId = CASES.filter((c) => c.pattern.includes(':'));
     for (const c of withId) {
       if (c.pattern.startsWith('/api/regions/')) continue; // geometry is shared; see regions
+      if (c.pattern.startsWith('/api/crm/:pipeline')) continue; // a board name, not an ID
       const res = await call(bob, c.method, c.url(i), c.body);
       expect(res.statusCode, `${c.method} ${c.pattern}`).toBe(404);
       expect(res.json()).toEqual({ error: 'not_found', message: 'not_found' });
@@ -1488,6 +1493,7 @@ describe('POST /api/webhooks/apify', () => {
 });
 
 describe('crm boards', () => {
+  const totalOf = (s: { total: number }) => s.total;
   const post = (who: Who, url: string, payload?: unknown) => call(who, 'POST', url, payload ?? {});
 
   it('puts every company with a lead on the Companies board, in Found', async () => {
@@ -1499,11 +1505,17 @@ describe('crm boards', () => {
       'noise',
     ]);
     expect(board.stages.at(-1)).toMatchObject({ name: 'Noise', collapsedByDefault: true });
-    expect(board.cards.length).toBeGreaterThan(0);
-    for (const c of board.cards)
+    const found = board.stages[0];
+    expect(found.total).toBeGreaterThan(0);
+    expect(found.cards.length).toBe(found.total);
+    for (const c of found.cards)
       expect(c).toMatchObject({ pipeline: 'companies', stage: 'found', person: null });
-    expect((await call(alice, 'GET', '/api/crm/people')).json()).toMatchObject({ cards: [] });
-    expect((await call(bob, 'GET', '/api/crm/companies')).json().cards).toEqual([]);
+    expect((await call(alice, 'GET', '/api/crm/people')).json().stages.map(totalOf)).toEqual([
+      0, 0, 0, 0, 0, 0, 0,
+    ]);
+    expect((await call(bob, 'GET', '/api/crm/companies')).json().stages.map(totalOf)).toEqual([
+      0, 0, 0, 0,
+    ]);
   });
 
   it('needs a decision-maker to reach Decision-maker identified, then creates the person card', async () => {
@@ -1539,7 +1551,7 @@ describe('crm boards', () => {
       person: { fullName: 'Amel Ben Salah', email: 'amel@example.tn' },
     });
     const people = (await call(alice, 'GET', '/api/crm/people')).json();
-    expect(people.cards.map((c: { id: string }) => c.id)).toEqual([person.id]);
+    expect(people.stages[0].cards.map((c: { id: string }) => c.id)).toEqual([person.id]);
   });
 
   it('moves a person through the board; Opted out needs a reason, suppresses and is final', async () => {
@@ -1575,6 +1587,39 @@ describe('crm boards', () => {
     });
     expect(again.statusCode).toBe(409);
     expect(again.json().error).toBe('suppressed');
+  });
+
+  it('pages a column, filters and sorts on the server, and refuses bad queries', async () => {
+    const first = (await call(alice, 'GET', '/api/crm/companies?limit=1')).json();
+    expect(first.stages[0].cards).toHaveLength(1);
+    const unfiltered = first.stages[0].total;
+    const none = (await call(alice, 'GET', '/api/crm/companies?q=zzz-nothing')).json();
+    expect(none.stages.map(totalOf)).toEqual([0, 0, 0, 0]);
+    const page = (
+      await call(alice, 'GET', '/api/crm/companies/cards?stage=found&sort=name&dir=desc')
+    ).json();
+    expect(page).toMatchObject({ total: unfiltered, nextCursor: null });
+    const tiny = (await call(alice, 'GET', '/api/crm/companies/cards?stage=found&limit=1')).json();
+    if (unfiltered > 1) {
+      const next = (
+        await call(
+          alice,
+          'GET',
+          `/api/crm/companies/cards?stage=found&limit=1&cursor=${tiny.nextCursor}`,
+        )
+      ).json();
+      expect(next.cards[0].id).not.toBe(tiny.cards[0].id);
+    }
+    for (const bad of [
+      '/api/crm/nothing',
+      '/api/crm/companies?sort=oldest',
+      '/api/crm/companies?minScore=abc',
+      '/api/crm/companies?limit=500',
+      '/api/crm/companies/cards?stage=sold',
+      '/api/crm/companies/cards?cursor=not-a-cursor',
+    ]) {
+      expect((await call(alice, 'GET', bad)).statusCode, bad).toBe(400);
+    }
   });
 
   it('removes a card to Noise with days left, and restores it', async () => {

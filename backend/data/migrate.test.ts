@@ -66,7 +66,7 @@ describe('migrations', () => {
   });
 
   it('moves existing leads onto the Companies board in Found, one card per company', async () => {
-    await migrateDown(db, 1); // back to 008, before the boards
+    await migrateDown(db, 2); // back to 008, before the boards
     expect(await tables()).not.toContain('crm_cards');
     await seedReference(db, {});
     const user = await makeUser(db);
@@ -103,7 +103,7 @@ describe('migrations', () => {
     await lead(user, b, null, 'opted_out');
     await lead(other, c, null, 'confirmed');
 
-    expect(await migrateUp(db)).toEqual(['009_crm_boards']);
+    expect(await migrateUp(db)).toEqual(['009_crm_boards', '010_board_images']);
     const { rows } = await db.query<{
       user_id: string;
       company_id: string;

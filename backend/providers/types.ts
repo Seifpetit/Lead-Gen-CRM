@@ -125,6 +125,8 @@ export interface DiscoveredPlace {
   businessStatus: string | null;
   reviewsCount: number | null;
   mapsUrl: string;
+  /** The place's main photo address, when the provider returns one (Apify Maps scraper). */
+  imageUrl?: string | null;
 }
 
 export interface CompanyDiscovery extends StageProvider<DiscoveredPlace> {
@@ -157,6 +159,8 @@ export interface FoundPerson {
   linkedinUrl: Sourced<string>;
   linkedinPublicId: string | null;
   location: Sourced<string> | null;
+  /** Profile photo address, only when the provider returned one. */
+  photoUrl?: string | null;
   /** Experience entries as listed; short profiles may only include the current ones. */
   positions: Position[];
 }
