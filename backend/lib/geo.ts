@@ -158,6 +158,74 @@ export function boundsIntersectOutline(b: Bounds, outline: Outline): boolean {
   });
 }
 
+/** Signed area of a ring (shoelace), positive when counter-clockwise. Square degrees. */
+function ringArea(ring: Position[]): number {
+  let sum = 0;
+  for (let i = 1; i < ring.length; i++) {
+    sum += ring[i - 1]![0] * ring[i]![1] - ring[i]![0] * ring[i - 1]![1];
+  }
+  return sum / 2;
+}
+
+/** The ring cut to the rectangle (Sutherland-Hodgman: one edge of the rectangle at a time). */
+function clipRingToBounds(ring: Position[], b: Bounds): Position[] {
+  type Edge = { inside: (p: Position) => boolean; cut: (p: Position, q: Position) => Position };
+  const atLng =
+    (x: number) =>
+    (p: Position, q: Position): Position => {
+      const t = (x - p[0]) / (q[0] - p[0]);
+      return [x, p[1] + t * (q[1] - p[1])];
+    };
+  const atLat =
+    (y: number) =>
+    (p: Position, q: Position): Position => {
+      const t = (y - p[1]) / (q[1] - p[1]);
+      return [p[0] + t * (q[0] - p[0]), y];
+    };
+  const edges: Edge[] = [
+    { inside: (p) => p[0] >= b.west, cut: atLng(b.west) },
+    { inside: (p) => p[0] <= b.east, cut: atLng(b.east) },
+    { inside: (p) => p[1] >= b.south, cut: atLat(b.south) },
+    { inside: (p) => p[1] <= b.north, cut: atLat(b.north) },
+  ];
+  let poly = ring.slice(0, -1);
+  for (const edge of edges) {
+    const next: Position[] = [];
+    for (let i = 0; i < poly.length; i++) {
+      const cur = poly[i]!;
+      const prev = poly[(i + poly.length - 1) % poly.length]!;
+      if (edge.inside(cur)) {
+        if (!edge.inside(prev)) next.push(edge.cut(prev, cur));
+        next.push(cur);
+      } else if (edge.inside(prev)) {
+        next.push(edge.cut(prev, cur));
+      }
+    }
+    poly = next;
+    if (poly.length === 0) return [];
+  }
+  return [...poly, poly[0]!];
+}
+
+/**
+ * The share (0 to 1) of a rectangle's area that lies inside the outline, holes excluded. Areas
+ * are taken in degrees, which is faithful enough inside one cell (a few tens of km across).
+ */
+export function cellOverlap(b: Bounds, outline: Outline): number {
+  const cell = (b.east - b.west) * (b.north - b.south);
+  if (!(cell > 0)) return 0;
+  let inside = 0;
+  for (const [shell, ...holes] of polygonsOf(outline)) {
+    if (!shell) continue;
+    inside += Math.abs(ringArea(clipRingToBounds(shell, b)));
+    for (const hole of holes) inside -= Math.abs(ringArea(clipRingToBounds(hole, b)));
+  }
+  return Math.min(1, Math.max(0, inside / cell));
+}
+
+/** A cell with less of its area inside the region than this is not searched. */
+export const MIN_CELL_OVERLAP = 0.1;
+
 /** Smallest rectangle around the outline. */
 export function outlineBounds(outline: Outline): Bounds {
   let south = Infinity;

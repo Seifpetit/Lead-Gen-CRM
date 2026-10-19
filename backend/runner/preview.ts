@@ -15,13 +15,19 @@ import { getRegionBounds, getRegionOutline } from '../data/regions.js';
 import { countActiveRuns, countRuns } from '../data/runs.js';
 import { listCellStats, listExhaustedQueries, type CellStats } from '../data/saturation.js';
 import { getMonthlyBudget } from '../data/userBudget.js';
-import { splitBounds } from '../lib/geo.js';
+import { cellOverlap, splitBounds } from '../lib/geo.js';
 import type { CompanyDiscovery, EmailFinder, PeopleFinder } from '../providers/types.js';
 import { buildQueryGrid, gridShape } from '../stages/queryGrid.js';
 import type { RunnerConfig } from './config.js';
 import { sumUsd } from './costs.js';
 import { titleKeywords } from './keywords.js';
-import { gridSectorIds, PLANNED_QUERIES_SHOWN, plannedQuery, sectorList } from './plan.js';
+import {
+  gridSectorIds,
+  PLANNED_QUERIES_SHOWN,
+  plannedQuery,
+  sectorList,
+  usableCells,
+} from './plan.js';
 import { planRunCells } from './scheduler.js';
 
 // A run's estimated volume and cost, computed without starting or spending anything: it
@@ -95,6 +101,7 @@ export async function previewRun(
 
   // Cells the run would claim.
   const bounds = await getRegionBounds(db, input.regionId);
+  const outline = await getRegionOutline(db, input.regionId);
   const stored = await listCells(db, input.regionId, { leafOnly: true });
   let stats: CellStats[];
   if (stored.length > 0) {
@@ -102,7 +109,6 @@ export async function previewRun(
   } else if (bounds) {
     // Not built yet: starting the run would build this grid. Nothing is written here.
     const { rows, cols } = gridShape(bounds, config.cellsPerRun * 4);
-    const outline = await getRegionOutline(db, input.regionId);
     stats = cellsInOutline(splitBounds(bounds, rows, cols), outline).map((c) => ({
       regionCellId: c.key,
       cellKey: c.key,
@@ -130,7 +136,10 @@ export async function previewRun(
   }
   // The run's own start counts as one more run for the explore rotation.
   const explore = ((await countRuns(db, userId)) + 1) % config.exploreEvery === 0;
-  const plan = planRunCells(stats, config, { mode, now, explore });
+  // The same rule the run applies: cells with real area inside the region, most inside first.
+  const usable = usableCells(stats, outline);
+  stats = usable.cells;
+  const plan = planRunCells(stats, config, { mode, now, explore, overlap: usable.overlap });
   if (hadCells && plan.cellIds.length === 0) {
     blockers.push({
       code: 'no_free_cells',
@@ -158,7 +167,11 @@ export async function previewRun(
     const grid = buildQueryGrid({
       regionId: input.regionId,
       bounds,
-      cells: chosen.map((c) => ({ key: c.cellKey, bounds: c.bounds })),
+      cells: chosen.map((c) => ({
+        key: c.cellKey,
+        bounds: c.bounds,
+        ...(outline ? { overlap: cellOverlap(c.bounds, outline) } : {}),
+      })),
       ...(sectorIds ? { sectorIds } : {}),
       ...(input.customWordings ? { customWordings: input.customWordings } : {}),
       exhaustedWordings: exhausted.map((e) => ({

@@ -6,6 +6,7 @@ import type {
   RunPreviewInput,
   RunStage,
   StartRunInput,
+  StepSummary,
 } from '@lead-gen-crm/shared';
 import { APIFY_MIN_MAX_CHARGE_USD } from '../config/pricing.js';
 import { recordApifyEvent, type ApifyState } from '../data/apifyEvents.js';
@@ -35,7 +36,7 @@ import { createRegionGrid, listCells } from '../data/regionCells.js';
 import { addCellCoverage } from '../data/regionCoverage.js';
 import { getRegionBounds, getRegionOutline } from '../data/regions.js';
 import { FREIGHT_SECTORS } from '../config/sectors.js';
-import { placeInOutline } from '../lib/geo.js';
+import { cellOverlap, placeInOutline } from '../lib/geo.js';
 import { liveMessages, type SearchFacts } from '../lib/liveMessages.js';
 import { redactSecrets } from '../lib/redact.js';
 import {
@@ -106,7 +107,8 @@ import type { CompanyClassifier, TitleClassifier } from '../stages/classifier.js
 import { matchTitle, type TitleMatch } from '../stages/matchTitle.js';
 import { isReachable, qualify, type Qualification } from '../stages/qualify.js';
 import { buildQueryGrid, gridShape } from '../stages/queryGrid.js';
-import { gridSectorIds } from './plan.js';
+import { GUARD_WINDOW, outsideRegionVerdict } from './guard.js';
+import { gridSectorIds, usableCells } from './plan.js';
 import { applyDismissalFeedback, score } from '../stages/score.js';
 import { verifyCurrentRole, type RoleVerification } from '../stages/verifyCurrentRole.js';
 import { DEFAULT_RUNNER_CONFIG, type RunnerConfig } from './config.js';
@@ -449,6 +451,7 @@ export class Orchestrator {
   private async planRun(userId: UserId, run: Run): Promise<void> {
     const now = new Date();
     const cells = await listCells(this.db, run.region, { leafOnly: true });
+    const outline = await getRegionOutline(this.db, run.region);
     let claimedIds = (await listLiveClaims(this.db, userId))
       .filter((c) => c.runId === run.id)
       .map((c) => c.regionCellId);
@@ -460,7 +463,14 @@ export class Orchestrator {
       }
       // One run in `exploreEvery` goes to the least-searched cells only.
       const explore = (await countRuns(this.db, userId)) % this.config.exploreEvery === 0;
-      const plan = planRunCells(stats, this.config, { mode: run.mode, now, explore });
+      // Only cells with real area inside the region, the most inside first.
+      const usable = usableCells(stats, outline);
+      const plan = planRunCells(usable.cells, this.config, {
+        mode: run.mode,
+        now,
+        explore,
+        overlap: usable.overlap,
+      });
       claimedIds = await claimCells(this.db, userId, run.id, plan.cellIds, this.config.claimTtlMs);
     }
     if (claimedIds.length === 0) {
@@ -474,10 +484,14 @@ export class Orchestrator {
     const grid = buildQueryGrid({
       regionId: run.region,
       bounds: cells[0]!,
-      cells: claimedIds.map((id) => ({
-        key: cellById.get(id)!.cellKey,
-        bounds: cellById.get(id)!,
-      })),
+      cells: claimedIds.map((id) => {
+        const cell = cellById.get(id)!;
+        return {
+          key: cell.cellKey,
+          bounds: cell,
+          ...(outline ? { overlap: cellOverlap(cell, outline) } : {}),
+        };
+      }),
       ...(gridSectorIds(run) ? { sectorIds: gridSectorIds(run)! } : {}),
       customWordings: run.customWordings,
       exhaustedWordings: exhausted.map((e) => ({
@@ -1014,8 +1028,38 @@ export class Orchestrator {
     if (applied) {
       await this.checkpoint(`${step.stage}:applied`);
       await this.sayProgress(userId, run.id, step.stage);
+      if (step.stage === 'discover') await this.guardOutsideRegion(userId, run);
     }
     return applied;
+  }
+
+  /**
+   * Stops a run whose first searches returned almost only places outside the region, before it
+   * pays for more of them. Nothing new starts; searches already out are still collected.
+   */
+  private async guardOutsideRegion(userId: UserId, run: Run): Promise<void> {
+    const { rows } = await this.db.query<{ summary: StepSummary }>(
+      `SELECT summary FROM run_steps
+        WHERE user_id = $1 AND run_id = $2 AND stage = 'discover' AND summary IS NOT NULL
+        ORDER BY finished_at, id LIMIT $3`,
+      [userId, run.id, GUARD_WINDOW],
+    );
+    const verdict = outsideRegionVerdict(rows.map((r) => r.summary));
+    if (!verdict.stop) return;
+    const message = liveMessages.outsideRegion({
+      outside: verdict.outside,
+      total: verdict.returned,
+      region: (await this.searchFacts(run)).region,
+    });
+    const stopped = await updateRun(this.db, userId, run.id, {
+      status: 'cancelled',
+      error: message,
+      onlyFrom: ['pending', 'running'],
+    });
+    if (!stopped) return;
+    await this.say(this.db, userId, run.id, message, 'warn');
+    await this.checkpoint('run:cancelled');
+    await this.advance(userId, run.id);
   }
 
   /** A failed step with nothing to apply still moves its companies on. */
@@ -1095,6 +1139,12 @@ export class Orchestrator {
         !placeInOutline(place.location.lat, place.location.lng, outline)
       ) {
         dropped++;
+        await this.note(
+          tx,
+          userId,
+          step.id,
+          `Dropped "${place.name.value}" (${place.location.lat.toFixed(5)}, ${place.location.lng.toFixed(5)}): outside ${run.region}`,
+        );
         continue;
       }
       const refreshBy =

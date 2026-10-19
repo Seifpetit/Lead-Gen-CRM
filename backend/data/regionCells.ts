@@ -1,4 +1,10 @@
-import { boundsIntersectOutline, splitBounds, type Bounds, type Outline } from '../lib/geo.js';
+import {
+  cellOverlap,
+  MIN_CELL_OVERLAP,
+  splitBounds,
+  type Bounds,
+  type Outline,
+} from '../lib/geo.js';
 import type { Queryable } from './db.js';
 import { getRegionOutline } from './regions.js';
 
@@ -50,12 +56,20 @@ async function insertCells(
   }
 }
 
-/** Keeps only the cells that touch the outline (all of them when there is none). */
+/**
+ * Keeps the cells with at least MIN_CELL_OVERLAP of their area inside the outline, most inside
+ * first (all of them, in order, when there is no outline).
+ */
 export function cellsInOutline<T extends { bounds: Bounds }>(
   cells: readonly T[],
   outline: Outline | null,
 ): T[] {
-  return outline ? cells.filter((c) => boundsIntersectOutline(c.bounds, outline)) : [...cells];
+  if (!outline) return [...cells];
+  return cells
+    .map((cell) => ({ cell, overlap: cellOverlap(cell.bounds, outline) }))
+    .filter((c) => c.overlap >= MIN_CELL_OVERLAP)
+    .sort((a, b) => b.overlap - a.overlap)
+    .map((c) => c.cell);
 }
 
 /**

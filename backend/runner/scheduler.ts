@@ -48,8 +48,15 @@ export interface CellPlan {
 export function planRunCells(
   stats: readonly CellStats[],
   config: Pick<RunnerConfig, 'cellsPerRun' | 'maintenanceIntervalDays'>,
-  opts: { mode: RunMode; now: Date; explore?: boolean },
+  opts: {
+    mode: RunMode;
+    now: Date;
+    explore?: boolean;
+    /** Each cell's share inside the region's outline by cell key; a cell not listed counts as 1. */
+    overlap?: ReadonlyMap<string, number>;
+  },
 ): CellPlan {
+  const inside = (c: CellStats): number => opts.overlap?.get(c.cellKey) ?? 1;
   const free = stats.filter((c) => c.claimedByRunId === null);
   const n = config.cellsPerRun;
   const plan: CellPlan = { cellIds: [], reasons: [] };
@@ -81,6 +88,7 @@ export function planRunCells(
       (a, b) =>
         leadsPerDollar(b) - leadsPerDollar(a) ||
         newPlacesPerQuery(b) - newPlacesPerQuery(a) ||
+        inside(b) - inside(a) ||
         a.cellKey.localeCompare(b.cellKey),
     );
   const explore = open
@@ -88,6 +96,8 @@ export function planRunCells(
     .sort(
       (a, b) =>
         a.queriesRun - b.queriesRun ||
+        // Among equally unexplored cells, the ones most inside the region come first.
+        inside(b) - inside(a) ||
         a.placesFound - b.placesFound ||
         a.cellKey.localeCompare(b.cellKey),
     );

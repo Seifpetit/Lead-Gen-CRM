@@ -38,7 +38,7 @@ describe('checkpoints', () => {
 
   it('shows found, qualified, people, contacts, scored and leads', () => {
     expect(checkpointCounts(funnel)).toEqual({
-      searching: 24,
+      searching: 26, // 24 new places and 2 found again from earlier runs
       checking: 9,
       people: 7,
       contacts: 6,

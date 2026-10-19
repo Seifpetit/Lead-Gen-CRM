@@ -13,7 +13,10 @@ export const CHECKPOINT_IDS = [
 ] as const;
 export type CheckpointId = (typeof CHECKPOINT_IDS)[number];
 
-/** Which count of the run's funnel a checkpoint shows: found, qualified, people, contacts, leads. */
+/**
+ * Which count of the run's funnel a checkpoint shows: found, qualified, people, contacts, leads.
+ * Found is new places plus places already known (see checkpointCounts).
+ */
 export const CHECKPOINT_COUNT: Readonly<Record<CheckpointId, keyof RunFunnel>> = {
   searching: 'discovered',
   checking: 'qualified',
@@ -39,6 +42,8 @@ export const checkpointIndex = (id: CheckpointId): number => CHECKPOINT_IDS.inde
 export function checkpointCounts(funnel: RunFunnel): Record<CheckpointId, number> {
   const out = {} as Record<CheckpointId, number>;
   for (const id of CHECKPOINT_IDS) out[id] = funnel[CHECKPOINT_COUNT[id]];
+  // Places found again (already known from an earlier run) were still found by this one.
+  out.searching += funnel.skipped;
   return out;
 }
 

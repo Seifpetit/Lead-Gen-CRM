@@ -6,6 +6,8 @@ import type { DiscoveryQuery } from '../providers/types.js';
 export interface GridCell {
   key: string;
   bounds: Bounds;
+  /** Share of the cell inside the region's outline; the most inside are searched first. */
+  overlap?: number;
 }
 
 export interface QueryGridInput {
@@ -68,7 +70,8 @@ export function cleanWordings(wordings: readonly string[]): string[] {
 /**
  * Turns one region into many small searches: each French sector wording in each map cell.
  * Deterministic for the same input. Queries are ordered wording by wording across all
- * cells, so a run cut short by its budget still covers the whole region.
+ * cells, and the cells with most of their area inside the region come first, so a run cut
+ * short by its budget covers the real region before its edges.
  */
 export function buildQueryGrid(input: QueryGridInput): QueryGrid {
   const target = input.targetQueries ?? 150;
@@ -106,7 +109,7 @@ export function buildQueryGrid(input: QueryGridInput): QueryGrid {
     const { rows, cols } = gridShape(input.bounds, n);
     cells = splitBounds(input.bounds, rows, cols);
   }
-  cells.sort((a, b) => a.key.localeCompare(b.key));
+  cells.sort((a, b) => (b.overlap ?? 1) - (a.overlap ?? 1) || a.key.localeCompare(b.key));
 
   const exhaustedCells = new Set(input.exhaustedCellKeys ?? []);
   const everywhere = new Set<string>();
