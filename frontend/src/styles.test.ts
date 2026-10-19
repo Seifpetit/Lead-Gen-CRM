@@ -44,6 +44,13 @@ const PAIRS: [string, string][] = [
   ['--ok', '--ok-bg'],
   ['--warning', '--warning-bg'],
   ['--text', '--accent-tint'],
+  // The pastel blocks (card headers, bars, selected tabs) carry the main text colour.
+  ['--text', '--yellow-soft'],
+  ['--text', '--lime'],
+  ['--text', '--mint'],
+  ['--text', '--lavender'],
+  ['--text', '--pink'],
+  ['--text', '--cream'],
 ];
 
 describe('design tokens', () => {
@@ -103,6 +110,17 @@ describe('design tokens', () => {
 
   it('switches off motion for people who ask for less', () => {
     expect(css).toMatch(/prefers-reduced-motion: reduce[\s\S]*transition: none !important/);
+  });
+});
+
+describe('scrollbars', () => {
+  it('are drawn as a black-edged teal thumb on a paper track', () => {
+    expect(css).toMatch(/::-webkit-scrollbar-thumb\s*\{[^}]*border: 2px solid var\(--ink\)/);
+    expect(css).toMatch(/::-webkit-scrollbar-thumb\s*\{[^}]*background: var\(--teal\)/);
+    expect(css).toMatch(/::-webkit-scrollbar-track\s*\{[^}]*background: var\(--paper\)/);
+  });
+  it('give Firefox the same colours without hiding the parts from Chrome', () => {
+    expect(css).toMatch(/@supports not selector\(::-webkit-scrollbar\)[\s\S]*scrollbar-color/);
   });
 });
 

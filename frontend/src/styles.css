@@ -6,6 +6,13 @@
   --black: #000000;
   --white: #ffffff;
   --paper: #f5f0e1;
+  /* Light, loud pastels for card headers, bars and selected states */
+  --yellow-soft: #ffd95a;
+  --lime: #d7f05a;
+  --mint: #a9f2e6;
+  --lavender: #cdb6fa;
+  --pink: #ff8db8;
+  --cream: #fffbd6;
 
   /* Roles: teal = action and status, magenta = danger only, yellow = focus and warnings only */
   --bg: var(--paper);
@@ -83,6 +90,12 @@
     --ok: #00c2cb;
     --ok-bg: #0f2e30;
     --shadow-color: #ededed;
+    --yellow-soft: #3a3410;
+    --lime: #2a3310;
+    --mint: #0f2e30;
+    --lavender: #2a2240;
+    --pink: #3a1a2a;
+    --cream: #1b1b1b;
   }
 }
 
@@ -2528,4 +2541,155 @@ fieldset.segmented legend {
   .button:active:not(:disabled) {
     transform: none;
   }
+}
+
+/* ==========================================================================================
+   Lighter and louder: beige page, pastel card headers and bars, neo-brutalist scrollbars
+   ========================================================================================== */
+/* Cards get a pastel header band; the data below stays on a plain surface */
+.widget {
+  padding: 0;
+  overflow: hidden;
+}
+.widget-header {
+  margin: 0;
+  padding: var(--space-3) var(--space-5);
+  background: var(--yellow-soft);
+  border-bottom: 2px solid var(--ink);
+}
+.widget-header h2 {
+  margin: 0;
+}
+.widget-body {
+  padding: var(--space-4) var(--space-5);
+}
+.chart-row .chart-card:nth-child(1) .widget-header {
+  background: var(--lavender);
+}
+.chart-row .chart-card:nth-child(2) .widget-header {
+  background: var(--mint);
+}
+.widget-medium .widget-header,
+.dashboard .widget .widget-header {
+  background: var(--lime);
+}
+.leads-card .widget-header {
+  background: var(--yellow-soft);
+}
+.info-card .widget-header,
+.run-card .widget-header {
+  background: var(--pink);
+}
+.modal-wide .widget-header {
+  background: var(--cream);
+}
+.modal-wide .widget-body {
+  padding: var(--space-4) 0 0;
+}
+.modal-wide .widget {
+  overflow: visible;
+}
+.modal-wide .widget-header {
+  border: 2px solid var(--ink);
+  border-radius: var(--radius);
+}
+
+/* Louder bars and selected states, still light */
+.topbar {
+  background: var(--yellow-soft);
+}
+.topnav a:hover {
+  background: var(--cream);
+}
+.topnav a[aria-current='page'] {
+  background: var(--surface);
+  box-shadow: none;
+  border: 2px solid var(--ink);
+}
+.tab[aria-selected='true'] {
+  background: var(--yellow-soft);
+  border: 2px solid var(--ink);
+  border-bottom: 2px solid var(--yellow-soft);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.tablist {
+  border-bottom: 2px solid var(--ink);
+}
+.segmented input:checked + span {
+  background: var(--yellow-soft);
+  box-shadow: none;
+}
+.sidebar a[aria-current='page'] {
+  background: var(--mint);
+}
+.avatar {
+  background: var(--lavender);
+}
+.bulk-bar {
+  background: var(--cream);
+}
+.active-banner {
+  background: var(--mint);
+}
+.toast-error,
+.state-error,
+.badge-failed,
+.badge-apify-failed,
+.badge-stage-opted_out,
+.tag-missing {
+  background: var(--pink);
+}
+.suggestion {
+  background: var(--cream);
+}
+@media (prefers-color-scheme: dark) {
+  .toast-error,
+  .state-error,
+  .badge-failed,
+  .badge-apify-failed,
+  .badge-stage-opted_out,
+  .tag-missing {
+    color: var(--text);
+  }
+}
+
+/* Scrollbars: a thick black-edged thumb on a paper track. Chrome, Edge and Safari take the
+   ::-webkit-scrollbar parts; Firefox takes scrollbar-color. (Where scrollbar-color is set,
+   Chrome ignores the parts, so it is given to Firefox only.) */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: auto;
+    scrollbar-color: var(--teal) var(--paper);
+  }
+}
+::-webkit-scrollbar {
+  width: 16px;
+  height: 16px;
+}
+::-webkit-scrollbar-track {
+  background: var(--paper);
+  border-left: 2px solid var(--ink);
+}
+::-webkit-scrollbar:horizontal,
+::-webkit-scrollbar-track:horizontal {
+  border-left: 0;
+}
+::-webkit-scrollbar-track:horizontal {
+  border-top: 2px solid var(--ink);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--teal);
+  border: 2px solid var(--ink);
+  border-radius: var(--radius);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--yellow-soft);
+}
+::-webkit-scrollbar-thumb:active {
+  background: var(--pink);
+}
+::-webkit-scrollbar-corner {
+  background: var(--paper);
+  border-top: 2px solid var(--ink);
+  border-left: 2px solid var(--ink);
 }
