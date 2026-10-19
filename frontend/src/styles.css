@@ -5141,3 +5141,224 @@ a.tile-name:hover {
 .cov-table td .cov-state {
   white-space: nowrap;
 }
+
+/* Start a run: one screen, no scrolling at desktop sizes */
+.modal.modal-start {
+  display: flex;
+  flex-direction: column;
+  width: min(980px, 100%);
+  max-width: none;
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  overflow: hidden;
+}
+.modal-start .modal-header {
+  flex: none;
+  padding: var(--space-2) var(--space-4);
+  background: var(--coral);
+  border-bottom: var(--bw) solid var(--ink);
+}
+.modal-start .modal-header h2 {
+  margin: 0;
+  font-size: var(--fs-h3);
+}
+.modal-start .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-3) var(--space-4) var(--space-2);
+}
+.sr-suggest {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 36px;
+  margin-bottom: var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  background: var(--yellow);
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--radius);
+}
+.sr-suggest-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sr-suggest .button {
+  flex: none;
+}
+.sr-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+.sr-left {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.sr-left .form-field {
+  margin: 0;
+}
+.sr-left .form-field > label {
+  min-height: 0;
+}
+.sr-sectors {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.sr-sectors legend {
+  float: left;
+  padding: 0;
+  font-weight: 700;
+}
+.sr-sectors-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.sr-sectors-links {
+  display: inline-flex;
+  gap: var(--space-3);
+}
+.sr-chips {
+  clear: both;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.sr-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 2px 10px;
+  font: inherit;
+  font-size: var(--fs-caption);
+  color: var(--muted);
+  background: var(--surface);
+  border: 2px solid var(--border-soft);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+.sr-chip:hover {
+  border-color: var(--ink);
+}
+.sr-chip[aria-pressed='true'] {
+  color: var(--ink);
+  font-weight: 700;
+  border-color: var(--ink);
+}
+.sr-cap-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.sr-cap-row input {
+  width: 8em;
+}
+.sr-right {
+  min-width: 0;
+}
+.sr-estimate .sr-figures,
+.sr-estimate .sr-room {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+}
+.sr-estimate dl > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.sr-estimate dt {
+  color: var(--muted);
+}
+.sr-estimate dd {
+  margin: 0;
+  font-weight: 700;
+}
+.sr-big {
+  font-size: var(--fs-h3);
+}
+.sr-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  color: var(--danger-text);
+  background: var(--danger-bg);
+  border: 2px solid var(--danger-text);
+  border-radius: var(--radius);
+  font-weight: 700;
+}
+.sr-note {
+  margin: 0;
+  font-size: var(--fs-caption);
+}
+.sr-advanced {
+  margin-top: var(--space-3);
+}
+.sr-advanced > summary {
+  font-weight: 700;
+  cursor: pointer;
+}
+.sr-advanced-body {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+.sr-advanced textarea {
+  width: 100%;
+  min-height: 4.5em;
+}
+.sr-advanced .is-stale {
+  opacity: 0.6;
+}
+.modal-start .modal-footer.sr-footer {
+  flex: none;
+  align-items: center;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--cream-page);
+  border-top: var(--bw) solid var(--ink);
+}
+.sr-reason {
+  flex: 1 1 14em;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-caption);
+}
+.sr-reason[role='alert'] {
+  color: var(--danger-text);
+  font-weight: 700;
+}
+.sr-footer .button[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+@media (max-width: 800px) {
+  .modal.modal-start {
+    max-height: 100vh;
+  }
+  .sr-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sr-suggest {
+    flex-wrap: wrap;
+  }
+  .sr-suggest-text {
+    white-space: normal;
+  }
+}

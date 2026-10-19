@@ -165,13 +165,21 @@ describe('Coverage page', () => {
     const { server, user } = setup();
     await user.click(await screen.findByRole('button', { name: 'Sfax, Textile, Partial' }));
     await user.click(screen.getByRole('button', { name: 'Plan a run here' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Create run' });
+    const dialog = await screen.findByRole('dialog', { name: 'Start a run' });
     await waitFor(() => expect(within(dialog).getByLabelText('Region')).toHaveValue('sfax'));
     await waitFor(() =>
       expect(server.to('POST /api/runs/preview').at(-1)!.body).toMatchObject({
         regionId: 'sfax',
         sectorIds: ['textile'],
       }),
+    );
+    expect(within(dialog).getByRole('button', { name: 'Textile' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(within(dialog).getByRole('button', { name: 'Agri-food' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
     );
   });
 
@@ -210,7 +218,7 @@ describe('Coverage page', () => {
       await user.click(
         await screen.findByRole('button', { name: 'Plan a run in Sfax for Agri-food' }),
       );
-      await screen.findByRole('dialog', { name: 'Create run' });
+      await screen.findByRole('dialog', { name: 'Start a run' });
       await waitFor(() =>
         expect(server.to('POST /api/runs/preview').at(-1)!.body).toMatchObject({
           regionId: 'sfax',

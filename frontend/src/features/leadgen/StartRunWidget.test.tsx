@@ -1,14 +1,53 @@
+import type { Coverage } from '@lead-gen-crm/shared';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { dashboardRoutes, page, preview, region, run } from '../../test/fixtures.js';
 import { fakeServer } from '../../test/fakeServer.js';
 import { renderWith } from '../../test/render.js';
 import { parseWordings, StartRunWidget } from './StartRunWidget.js';
 
+const entry = (sectorId: string, over = {}) => ({
+  regionId: 'sfax',
+  sectorId,
+  queriesRun: 10,
+  newPlaces: 40,
+  leads: 5,
+  spendUsd: 2,
+  costPerLeadUsd: 0.4,
+  lastRunAt: '2026-10-17T10:00:00.000Z',
+  state: 'yielding' as const,
+  ...over,
+});
+
+const startCoverage: Coverage = {
+  regions: [
+    { regionId: 'sfax', name: 'Sfax' },
+    { regionId: 'tunis', name: 'Tunis' },
+  ],
+  sectors: [
+    { id: 'road-freight', name: 'Road freight' },
+    { id: 'import-export', name: 'Import and export' },
+    { id: 'textile', name: 'Textile' },
+  ],
+  entries: [
+    entry('road-freight'),
+    entry('import-export', { newPlaces: 20 }),
+    entry('textile', { state: 'saturated', newPlaces: 90 }),
+  ],
+};
+
+const regions = [
+  region(),
+  region({ regionId: 'tunis', name: 'Tunis', coverage: null, runs: 0, leads: 0 }),
+  region({ regionId: 'gabes', name: 'Gabès', hasBounds: false, coverage: null, runs: 0, leads: 0 }),
+];
+
 function setup(extra = {}) {
   const server = fakeServer({
     ...dashboardRoutes(),
+    'GET /api/coverage': startCoverage,
+    'GET /api/regions': page(regions),
     'POST /api/runs/preview': { body: preview() },
     ...extra,
   });
@@ -17,151 +56,46 @@ function setup(extra = {}) {
   return { server, started: () => started, user: userEvent.setup() };
 }
 
-async function pickRegion(user: ReturnType<typeof userEvent.setup>, name = 'Sfax') {
-  await screen.findByRole('option', { name });
-  await user.selectOptions(screen.getByLabelText('Region'), name);
+type User = ReturnType<typeof userEvent.setup>;
+
+async function pickRegion(user: User, name = 'Sfax') {
+  await screen.findByRole('option', { name: new RegExp(`^${name}`) });
+  await user.selectOptions(
+    screen.getByLabelText('Region'),
+    screen.getByRole('option', { name: new RegExp(`^${name}`) }),
+  );
 }
 
-describe('Start a run', () => {
+const chip = (name: string) => screen.getByRole('button', { name });
+const startButton = () => screen.getByRole('button', { name: /^Start run/ });
+const cap = () => screen.getByLabelText('Spend cap (USD)');
+
+beforeEach(() => window.localStorage.clear());
+
+describe('Start a run: region', () => {
+  it('shows each region with its leads and how far it is covered, and disables one with no map area', async () => {
+    setup();
+    expect(
+      await screen.findByRole('option', { name: 'Sfax, 7 leads, partly covered' }),
+    ).toBeEnabled();
+    expect(screen.getByRole('option', { name: 'Tunis, 0 leads, not searched yet' })).toBeEnabled();
+    expect(
+      screen.getByRole('option', { name: 'Gabès, no map area set, cannot be searched' }),
+    ).toBeDisabled();
+  });
+
   it('shows the suggested region with the scheduler’s reason, and can use it', async () => {
     const { user } = setup();
     expect(await screen.findByText(/Highest leads per dollar so far/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Use Sfax' }));
     expect(screen.getByLabelText('Region')).toHaveValue('sfax');
+    expect(screen.getByRole('button', { name: 'Use Sfax' })).toBeDisabled();
   });
 
-  it('shows coverage, yield and cost per lead for the chosen region', async () => {
-    const { user } = setup();
-    await pickRegion(user, 'Sfax');
-    const coverage = await screen.findByRole('region', { name: 'Coverage in Sfax' });
-    expect(within(coverage).getByText('25%')).toBeInTheDocument();
-    expect(within(coverage).getByText('4.5')).toBeInTheDocument();
-    expect(within(coverage).getByText('$0.60')).toBeInTheDocument();
-  });
-
-  it('previews cost and volume as an estimate without starting anything', async () => {
-    const { server, user } = setup();
-    await pickRegion(user);
-    const box = await screen.findByRole('region', { name: 'Estimate' });
-    await within(box).findByText('$3.50');
-    expect(box.querySelector('.tag-estimate')).toHaveTextContent('Estimate');
-    expect(server.to('POST /api/runs/preview')[0]!.body).toEqual({ regionId: 'sfax' });
-    expect(server.to('POST /api/runs')).toHaveLength(0);
-  });
-
-  it('requires a spend cap before a run can be reviewed', async () => {
-    const { server, user } = setup();
-    await pickRegion(user);
-    await screen.findByText('$3.50');
-    const review = screen.getByRole('button', { name: 'Review and start' });
-    expect(review).toBeDisabled();
-    await user.type(screen.getByLabelText('Spend cap (USD)'), '0');
-    await user.tab();
-    expect(await screen.findByText('Enter a spend cap above zero.')).toBeInTheDocument();
-    expect(review).toBeDisabled();
-    await user.clear(screen.getByLabelText('Spend cap (USD)'));
-    await user.type(screen.getByLabelText('Spend cap (USD)'), '5');
-    await waitFor(() => expect(review).toBeEnabled());
-    expect(server.to('POST /api/runs')).toHaveLength(0);
-  });
-
-  it('sends the cap with the preview once it is valid', async () => {
-    const { server, user } = setup();
-    await pickRegion(user);
-    await user.type(screen.getByLabelText('Spend cap (USD)'), '5');
-    await waitFor(() =>
-      expect(server.to('POST /api/runs/preview').some((c) => c.body.budgetCapUsd === 5)).toBe(true),
-    );
-  });
-
-  it('starts nothing until the confirm step is accepted, and cancelling starts nothing', async () => {
-    const { server, user } = setup({
-      'POST /api/runs': { status: 201, body: run({ id: 'run-9', status: 'running' }) },
-    });
-    await pickRegion(user);
-    await user.type(screen.getByLabelText('Spend cap (USD)'), '5');
-    const review = screen.getByRole('button', { name: 'Review and start' });
-    await waitFor(() => expect(review).toBeEnabled());
-    await user.click(review);
-
-    const dialog = await screen.findByRole('dialog', { name: 'Confirm this run' });
-    expect(dialog).toHaveTextContent('It will not spend more than $5.00');
-    expect(server.to('POST /api/runs')).toHaveLength(0);
-    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(server.to('POST /api/runs')).toHaveLength(0);
-  });
-
-  it('starts the run with confirm and the cap, then links to it', async () => {
-    const { server, user, started } = setup({
-      'POST /api/runs': { status: 201, body: run({ id: 'run-9', status: 'running' }) },
-    });
-    await pickRegion(user);
-    await user.type(screen.getByLabelText('Spend cap (USD)'), '5');
-    const review = screen.getByRole('button', { name: 'Review and start' });
-    await waitFor(() => expect(review).toBeEnabled());
-    await user.click(review);
-    await user.click(await screen.findByRole('button', { name: 'Confirm and start run' }));
-
-    expect(await screen.findByText(/Run started in sfax/)).toBeInTheDocument();
-    expect(server.to('POST /api/runs')[0]!.body).toEqual({
-      regionId: 'sfax',
-      budgetCapUsd: 5,
-      confirm: true,
-    });
-    expect(screen.getByRole('link', { name: 'Open the run' })).toHaveAttribute(
-      'href',
-      '/leadgen/runs/run-9',
-    );
-    expect(started()).toBe(1);
-  });
-
-  it('blocks the start and says why when the preview finds a blocker', async () => {
-    const { user } = setup({
-      'POST /api/runs/preview': {
-        body: preview({
-          blockers: [
-            { code: 'concurrent_run_limit', message: '2 runs are already active (limit 2)' },
-          ],
-        }),
-      },
-    });
-    await pickRegion(user);
-    await user.type(screen.getByLabelText('Spend cap (USD)'), '5');
-    expect(await screen.findByText('2 runs are already active (limit 2)')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Review and start' })).toBeDisabled();
-  });
-
-  it('explains when paid runs are switched off on the server', async () => {
-    const { user } = setup({
-      'POST /api/runs': { status: 403, body: { error: 'paid_runs_disabled' } },
-    });
-    await pickRegion(user);
-    await user.type(screen.getByLabelText('Spend cap (USD)'), '5');
-    const review = screen.getByRole('button', { name: 'Review and start' });
-    await waitFor(() => expect(review).toBeEnabled());
-    await user.click(review);
-    await user.click(await screen.findByRole('button', { name: 'Confirm and start run' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Paid runs are switched off on this server',
-    );
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-  });
-
-  it('shows an error with a retry when the estimate fails', async () => {
-    const { user } = setup({
-      'POST /api/runs/preview': { status: 500, body: { error: 'internal' } },
-    });
-    await pickRegion(user);
-    expect(await screen.findByRole('button', { name: 'Try again' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Review and start' })).toBeDisabled();
-  });
-});
-
-describe('Start a run: suggestion and coverage with no history', () => {
   it('shows the first-test message and no Use button when nothing is suggested', async () => {
     const server = fakeServer({
       ...dashboardRoutes(),
+      'GET /api/coverage': startCoverage,
       'GET /api/regions/suggestion': {
         regionId: null,
         mode: 'normal',
@@ -178,64 +112,304 @@ describe('Start a run: suggestion and coverage with no history', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Use / })).not.toBeInTheDocument();
   });
-
-  it('says "Not planned yet" for a region with no cells', async () => {
-    const server = fakeServer({
-      ...dashboardRoutes(),
-      'GET /api/regions': page([region({ cellsTotal: 0, cellsSearched: 0, coverage: null })]),
-      'POST /api/runs/preview': { body: preview() },
-    });
-    renderWith(<StartRunWidget onStarted={() => {}} />, server);
-    const user = userEvent.setup();
-    await pickRegion(user, 'Sfax');
-    const box = await screen.findByRole('region', { name: 'Coverage in Sfax' });
-    expect(within(box).getByText('Not planned yet')).toBeInTheDocument();
-  });
 });
 
-describe('Start a run: search plan', () => {
-  it('lists the planned searches per cell and the total', async () => {
+describe('Start a run: sectors', () => {
+  it('ticks only the suggested sector for the region, never all of them', async () => {
     const { user } = setup();
     await pickRegion(user);
-    const plan = await screen.findByRole('region', { name: 'Search plan' });
-    expect(await within(plan).findByText('transport marchandises')).toBeInTheDocument();
-    expect(within(plan).getByText('Cell r0c0')).toBeInTheDocument();
-    expect(within(plan).getByText(/2 of 2 shown/)).toBeInTheDocument();
+    // Road freight yields the most new places per search among the sectors still yielding.
+    await waitFor(() => expect(chip('Road freight')).toHaveAttribute('aria-pressed', 'true'));
+    expect(chip('Import and export')).toHaveAttribute('aria-pressed', 'false');
+    expect(chip('Textile')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText('1 of 3 selected')).toBeInTheDocument();
   });
 
-  it('sends only the ticked sectors and the extra wordings, deduplicated by the server', async () => {
+  it('ticks nothing for a region with no history and says what to do', async () => {
+    const { user } = setup();
+    await pickRegion(user, 'Tunis');
+    expect(await screen.findByText('0 of 3 selected')).toBeInTheDocument();
+    expect(screen.getByText(/Pick at least one sector/)).toBeInTheDocument();
+    expect(startButton()).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('has All and None links, and chips that toggle', async () => {
+    const { user } = setup();
+    await pickRegion(user);
+    await user.click(screen.getByRole('button', { name: 'All' }));
+    expect(screen.getByText('3 of 3 selected')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'None' }));
+    expect(screen.getByText('0 of 3 selected')).toBeInTheDocument();
+    await user.click(chip('Textile'));
+    expect(chip('Textile')).toHaveAttribute('aria-pressed', 'true');
+    chip('Import and export').focus();
+    await user.keyboard(' ');
+    expect(chip('Import and export')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('2 of 3 selected')).toBeInTheDocument();
+  });
+
+  it('sends the ticked sectors with the estimate', async () => {
     const { server, user } = setup();
     await pickRegion(user);
-    const plan = await screen.findByRole('region', { name: 'Search plan' });
-    await user.click(await within(plan).findByRole('checkbox', { name: 'Road freight' }));
-    await user.type(within(plan).getByLabelText(/Extra searches/), 'camion frigorifique');
+    await user.click(await screen.findByRole('button', { name: 'All' }));
     await waitFor(() =>
       expect(
         server
           .to('POST /api/runs/preview')
           .some(
             (c) =>
-              JSON.stringify(c.body.sectorIds) === JSON.stringify(['import-export']) &&
-              JSON.stringify(c.body.customWordings) === JSON.stringify(['camion frigorifique']),
+              JSON.stringify(c.body.sectorIds) ===
+              JSON.stringify(['road-freight', 'import-export', 'textile']),
           ),
       ).toBe(true),
     );
   });
+});
 
-  it('blocks the review when no sector and no wording is left', async () => {
+describe('Start a run: spend cap', () => {
+  it('is filled in with $2.00 and the $2 quick choice is on', async () => {
+    setup();
+    expect(await screen.findByLabelText('Spend cap (USD)')).toHaveValue(2);
+    expect(screen.getByRole('radio', { name: '$2' })).toBeChecked();
+    expect(screen.getByText('The run stops before spending more than this.')).toBeInTheDocument();
+  });
+
+  it('takes the quick choices and shows the cap on the Start button', async () => {
+    const { user } = setup();
+    await user.click(await screen.findByRole('radio', { name: '$5' }));
+    expect(cap()).toHaveValue(5);
+    expect(startButton()).toHaveTextContent('Start run, up to $5.00');
+    await user.click(screen.getByRole('radio', { name: '$1' }));
+    expect(startButton()).toHaveTextContent('Start run, up to $1.00');
+  });
+
+  it('starts on the cap used last time', async () => {
+    window.localStorage.setItem('leadgen.run.cap', '3.5');
+    setup();
+    expect(await screen.findByLabelText('Spend cap (USD)')).toHaveValue(3.5);
+    expect(startButton()).toHaveTextContent('Start run, up to $3.50');
+  });
+
+  it('says why Start is off when the cap is empty or zero', async () => {
     const { user } = setup();
     await pickRegion(user);
-    await user.type(screen.getByLabelText('Spend cap (USD)'), '5');
-    await user.click(await screen.findByRole('button', { name: 'No sector selected' }));
+    await user.clear(cap());
+    expect(startButton()).toHaveAttribute('aria-disabled', 'true');
+    expect(startButton()).toHaveTextContent('Start run');
+    expect(screen.getByText('Enter a spend cap above zero.')).toBeInTheDocument();
+    await user.type(cap(), '0');
+    await user.tab();
+    expect(screen.getAllByText('Enter a spend cap above zero.')).toHaveLength(2);
+  });
+});
+
+describe('Start a run: estimate and Start button', () => {
+  it('previews cost, a leads range and cost per lead as an estimate, spending nothing', async () => {
+    const { server, user } = setup();
+    await pickRegion(user);
+    const box = await screen.findByRole('region', { name: 'Estimate' });
+    await within(box).findByText('$3.50');
+    expect(within(box).getByText('about 3 to 9')).toBeInTheDocument();
+    expect(within(box).getByText('$0.58')).toBeInTheDocument();
+    expect(within(box).getByText('0 / 2')).toBeInTheDocument();
+    expect(within(box).getByText('$45.00')).toBeInTheDocument();
+    await waitFor(() => expect(box.querySelector('.tag-estimate')).toHaveTextContent('Estimate'));
     expect(
-      await screen.findByText('Pick at least one sector or type an extra search.'),
+      within(box).getByText(/Worst case before the first step finishes: \$3\.00/),
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Review and start' })).toBeDisabled();
+    expect(server.to('POST /api/runs')).toHaveLength(0);
+  });
+
+  it('says "not enough data yet" instead of a bare zero', async () => {
+    const base = preview();
+    const { user } = setup({
+      'POST /api/runs/preview': {
+        body: preview({ volume: { ...base.volume, leads: 0 } }),
+      },
+    });
+    await pickRegion(user);
+    const box = await screen.findByRole('region', { name: 'Estimate' });
+    expect((await within(box).findAllByText('not enough data yet')).length).toBeGreaterThan(0);
+  });
+
+  it('warns when the estimate is above the cap', async () => {
+    const { user } = setup();
+    await pickRegion(user);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Estimate is above your cap, the run may stop early.',
+    );
+    await user.click(screen.getByRole('radio', { name: '$5' }));
+    await waitFor(() =>
+      expect(screen.queryByText(/Estimate is above your cap/)).not.toBeInTheDocument(),
+    );
+  });
+
+  it('waits for the estimate: debounced, and sends the cap with it', async () => {
+    const { server, user } = setup();
+    await pickRegion(user);
+    await user.clear(cap());
+    await user.type(cap(), '4');
+    await waitFor(() =>
+      expect(server.to('POST /api/runs/preview').some((c) => c.body.budgetCapUsd === 4)).toBe(true),
+    );
+    const bodies = server.to('POST /api/runs/preview').map((c) => c.body);
+    expect(bodies.every((b) => b.regionId === 'sfax')).toBe(true);
+  });
+
+  it('keeps Start off until there is a region, and says so', async () => {
+    setup();
+    await screen.findByRole('option', { name: /^Sfax/ });
+    expect(startButton()).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByText('Choose a region to start.')).toBeInTheDocument();
+  });
+
+  it('blocks the start and says why when the estimate finds a blocker', async () => {
+    const { user, server } = setup({
+      'POST /api/runs/preview': {
+        body: preview({
+          blockers: [
+            { code: 'concurrent_run_limit', message: '2 runs are already active (limit 2)' },
+          ],
+        }),
+      },
+    });
+    await pickRegion(user);
+    expect(
+      (await screen.findAllByText('2 runs are already active (limit 2)')).length,
+    ).toBeGreaterThan(0);
+    await user.click(startButton());
+    expect(server.to('POST /api/runs')).toHaveLength(0);
+  });
+
+  it('shows an error with a retry when the estimate fails, and does not start', async () => {
+    const { user } = setup({
+      'POST /api/runs/preview': { status: 500, body: { error: 'internal' } },
+    });
+    await pickRegion(user);
+    expect(await screen.findByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(startButton()).toHaveAttribute('aria-disabled', 'true');
+  });
+});
+
+describe('Start a run: starting', () => {
+  const started = {
+    'POST /api/runs': { status: 201, body: run({ id: 'run-9', status: 'running' }) },
+  };
+
+  it('starts in one click when the estimate is within the cap, and remembers the cap', async () => {
+    const base = preview();
+    const {
+      server,
+      user,
+      started: count,
+    } = setup({
+      'POST /api/runs/preview': { body: preview({ cost: { ...base.cost, totalUsd: 1.5 } }) },
+      ...started,
+    });
+    await pickRegion(user);
+    await waitFor(() => expect(startButton()).toHaveAttribute('aria-disabled', 'false'));
+    await user.click(startButton());
+    await waitFor(() => expect(count()).toBe(1));
+    expect(server.to('POST /api/runs')[0]!.body).toEqual({
+      regionId: 'sfax',
+      sectorIds: ['road-freight'],
+      budgetCapUsd: 2,
+      confirm: true,
+    });
+    expect(window.localStorage.getItem('leadgen.run.cap')).toBe('2');
+  });
+
+  it('asks once more when the estimate is above the cap, and starts nothing until yes', async () => {
+    const { server, user, started: count } = setup(started);
+    await pickRegion(user);
+    await waitFor(() => expect(startButton()).toHaveAttribute('aria-disabled', 'false'));
+    await user.click(startButton());
+    expect(
+      await screen.findByText(/The estimate \(\$3\.50\) is above your cap \(\$2\.00\)/),
+    ).toBeInTheDocument();
+    expect(server.to('POST /api/runs')).toHaveLength(0);
+    await user.click(screen.getByRole('button', { name: 'Go back' }));
+    expect(screen.queryByRole('button', { name: 'Yes, start the run' })).not.toBeInTheDocument();
+    await user.click(startButton());
+    await user.click(await screen.findByRole('button', { name: 'Yes, start the run' }));
+    await waitFor(() => expect(count()).toBe(1));
+    expect(server.to('POST /api/runs')).toHaveLength(1);
+  });
+
+  it('asks once more when the cap is above $5', async () => {
+    const base = preview();
+    const { server, user } = setup({
+      'POST /api/runs/preview': { body: preview({ cost: { ...base.cost, totalUsd: 1 } }) },
+      ...started,
+    });
+    await pickRegion(user);
+    await user.clear(cap());
+    await user.type(cap(), '8');
+    await waitFor(() => expect(startButton()).toHaveAttribute('aria-disabled', 'false'));
+    await user.click(startButton());
+    expect(
+      await screen.findByText('This run can spend up to $8.00. Start it?'),
+    ).toBeInTheDocument();
+    expect(server.to('POST /api/runs')).toHaveLength(0);
+  });
+
+  it('explains when paid runs are switched off on the server', async () => {
+    const base = preview();
+    const { user } = setup({
+      'POST /api/runs/preview': { body: preview({ cost: { ...base.cost, totalUsd: 1 } }) },
+      'POST /api/runs': { status: 403, body: { error: 'paid_runs_disabled' } },
+    });
+    await pickRegion(user);
+    await waitFor(() => expect(startButton()).toHaveAttribute('aria-disabled', 'false'));
+    await user.click(startButton());
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Paid runs are switched off on this server',
+    );
+  });
+});
+
+describe('Start a run: advanced', () => {
+  it('is collapsed by default and holds extra searches, the planned searches and the assumptions', async () => {
+    const { user } = setup();
+    await pickRegion(user);
+    const advanced = screen.getByText('Advanced').closest('details')!;
+    expect(advanced).not.toHaveAttribute('open');
+    await user.click(screen.getByText('Advanced'));
+    expect(advanced).toHaveAttribute('open');
+    const plan = await screen.findByText('Searches that will run (2)');
+    expect(plan.closest('details')).not.toHaveAttribute('open');
+    await user.click(plan);
+    expect(await screen.findByText('transport marchandises')).toBeInTheDocument();
+    expect(screen.getByText('Cell r0c0')).toBeInTheDocument();
+    expect(screen.getByText('How this was estimated').closest('details')).not.toHaveAttribute(
+      'open',
+    );
+  });
+
+  it('can start from extra searches alone, and sends them', async () => {
+    const base = preview();
+    const { server, user } = setup({
+      'POST /api/runs/preview': { body: preview({ cost: { ...base.cost, totalUsd: 1 } }) },
+      'POST /api/runs': { status: 201, body: run({ id: 'run-9', status: 'running' }) },
+    });
+    await pickRegion(user, 'Tunis');
+    await user.click(screen.getByText('Advanced'));
+    await user.type(screen.getByLabelText(/Extra searches/), 'camion frigorifique');
+    await waitFor(() => expect(startButton()).toHaveAttribute('aria-disabled', 'false'));
+    await user.click(startButton());
+    await waitFor(() => expect(server.to('POST /api/runs')).toHaveLength(1));
+    expect(server.to('POST /api/runs')[0]!.body).toMatchObject({
+      regionId: 'tunis',
+      sectorIds: [],
+      customWordings: ['camion frigorifique'],
+      confirm: true,
+    });
   });
 
   it('rejects more than 20 wordings and wordings over 80 characters', async () => {
     const { user } = setup();
     await pickRegion(user);
+    await user.click(screen.getByText('Advanced'));
     const box = await screen.findByLabelText(/Extra searches/);
     await user.click(box);
     await user.paste('x'.repeat(81));
@@ -243,45 +417,31 @@ describe('Start a run: search plan', () => {
     await user.clear(box);
     await user.paste(Array.from({ length: 21 }, (_, i) => `mot ${i}`).join('\n'));
     expect(await screen.findByText('Too many lines: the most allowed is 20.')).toBeInTheDocument();
+    expect(startButton()).toHaveAttribute('aria-disabled', 'true');
   });
+});
 
-  it('shows the final query count in the confirm dialog and sends the plan on start', async () => {
-    const { server, user } = setup({
-      'POST /api/runs': { status: 201, body: run({ id: 'run-9', status: 'running' }) },
-    });
-    await pickRegion(user);
-    await user.type(screen.getByLabelText('Spend cap (USD)'), '5');
-    await user.type(await screen.findByLabelText(/Extra searches/), 'camion frigorifique');
-    const review = screen.getByRole('button', { name: 'Review and start' });
-    await waitFor(() => expect(review).toBeEnabled());
-    await user.click(review);
-    const dialog = await screen.findByRole('dialog', { name: 'Confirm this run' });
-    expect(dialog).toHaveTextContent('2 searches across 1 map cells');
-    await user.click(within(dialog).getByRole('button', { name: 'Confirm and start run' }));
-    await screen.findByText(/Run started/);
-    expect(server.to('POST /api/runs')[0]!.body).toMatchObject({
-      regionId: 'sfax',
-      customWordings: ['camion frigorifique'],
-      confirm: true,
-    });
-  });
-
-  it('applies a prefill from the coverage views', async () => {
+describe('Start a run: prefill from Coverage', () => {
+  it('fills region, sector and map cells, and puts the focus on the sector', async () => {
     const server = fakeServer({
       ...dashboardRoutes(),
+      'GET /api/coverage': startCoverage,
+      'GET /api/regions': page(regions),
       'POST /api/runs/preview': { body: preview() },
     });
     renderWith(
       <StartRunWidget
         onStarted={() => {}}
-        prefill={{ regionId: 'sfax', sectorIds: ['import-export'], cellKeys: ['r0c0'], nonce: 1 }}
+        prefill={{ regionId: 'sfax', sectorIds: ['textile'], cellKeys: ['r0c0'], nonce: 1 }}
       />,
       server,
     );
+    await waitFor(() => expect(screen.getByLabelText('Region')).toHaveValue('sfax'));
+    await waitFor(() => expect(chip('Textile')).toHaveAttribute('aria-pressed', 'true'));
+    expect(chip('Road freight')).toHaveAttribute('aria-pressed', 'false');
+    await waitFor(() => expect(chip('Textile')).toHaveFocus());
+    await userEvent.setup().click(screen.getByText('Advanced'));
     expect(await screen.findByText('Only these map cells: r0c0')).toBeInTheDocument();
-    expect(await screen.findByRole('checkbox', { name: 'Import and export' })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'Road freight' })).not.toBeChecked();
-    expect(screen.getByLabelText('Region')).toHaveValue('sfax');
   });
 });
 

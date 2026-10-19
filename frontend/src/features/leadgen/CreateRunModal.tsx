@@ -6,8 +6,9 @@ import type { StartPrefill } from './prefill.js';
 import { StartRunWidget } from './StartRunWidget.js';
 
 /**
- * Create run, as a blocking dialog: nothing behind it can be used until the run is created
- * (after the cap and the confirm that StartRunWidget asks for) or the person cancels.
+ * Start a run, as a blocking dialog: nothing behind it can be used until the run is started
+ * (after the cap, and the extra click StartRunWidget asks for when the estimate is above it) or
+ * the person cancels.
  */
 export function CreateRunModal({
   regionId,
@@ -28,15 +29,8 @@ export function CreateRunModal({
     [planned, regionId],
   );
   return (
-    <Modal title={t('create.title')} onClose={onCancel} wide>
-      <div className="modal-body">
-        <StartRunWidget onStarted={onCreated} prefill={prefill} />
-      </div>
-      <footer className="modal-footer">
-        <button type="button" className="button" onClick={onCancel}>
-          {t('common.cancel')}
-        </button>
-      </footer>
+    <Modal title={t('start.title')} onClose={onCancel} className="modal-start">
+      <StartRunWidget onStarted={onCreated} onCancel={onCancel} prefill={prefill} />
     </Modal>
   );
 }

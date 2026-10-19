@@ -16,6 +16,7 @@ export function Modal({
   onClose,
   wide = false,
   full = false,
+  className = '',
   children,
 }: {
   title: string;
@@ -24,6 +25,8 @@ export function Modal({
   wide?: boolean;
   /** Almost the whole screen, for a view that needs the room. */
   full?: boolean;
+  /** Extra class for the dialog itself, for a dialog that needs its own layout. */
+  className?: string;
   children: ReactNode;
 }) {
   const t = useT();
@@ -77,7 +80,7 @@ export function Modal({
     <div className="modal-backdrop">
       <div
         ref={panel}
-        className={full ? 'modal modal-full' : wide ? 'modal modal-wide' : 'modal'}
+        className={`${full ? 'modal modal-full' : wide ? 'modal modal-wide' : 'modal'} ${className}`.trim()}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
