@@ -6,17 +6,19 @@ import { expect, test, type Page } from '@playwright/test';
 const EMAIL = 'e2e@example.test';
 const PASSWORD = 'e2e-password-123';
 
-/** Drags a card by its grip onto a column with the mouse, the way a person does. */
+/** Drags a card (anywhere on it, here by its name) onto a column with the mouse, the way a person does. */
 async function dragTo(page: Page, name: string, column: string) {
-  const grip = page.getByRole('button', { name: `Drag ${name}` });
+  const card = page.getByRole('group', { name, exact: true });
   const target = page.getByRole('region', { name: column, exact: true });
-  const from = (await grip.boundingBox())!;
+  const from = (await card.getByRole('heading').boundingBox())!;
   const to = (await target.boundingBox())!;
-  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.move(from.x + 10, from.y + from.height / 2);
   await page.mouse.down();
-  await page.mouse.move(from.x + from.width / 2 + 12, from.y + from.height / 2 + 12, { steps: 4 });
-  await page.mouse.move(to.x + to.width / 2, to.y + 80, { steps: 12 });
+  await page.mouse.move(from.x + 22, from.y + from.height / 2 + 12, { steps: 4 });
+  await page.mouse.move(to.x + to.width / 2, to.y + 140, { steps: 12 });
   await page.mouse.up();
+  // The drop's own click is swallowed for a moment; a person never clicks faster than this.
+  await page.waitForTimeout(150);
 }
 
 /** The keyboard way: a card's "Move to" menu. */
@@ -135,24 +137,39 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
   const cards = column('Found').getByRole('listitem');
   await expect(cards.first()).toBeVisible();
   const names = await cards.evaluateAll((els) =>
-    els.map((el) => el.getAttribute('aria-label') ?? ''),
+    els.map((el) => el.querySelector('h4')?.textContent ?? ''),
   );
   expect(names.length).toBeGreaterThanOrEqual(2);
   const [first, second] = names as [string, string];
   await expect(column('Noise')).toContainText('Show Noise (0)');
 
+  // The board fills the window and the page itself does not scroll.
+  expect(
+    await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight),
+  ).toBe(true);
+  // Search is applied on the server: only the match is left, and the column total says so.
+  await page.getByRole('searchbox', { name: 'Search the board' }).fill(first);
+  await expect(column('Found').getByRole('group')).toHaveCount(1);
+  await expect(column('Found').getByLabel('1 in total')).toBeVisible();
+  // The table lists the same cards, then back to the columns.
+  await page.getByText('Table', { exact: true }).click();
+  await expect(page.getByRole('table').getByRole('row')).toHaveCount(2);
+  await page.getByText('Board', { exact: true }).click();
+  await page.getByRole('searchbox', { name: 'Search the board' }).fill('');
+  await expect(column('Found').getByRole('group')).toHaveCount(names.length);
+
   // Drag a card with the mouse, and with the keyboard menu.
   await dragTo(page, first, 'Investigating');
-  await expect(column('Investigating').getByRole('listitem', { name: first })).toBeVisible();
+  await expect(column('Investigating').getByRole('group', { name: first })).toBeVisible();
   await moveTo(page, first, 'Found');
-  await expect(column('Found').getByRole('listitem', { name: first })).toBeVisible();
+  await expect(column('Found').getByRole('group', { name: first })).toBeVisible();
 
   // The last column needs a decision-maker: cancel puts the card back, saving moves it.
   await dragTo(page, first, 'Decision-maker identified');
   const form = page.getByRole('dialog', { name: `Who is the decision-maker at ${first}?` });
   await expect(form).toBeVisible();
   await form.getByRole('button', { name: 'Cancel' }).click();
-  await expect(column('Found').getByRole('listitem', { name: first })).toBeVisible();
+  await expect(column('Found').getByRole('group', { name: first })).toBeVisible();
   await moveTo(page, first, 'Decision-maker identified');
   await form.getByRole('button', { name: 'Save decision-maker' }).click();
   await expect(form.getByText('Write their name.')).toBeVisible();
@@ -165,15 +182,15 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
     page.getByText(`Amel E2E added. ${first} moved to Decision-maker identified.`),
   ).toBeVisible();
   await expect(
-    column('Decision-maker identified').getByRole('listitem', { name: first }),
+    column('Decision-maker identified').getByRole('group', { name: first }),
   ).toBeVisible();
 
   // The person is on the People board, in New. Work them, then opt them out.
   await page.getByRole('tab', { name: 'People' }).click();
   await expect(page).toHaveURL(/\/crm\/people$/);
-  await expect(column('New').getByRole('listitem', { name: 'Amel E2E' })).toBeVisible();
+  await expect(column('New').getByRole('group', { name: 'Amel E2E' })).toBeVisible();
   await dragTo(page, 'Amel E2E', 'Contacted');
-  await expect(column('Contacted').getByRole('listitem', { name: 'Amel E2E' })).toBeVisible();
+  await expect(column('Contacted').getByRole('group', { name: 'Amel E2E' })).toBeVisible();
   await moveTo(page, 'Amel E2E', 'Opted out');
   const optOut = page.getByRole('dialog', { name: 'Record an objection and opt out?' });
   await optOut.getByRole('button', { name: 'Record objection and opt out' }).click();
@@ -181,12 +198,12 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
   await optOut.getByLabel('What did they say?').fill('Asked by phone not to be contacted');
   await optOut.getByRole('button', { name: 'Record objection and opt out' }).click();
   await expect(optOut).toHaveCount(0);
-  const optedOut = column('Opted out').getByRole('listitem', { name: 'Amel E2E' });
+  const optedOut = column('Opted out').getByRole('group', { name: 'Amel E2E' });
   await expect(optedOut).toBeVisible();
   await expect(optedOut.getByRole('button')).toHaveCount(0);
   // Reloading keeps it: the server holds the board.
   await page.reload();
-  await expect(column('Opted out').getByRole('listitem', { name: 'Amel E2E' })).toBeVisible();
+  await expect(column('Opted out').getByRole('group', { name: 'Amel E2E' })).toBeVisible();
 
   // Back on Companies: remove another company to Noise and restore it.
   await page.getByRole('tab', { name: 'Companies' }).click();
@@ -195,10 +212,10 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
   await column('Noise')
     .getByRole('button', { name: /Show Noise/ })
     .click();
-  const removed = column('Noise').getByRole('listitem', { name: second });
-  await expect(removed.getByText('30 days left')).toBeVisible();
+  const removed = column('Noise').getByRole('group', { name: second });
+  await expect(removed).toContainText('30 days left');
   await removed.getByRole('button', { name: `Restore ${second}` }).click();
-  await expect(column('Found').getByRole('listitem', { name: second })).toBeVisible();
+  await expect(column('Found').getByRole('group', { name: second })).toBeVisible();
 
   // Sign out ends the session; it is in the profile menu.
   await page.getByRole('button', { name: new RegExp(EMAIL) }).click();

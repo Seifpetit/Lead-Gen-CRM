@@ -1,13 +1,19 @@
 import {
+  BOARD_PAGE_SIZE,
   BOARD_STAGES,
   type AddDecisionMakerResult,
+  type BoardFilters,
+  type BoardSort,
   type BoardStage,
   type BoardStageKey,
   type CrmBoard,
   type CrmCard,
+  type CrmCardPage,
   type CrmPipeline,
   type RoleClass,
+  type SortDirection,
 } from '@lead-gen-crm/shared';
+import { FREIGHT_SECTORS } from '../config/sectors.js';
 import { withTransaction, type Queryable } from './db.js';
 import type { UserId } from './ids.js';
 import {
@@ -32,6 +38,7 @@ import {
 export type BoardErrorCode =
   | 'not_found'
   | 'invalid_stage'
+  | 'invalid_cursor'
   | 'decision_maker_required'
   | 'invalid_decision_maker'
   | 'reason_required'
@@ -73,14 +80,23 @@ interface CardRow {
   person_email: string | null;
   person_phone: string | null;
   linkedin_url: string | null;
+  photo_url: string | null;
+  image_url: string | null;
+  image_source: 'og' | 'maps' | null;
+  created_at: Date;
+  stage_position: number;
   score: number | null;
 }
 
 const CARD_SELECT = `
-  SELECT k.id, k.pipeline, k.stage, k.stage_entered_at, k.noise_at, k.noise_from_stage,
+  SELECT k.id, k.user_id, k.pipeline, k.stage, k.stage_entered_at, k.noise_at, k.noise_from_stage,
          k.company_id, k.contact_id,
          c.name AS company_name, c.sector, c.website, c.phone AS company_phone, c.email AS company_email,
+         c.image_url, c.image_source,
          p.full_name, p.title, p.email AS person_email, p.phone AS person_phone, p.linkedin_url,
+         p.photo_url, k.created_at,
+         (SELECT s.position FROM pipeline_stages s
+           WHERE s.pipeline = k.pipeline AND s.key = k.stage) AS stage_position,
          (SELECT max(l.score_total)::integer FROM crm_leads l
            WHERE l.user_id = k.user_id AND l.company_id = k.company_id
              AND (k.contact_id IS NULL OR l.contact_id = k.contact_id)) AS score
@@ -108,6 +124,8 @@ function toCard(r: CardRow, retentionDays: number): CrmCard {
       website: r.website,
       phone: r.company_phone,
       email: r.company_email,
+      imageUrl: r.image_url,
+      imageSource: r.image_source,
     },
     person: r.contact_id
       ? {
@@ -117,6 +135,7 @@ function toCard(r: CardRow, retentionDays: number): CrmCard {
           email: r.person_email,
           phone: r.person_phone,
           linkedinUrl: r.linkedin_url,
+          photoUrl: r.photo_url,
         }
       : null,
     score: r.score,
@@ -132,22 +151,174 @@ export async function listStages(db: Queryable, pipeline: CrmPipeline): Promise<
   return rows.map((r) => ({ key: r.key, name: r.name, collapsedByDefault: r.collapsed }));
 }
 
-/** A whole board: its columns and every card, best score first. */
+// Sorting: every sort ends on the card id, so a page boundary (the cursor) is exact even when
+// many cards share a value. The key is read back as text so timestamps keep their microseconds.
+const SORTS: Record<
+  BoardSort,
+  { expr: string; type: 'integer' | 'timestamptz' | 'text'; dir: SortDirection }
+> = {
+  newest: { expr: 't.created_at', type: 'timestamptz', dir: 'desc' },
+  score: { expr: 'coalesce(t.score, -1)', type: 'integer', dir: 'desc' },
+  // Longest in the stage first: the earliest stage entry.
+  days: { expr: 't.stage_entered_at', type: 'timestamptz', dir: 'asc' },
+  name: { expr: 'lower(coalesce(t.full_name, t.company_name))', type: 'text', dir: 'asc' },
+  sector: { expr: "coalesce(t.sector, '')", type: 'text', dir: 'asc' },
+  stage: { expr: 't.stage_position', type: 'integer', dir: 'asc' },
+};
+const DEFAULT_SORT: BoardSort = 'score';
+
+export interface CardListOptions extends BoardFilters {
+  /** One column; omitted, every column. */
+  stage?: string | undefined;
+  /** Leave Noise out (the table view lists what is still in play). */
+  excludeNoise?: boolean | undefined;
+  cursor?: string | undefined;
+  limit?: number | undefined;
+}
+
+function encodeCursor(key: string, id: string): string {
+  return Buffer.from(JSON.stringify([key, id])).toString('base64url');
+}
+
+function decodeCursor(cursor: string): [string, string] {
+  try {
+    const parsed: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+    if (
+      Array.isArray(parsed) &&
+      parsed.length === 2 &&
+      typeof parsed[0] === 'string' &&
+      typeof parsed[1] === 'string' &&
+      /^[0-9a-f-]{36}$/i.test(parsed[1])
+    ) {
+      return [parsed[0], parsed[1]];
+    }
+  } catch {
+    // falls through
+  }
+  throw new BoardError('invalid_cursor', 'The page cursor is not valid');
+}
+
+/** `%` and `_` in the search words mean themselves, not wildcards. */
+const likePattern = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+
+function whereOf(
+  userId: UserId,
+  pipeline: CrmPipeline,
+  o: CardListOptions,
+): { clauses: string[]; params: unknown[] } {
+  const params: unknown[] = [userId, pipeline];
+  const clauses = ['t.user_id = $1', 't.pipeline = $2'];
+  const add = (sql: (n: number) => string, value: unknown) => {
+    params.push(value);
+    clauses.push(sql(params.length));
+  };
+  if (o.stage) add((n) => `t.stage = $${n}`, o.stage);
+  if (o.excludeNoise) clauses.push("t.stage <> 'noise'");
+  const q = o.q?.trim();
+  if (q) {
+    add(
+      (n) =>
+        `(t.company_name ILIKE $${n} OR t.website ILIKE $${n} OR t.full_name ILIKE $${n} OR t.title ILIKE $${n})`,
+      likePattern(q),
+    );
+  }
+  if (o.sector) add((n) => `t.sector = $${n}`, o.sector);
+  if (o.minScore && o.minScore > 0) add((n) => `coalesce(t.score, -1) >= $${n}`, o.minScore);
+  return { clauses, params };
+}
+
+async function assertStage(db: Queryable, pipeline: CrmPipeline, stage: string): Promise<void> {
+  const stages = await listStages(db, pipeline);
+  if (!stages.some((s) => s.key === stage)) {
+    throw new BoardError('invalid_stage', `"${stage}" is not a column of the ${pipeline} board`);
+  }
+}
+
+/** One page of cards in the chosen order, with the true total that matches the filters. */
+export async function listCards(
+  db: Queryable,
+  userId: UserId,
+  pipeline: CrmPipeline,
+  retentionDays: number,
+  options: CardListOptions = {},
+): Promise<CrmCardPage> {
+  if (options.stage) await assertStage(db, pipeline, options.stage);
+  const sort = SORTS[options.sort ?? DEFAULT_SORT];
+  const dir = options.dir ?? sort.dir;
+  const limit = Math.min(Math.max(options.limit ?? BOARD_PAGE_SIZE, 1), 100);
+  const { clauses, params } = whereOf(userId, pipeline, options);
+  const from = `FROM (${CARD_SELECT}) t`;
+
+  const total = Number(
+    (
+      await db.query<{ n: string }>(
+        `SELECT count(*) AS n ${from} WHERE ${clauses.join(' AND ')}`,
+        params,
+      )
+    ).rows[0]!.n,
+  );
+
+  const keyset = [...clauses];
+  const args = [...params];
+  if (options.cursor) {
+    const [key, id] = decodeCursor(options.cursor);
+    args.push(key, id);
+    const op = dir === 'asc' ? '>' : '<';
+    keyset.push(
+      `(${sort.expr}, t.id) ${op} ($${args.length - 1}::${sort.type}, $${args.length}::uuid)`,
+    );
+  }
+  args.push(limit + 1);
+  const { rows } = await db.query<CardRow & { sort_key: string }>(
+    `SELECT t.*, (${sort.expr})::text AS sort_key ${from}
+      WHERE ${keyset.join(' AND ')}
+      ORDER BY ${sort.expr} ${dir}, t.id ${dir}
+      LIMIT $${args.length}`,
+    args,
+  );
+  const page = rows.slice(0, limit);
+  const last = page[page.length - 1];
+  return {
+    cards: page.map((r) => toCard(r, retentionDays)),
+    total,
+    nextCursor: rows.length > limit && last ? encodeCursor(last.sort_key, last.id) : null,
+  };
+}
+
+/**
+ * The board: its columns, each with its true total (filters applied) and first page of cards,
+ * and the sectors on it for the filter.
+ */
 export async function loadBoard(
   db: Queryable,
   userId: UserId,
   pipeline: CrmPipeline,
   retentionDays: number,
+  filters: BoardFilters = {},
+  limit = BOARD_PAGE_SIZE,
 ): Promise<CrmBoard> {
-  const { rows } = await db.query<CardRow>(
-    `${CARD_SELECT} WHERE k.user_id = $1 AND k.pipeline = $2
-      ORDER BY score DESC NULLS LAST, k.created_at, k.id`,
+  const stages = await listStages(db, pipeline);
+  const sectors = await db.query<{ sector: string }>(
+    `SELECT DISTINCT c.sector FROM crm_cards k JOIN companies c ON c.id = k.company_id
+      WHERE k.user_id = $1 AND k.pipeline = $2 AND c.sector IS NOT NULL ORDER BY c.sector`,
     [userId, pipeline],
   );
   return {
     pipeline,
-    stages: await listStages(db, pipeline),
-    cards: rows.map((r) => toCard(r, retentionDays)),
+    stages: await Promise.all(
+      stages.map(async (stage) => ({
+        ...stage,
+        ...(await listCards(db, userId, pipeline, retentionDays, {
+          ...filters,
+          stage: stage.key,
+          limit,
+        })),
+      })),
+    ),
+    sectors: sectors.rows.map((r) => ({
+      id: r.sector,
+      name: FREIGHT_SECTORS.find((s) => s.id === r.sector)?.name ?? r.sector,
+    })),
   };
 }
 

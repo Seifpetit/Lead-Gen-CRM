@@ -2654,19 +2654,89 @@ fieldset.segmented legend {
   border-left: 2px solid var(--ink);
 }
 
-/* CRM boards: columns of cards. Each column has a pastel header band; the cards on them stay
-   plain so the data reads easily. Card menus open over the column, so it must not clip. */
-.kanban {
+/* CRM boards. The page is exactly as tall as the window and does not scroll; the toolbar stays
+   put, each column keeps its header and scrolls its own cards, and the table scrolls its rows.
+   Cards are a fixed 88px so a column can place them without measuring. */
+#root:has(.crm-page) {
   display: flex;
-  gap: var(--space-4);
-  align-items: flex-start;
-  margin-top: var(--space-4);
-  padding: var(--space-1) var(--space-1) var(--space-4);
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+}
+.crm-page {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.crm-page h1 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-h2);
+}
+.crm-page .tabs {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.crm-page .tablist {
+  flex: none;
+}
+.crm-page [role='tabpanel'] {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.board-page {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  margin-top: var(--space-2);
+}
+.board-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.board-toolbar .search {
+  flex: 1 1 220px;
+  max-width: 360px;
+}
+.board-toolbar-count {
+  margin: 0 0 0 auto;
+}
+.board-toolbar fieldset.segmented {
+  margin: 0;
+}
+.board-note {
+  margin: 0;
+}
+.kanban {
+  flex: 1 1 auto;
+  display: flex;
+  gap: var(--space-3);
+  align-items: stretch;
+  min-height: 0;
+  margin: 0;
   overflow-x: auto;
+  overflow-y: hidden;
 }
 .kanban-column {
-  flex: 1 0 260px;
+  flex: 1 0 288px;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
   border: 2px solid var(--ink);
   border-radius: var(--radius);
   background: var(--surface);
@@ -2674,21 +2744,19 @@ fieldset.segmented legend {
 }
 .kanban-column.is-collapsed {
   flex: 0 0 220px;
+  align-self: flex-start;
 }
 .kanban-column.is-over {
   background: var(--accent-tint);
 }
-.kanban-column > p {
-  margin: 0;
-  padding: var(--space-3);
-}
 .kanban-column-head {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border-bottom: 2px solid var(--ink);
   border-radius: calc(var(--radius) - 2px) calc(var(--radius) - 2px) 0 0;
   background: var(--yellow-soft);
@@ -2720,7 +2788,7 @@ fieldset.segmented legend {
   background: var(--bg);
 }
 .kanban-toggle {
-  min-height: var(--hit);
+  min-height: 28px;
   padding: 0 var(--space-2);
   border: 0;
   background: transparent;
@@ -2730,89 +2798,373 @@ fieldset.segmented legend {
   text-decoration: underline;
   cursor: pointer;
 }
-.kanban-cards {
-  display: grid;
-  gap: var(--space-3);
+.kanban-hint,
+.kanban-empty {
   margin: 0;
   padding: var(--space-3);
+}
+.kanban-scroll {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-2);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.kanban-cards {
+  position: relative;
+  margin: 0;
+  padding: 0;
   list-style: none;
 }
+.kanban-slot {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+.kanban-more {
+  margin: 0;
+  padding: var(--space-2);
+  text-align: center;
+}
 .kanban-card {
-  padding: var(--space-3);
-  border: 2px solid var(--ink);
-  border-radius: var(--radius);
-  background: var(--surface);
-  box-shadow: var(--shadow-1);
-}
-.kanban-card.is-dragging {
-  opacity: 0.35;
-}
-.kanban-card-overlay {
-  box-shadow: var(--shadow-2);
-  cursor: grabbing;
-}
-.kanban-card-head {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  width: 100%;
+  height: 88px;
+  padding: 6px;
+  /* clip, not hidden: nothing can scroll the card's contents, even when a button in it is focused */
+  overflow: clip;
+  background: var(--surface);
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.kanban-card.is-final {
+  cursor: default;
+}
+.kanban-card:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+}
+/* The dashed placeholder that stays where the card was picked up. */
+.kanban-card.is-dragging {
+  border-style: dashed;
+  background: transparent;
+  box-shadow: none;
+}
+.kanban-card.is-dragging > * {
+  visibility: hidden;
+}
+.kanban-card-overlay {
+  cursor: grabbing;
+  box-shadow: 10px 10px 0 var(--shadow-color);
+}
+body.is-dragging-card,
+body.is-dragging-card * {
+  cursor: grabbing !important;
+}
+.thumb,
+.avatar-round {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  overflow: hidden;
+  border: 2px solid var(--ink);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--ink);
+}
+.thumb img,
+.avatar-round img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+.avatar-round {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  font-size: var(--fs-h4);
+  font-weight: 700;
+}
+.kanban-card-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.kanban-card-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
 }
 .kanban-card-title {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   margin: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  font-size: var(--fs-h4);
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.drag-handle {
-  display: inline-grid;
-  place-items: center;
-  min-width: var(--hit);
-  min-height: var(--hit);
-  margin: 0 calc(var(--space-2) * -1) 0 calc(var(--space-3) * -1);
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  cursor: grab;
-  touch-action: none;
-}
-.kanban-card-sub,
-.kanban-card-meta {
-  margin: var(--space-1) 0 0;
+.kanban-card-sub {
+  margin: 0;
+  overflow: hidden;
   color: var(--muted);
   font-size: var(--fs-caption);
-  overflow-wrap: anywhere;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.kanban-card-meta {
+.kanban-card-tools {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-.kanban-card-meta strong {
-  color: var(--text);
-}
-.kanban-card-channels {
-  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: var(--space-1);
-  margin: 0;
+}
+.kanban-card-channels,
+.kanban-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 .kanban-card-channels a {
   display: inline-grid;
   place-items: center;
-  min-width: var(--hit);
-  min-height: var(--hit);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
   color: var(--accent-ink);
+  -webkit-user-drag: none;
 }
-.kanban-card-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
+.kanban-card-channels a:hover {
+  background: var(--accent-tint);
+}
+.kanban-card .button.button-icon {
+  width: 28px;
+  min-height: 28px;
+  height: 28px;
+  padding: 0;
+  border-width: 2px;
+  border-radius: 6px;
+  box-shadow: none;
 }
 @media (prefers-reduced-motion: no-preference) {
   .kanban-column {
     transition: background-color 120ms ease;
   }
+  /* Cards below the drop point slide apart to open the gap. */
+  .kanban-slot {
+    transition: transform 150ms ease;
+  }
+  .kanban-card-overlay {
+    transform: scale(1.03) rotate(2deg);
+  }
+  .kanban-slot.is-settling .kanban-card {
+    animation: kanban-settle 150ms ease-out;
+  }
+}
+@keyframes kanban-settle {
+  from {
+    transform: scale(1.03) rotate(2deg);
+    box-shadow: 10px 10px 0 var(--shadow-color);
+  }
+  to {
+    transform: none;
+    box-shadow: var(--shadow-1);
+  }
+}
+.popover-fixed {
+  z-index: 60;
+}
+
+@media (max-width: 720px) {
+  .crm-page {
+    padding: var(--space-2) var(--space-3);
+  }
+  .board-toolbar {
+    gap: var(--space-2);
+  }
+  .board-toolbar .search {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+  /* The selects keep their names for screen readers but give the room to the board. */
+  .board-toolbar .inline-field {
+    flex: 1 1 100px;
+    min-width: 0;
+  }
+  .board-toolbar .inline-field > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .board-toolbar .inline-field select {
+    width: 100%;
+  }
+  .board-toolbar-count {
+    margin-left: 0;
+  }
+}
+
+/* The table view of the same cards */
+.board-table {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+}
+.board-table .bulk-bar {
+  margin: 0;
+}
+.grid-table {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-x: auto;
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+.grid-table-head,
+.grid-table-row {
+  display: grid;
+  grid-template-columns: 40px minmax(200px, 2.2fr) minmax(140px, 1.6fr) 64px 150px 130px 110px;
+  align-items: center;
+  column-gap: var(--space-2);
+  padding: 0 var(--space-3);
+  box-sizing: border-box;
+}
+.grid-table-head,
+.grid-table-body {
+  min-width: 900px;
+}
+.grid-table-head {
+  flex: none;
+  min-height: 44px;
+  border-bottom: var(--bw) solid var(--ink);
+  background: var(--yellow-soft);
+  font-weight: 700;
+}
+.grid-table-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.grid-table-rows {
+  position: relative;
+}
+.grid-table-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.grid-table-row:hover,
+.grid-table-row.is-selected {
+  background: var(--accent-tint);
+}
+.grid-table [role='cell'],
+.grid-table [role='columnheader'] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grid-table .cell-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.grid-table .cell-name .link-button {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 700;
+  text-align: left;
+  text-overflow: ellipsis;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.grid-table .cell-contact {
+  display: flex;
+  gap: 2px;
+}
+.grid-table .cell-contact a {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: var(--accent-ink);
+}
+.table-thumb .thumb,
+.table-thumb .avatar-round {
+  width: 32px;
+  height: 32px;
+  font-size: var(--fs-caption);
+}
+.table-thumb .thumb svg {
+  width: 18px;
+  height: 18px;
+}
+.sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.card-details-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.card-details-head p {
+  margin: 0;
+}
+.details-list {
+  display: grid;
+  gap: var(--space-2);
+}
+.details-row {
+  display: grid;
+  grid-template-columns: 9em minmax(0, 1fr);
+  gap: var(--space-2);
+}
+.details-row dt {
+  color: var(--muted);
+}
+.details-row dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 /* A label keeps its 44px hit area but sits against its field instead of floating above it. */
@@ -2913,7 +3265,7 @@ fieldset.segmented legend {
 
 /* Page sections on a large rounded colour panel */
 .kanban {
-  padding: var(--space-4);
+  padding: var(--space-3);
   border: var(--bw) solid var(--ink);
   border-radius: calc(var(--radius) * 2);
   background: var(--blush);

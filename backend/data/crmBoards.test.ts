@@ -1,3 +1,4 @@
+import type { CrmBoard } from '@lead-gen-crm/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { upsertCompany } from './companies.js';
 import { upsertContact } from './contacts.js';
@@ -41,6 +42,8 @@ const fact = <T>(value: T): Sourced<T> => ({
   kind: 'fact',
 });
 const score = { companyFit: 40, contactFit: 20, reachability: 15 };
+/** Every card on the board, whatever the column. */
+const cardsOf = (board: CrmBoard) => board.stages.flatMap((stage) => stage.cards);
 const DAY = 86_400_000;
 const RETENTION = 30;
 const inDays = (n: number) => new Date(Date.now() + n * DAY);
@@ -95,8 +98,8 @@ describe('the Companies board', () => {
     await upsertLead(db, user, { runId, companyId, contactId: null, score });
     expect(await stageOf(card)).toBe('investigating');
     const board = await loadBoard(db, user, 'companies', RETENTION);
-    expect(board.cards).toHaveLength(1);
-    expect(board.cards[0]).toMatchObject({
+    expect(cardsOf(board)).toHaveLength(1);
+    expect(cardsOf(board)[0]).toMatchObject({
       company: { name: 'Alpha Huiles' },
       score: 75,
       person: null,
@@ -140,7 +143,7 @@ describe('the Companies board', () => {
     // The same person again does not make a second card.
     await addDecisionMaker(db, user, card, { fullName: 'Sami', phone: '98 000 111' }, RETENTION);
     const people = await loadBoard(db, user, 'people', RETENTION);
-    expect(people.cards.filter((c) => c.person?.fullName.startsWith('Sami'))).toHaveLength(1);
+    expect(cardsOf(people).filter((c) => c.person?.fullName.startsWith('Sami'))).toHaveLength(1);
   });
 
   it('needs a name and one channel, and stores nothing when it refuses', async () => {
@@ -161,7 +164,7 @@ describe('the Companies board', () => {
       ),
     ).toBe('suppressed');
     expect(await stageOf(card)).toBe('found');
-    expect((await loadBoard(db, user, 'people', RETENTION)).cards).toEqual([]);
+    expect(cardsOf(await loadBoard(db, user, 'people', RETENTION))).toEqual([]);
     const { rows } = await db.query("SELECT 1 FROM contacts WHERE full_name = 'Nour'");
     expect(rows).toEqual([]);
   });

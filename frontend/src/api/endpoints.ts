@@ -1,6 +1,8 @@
 import type {
   AddDecisionMakerResult,
   ApifyLog,
+  BoardFilters,
+  CardsQuery,
   AuthConfig,
   BudgetView,
   CostGroupBy,
@@ -10,6 +12,7 @@ import type {
   RegionGeometry,
   CrmBoard,
   CrmCard,
+  CrmCardPage,
   CrmPipeline,
   CrmStage,
   DecisionMakerInput,
@@ -124,7 +127,13 @@ export function createApi(client: ApiClient) {
     },
 
     crm: {
-      board: (pipeline: CrmPipeline) => client.get<CrmBoard>(`/api/crm/${pipeline}`),
+      board: (
+        pipeline: CrmPipeline,
+        filters: BoardFilters & { limit?: number | undefined } = {},
+        signal?: AbortSignal,
+      ) => client.get<CrmBoard>(`/api/crm/${pipeline}`, defined(filters), signal),
+      cards: (pipeline: CrmPipeline, query: CardsQuery = {}, signal?: AbortSignal) =>
+        client.get<CrmCardPage>(`/api/crm/${pipeline}/cards`, defined(query), signal),
       move: (id: string, stage: string, reason?: string) =>
         client.request<CrmCard>('POST', `/api/crm/cards/${id}/move`, {
           body: defined({ stage, reason }),

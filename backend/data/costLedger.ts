@@ -7,7 +7,7 @@ import type { UserId } from './ids.js';
  * cost-per-lead totals are always sums over this table.
  */
 
-export type CostProvider = 'apify' | 'google' | 'llm' | 'anthropic';
+export type CostProvider = 'apify' | 'google' | 'llm' | 'anthropic' | 'web';
 export type CostKind = 'estimated' | 'actual';
 
 export interface CostEntryInput {

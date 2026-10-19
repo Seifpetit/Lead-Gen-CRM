@@ -10,6 +10,7 @@ import { APIFY_MIN_MAX_CHARGE_USD } from '../config/pricing.js';
 import { recordApifyEvent, type ApifyState } from '../data/apifyEvents.js';
 import { claimCells, listLiveClaims, releaseClaims, renewClaims } from '../data/cellClaims.js';
 import { getCompany, setCompanySector, upsertCompany } from '../data/companies.js';
+import { setContactPhoto, setMapsImage } from '../data/companyImages.js';
 import {
   listCompaniesWithStaleContacts,
   setContactEmail,
@@ -989,6 +990,8 @@ export class Orchestrator {
       );
       if (created) newPlaces++;
       else alreadyKnown++;
+      // The Maps photo is the fallback thumbnail; the website's own image replaces it later.
+      if (created && place.imageUrl) await setMapsImage(tx, userId, company.id, place.imageUrl);
       if (created && !isReachable(place)) noContact++;
       // Only companies new to this user go through the paid stages; a company another run
       // (or an earlier one) already found is skipped here.
@@ -1094,6 +1097,7 @@ export class Orchestrator {
             run.id,
           );
           contactId = contact.id;
+          if (person.photoUrl) await setContactPhoto(tx, userId, contact.id, person.photoUrl);
         } catch (err) {
           if (!(err instanceof SuppressedContactError)) throw err;
           suppressed = true;

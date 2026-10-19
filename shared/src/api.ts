@@ -456,6 +456,9 @@ export interface CrmCard {
     website: string | null;
     phone: string | null;
     email: string | null;
+    /** Thumbnail address (never the picture itself) and where it came from. */
+    imageUrl: string | null;
+    imageSource: 'og' | 'maps' | null;
   };
   /** The decision-maker; null on the Companies board. */
   person: {
@@ -465,15 +468,59 @@ export interface CrmCard {
     email: string | null;
     phone: string | null;
     linkedinUrl: string | null;
+    /** Only when the provider returned a photo address. */
+    photoUrl: string | null;
   } | null;
   /** Best lead score of the company (Companies board) or of this person's lead (People board). */
   score: number | null;
 }
 
+/** Cards per request; each column loads this many, then the next page near its bottom. */
+export const BOARD_PAGE_SIZE = 50;
+
+export type BoardSort = 'newest' | 'score' | 'days' | 'name' | 'sector' | 'stage';
+export type SortDirection = 'asc' | 'desc';
+
+/** The toolbar's filters and sort; all applied on the server. */
+export interface BoardFilters {
+  /** Matches company name, website, person name or job title. */
+  q?: string | undefined;
+  /** A sector id. */
+  sector?: string | undefined;
+  /** Only cards scoring at least this. */
+  minScore?: number | undefined;
+  sort?: BoardSort | undefined;
+  /** Defaults per sort: newest, score and days run newest/highest/longest first; the rest A to Z. */
+  dir?: SortDirection | undefined;
+}
+
+/** The cards route: the board's filters plus the column and the cursor of the next page. */
+export interface CardsQuery extends BoardFilters {
+  stage?: string | undefined;
+  cursor?: string | undefined;
+  limit?: number | undefined;
+}
+
+/** One column: its true total (with the filters applied) and its first page of cards. */
+export interface CrmBoardStage extends BoardStage {
+  total: number;
+  cards: CrmCard[];
+  /** Pass to the cards route for the next page; null when everything is loaded. */
+  nextCursor: string | null;
+}
+
 export interface CrmBoard {
   pipeline: CrmPipeline;
-  stages: BoardStage[];
+  stages: CrmBoardStage[];
+  /** Sectors on the board (before filtering), for the sector filter. */
+  sectors: { id: string; name: string }[];
+}
+
+export interface CrmCardPage {
   cards: CrmCard[];
+  /** Cards matching the filters (in the stage, when one was asked for). */
+  total: number;
+  nextCursor: string | null;
 }
 
 export interface DecisionMakerInput {

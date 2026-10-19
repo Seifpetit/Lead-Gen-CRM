@@ -32,6 +32,8 @@ export interface MapsItem {
   temporarilyClosed?: boolean;
   reviewsCount?: number;
   url?: string;
+  /** The place's main Google Maps photo. */
+  imageUrl?: string;
   scrapedAt?: string;
 }
 
@@ -101,6 +103,7 @@ export function mapPlaces(items: MapsItem[], readAt: Date): DiscoveredPlace[] {
           : 'OPERATIONAL',
       reviewsCount: typeof item.reviewsCount === 'number' ? item.reviewsCount : null,
       mapsUrl,
+      imageUrl: httpUrl(item.imageUrl),
     });
   }
   return places;

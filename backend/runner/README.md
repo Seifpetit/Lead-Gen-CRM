@@ -121,4 +121,14 @@ Proposed fixes where an assumption is weak (none applied silently):
 - The Maps Actor takes each cell as given: `mapsInput` passes the rectangle as a GeoJSON
   `customGeolocation` Polygon, which the Actor documents. It does not clip results to it, which
   is why the outline check above exists. Not verified against a live run yet (pilot).
+- **Company pictures:** `runner/imageBackfill.ts` is a free enrichment step that runs in the
+  background after start (first tick after 5 s, then every minute while there is work). For each
+  company that has not been checked it reads the website's `og:image` / `twitter:image` through
+  `lib/safeFetch.ts` (http and https only, 5 s timeout, 1 MB, hostnames resolved at connect time
+  and private, loopback and link-local addresses refused, redirects re-checked, no JavaScript is
+  run) and stores the address. A company whose website has none keeps the Maps photo; one with
+  neither gets the sector icon in the browser. Each lookup writes a `web` row of $0 to the cost
+  ledger against the run that found the company. The Maps Actor's `imageUrl` field and the
+  LinkedIn Actor's `photo` field are read if present; neither is in the recorded fixtures, so
+  neither is confirmed against a live run yet (pilot).
 - Nothing here runs a real Apify call: tests use `test/fakeProviders.ts`.

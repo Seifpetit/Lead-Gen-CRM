@@ -1,13 +1,23 @@
 import type { BoardStage, BoardStageKey, CrmCard } from '@lead-gen-crm/shared';
 import { useDraggable } from '@dnd-kit/core';
-import { ArrowRightLeft, GripVertical, Mail, Phone, Trash2, Undo2 } from 'lucide-react';
+import { ArrowRightLeft, Globe, Mail, Phone, Trash2, Undo2 } from 'lucide-react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+} from 'react';
 import { Popover } from '../../components/shared/Popover.js';
 import { useT, type StringKey } from '../../i18n/index.js';
 import { safeHref } from '../../lib/format.js';
+import { avatarColor, initialsOf } from './avatar.js';
 import { daysInStage, daysLeft } from './boardTime.js';
+import { sectorLook } from './sectorLook.js';
 import { cardName, leftKey } from './useBoard.js';
 
-const ICON = 14;
+const ICON = 16;
 
 /** The LinkedIn mark; the icon set has no brand logos. */
 function LinkedinIcon() {
@@ -18,24 +28,104 @@ function LinkedinIcon() {
   );
 }
 
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return url;
-  }
-}
-
-/** What a card offers: drag it, move it from a menu, remove it, or restore it from Noise. */
+/** What a card offers: open it, drag it, move it from a menu, remove it, or restore it from Noise. */
 export interface CardActions {
   /** Columns a card may be moved to (the menu is the keyboard alternative to dragging). */
   targets: (card: CrmCard) => BoardStage[];
   onMove: (card: CrmCard, to: BoardStageKey) => void;
   onRemove: (card: CrmCard) => void;
   onRestore: (card: CrmCard) => void;
+  /** A click or Enter on the card itself. */
+  onOpen: (card: CrmCard) => void;
+  /** The readable name of a sector id. */
+  sectorName: (sector: string | null) => string | null;
 }
 
-export function CardBody({ card, now = new Date() }: { card: CrmCard; now?: Date }) {
+/**
+ * The picture on a company card: the page's preview image or the Maps photo when there is an
+ * address and it loads, otherwise the sector's icon on its color. Only the address is stored.
+ */
+export function CompanyThumb({ card }: { card: CrmCard }) {
+  const { imageUrl, sector } = card.company;
+  const [failed, setFailed] = useState<string | null>(null);
+  const look = sectorLook(sector);
+  if (imageUrl && failed !== imageUrl) {
+    return (
+      <span className="thumb thumb-image" data-source={card.company.imageSource ?? undefined}>
+        <img
+          src={imageUrl}
+          alt=""
+          draggable={false}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(imageUrl)}
+        />
+      </span>
+    );
+  }
+  return (
+    <span
+      className="thumb thumb-tile"
+      style={{ background: look.color }}
+      data-sector={sector ?? ''}
+    >
+      <look.Icon size={28} strokeWidth={2.25} aria-hidden="true" />
+    </span>
+  );
+}
+
+/** A round avatar: the provider's photo when it gave one and it loads, otherwise initials. */
+export function PersonAvatar({ card }: { card: CrmCard }) {
+  const name = card.person?.fullName ?? card.company.name;
+  const photo = card.person?.photoUrl ?? null;
+  const [failed, setFailed] = useState<string | null>(null);
+  if (photo && failed !== photo) {
+    return (
+      <span className="avatar-round avatar-photo">
+        <img
+          src={photo}
+          alt=""
+          draggable={false}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(photo)}
+        />
+      </span>
+    );
+  }
+  return (
+    <span className="avatar-round" style={{ background: avatarColor(name) }} aria-hidden="true">
+      {initialsOf(name)}
+    </span>
+  );
+}
+
+function ChannelLink({
+  href,
+  label,
+  children,
+  external = false,
+}: {
+  href: string;
+  label: string;
+  children: ReactNode;
+  external?: boolean;
+}) {
+  return (
+    <a
+      href={href}
+      draggable={false}
+      aria-label={label}
+      title={label}
+      {...(external ? { target: '_blank', rel: 'noreferrer noopener' } : {})}
+    >
+      {children}
+    </a>
+  );
+}
+
+/** The card's text and tools; the same for the card in its column and for the one being carried. */
+export function CardFace({ card, actions }: { card: CrmCard; actions: CardActions }) {
   const t = useT();
   const name = cardName(card);
   const { company, person } = card;
@@ -43,90 +133,141 @@ export function CardBody({ card, now = new Date() }: { card: CrmCard; now?: Date
   const email = person ? person.email : company.email;
   const linkedin = person?.linkedinUrl ? safeHref(person.linkedinUrl) : null;
   const site = !person && company.website ? safeHref(company.website) : null;
-  const inStage = daysInStage(card, now);
-  const left = daysLeft(card, now);
+  const final = card.stage === 'opted_out';
+  const inNoise = card.stage === 'noise';
+  const inStage = daysInStage(card);
+  const left = daysLeft(card);
+  const targets = final ? [] : actions.targets(card);
+  const stageText = t(
+    (inStage === 0
+      ? 'crm.card.days.zero'
+      : inStage === 1
+        ? 'crm.card.days.one'
+        : 'crm.card.days.many') as StringKey,
+    { count: inStage },
+  );
+
+  const sub = inNoise
+    ? [
+        card.removedFrom &&
+          t('crm.card.removedFrom', { stage: t(`boardStage.${card.removedFrom}`) }),
+        left !== null && t(leftKey(left), { count: left }),
+      ]
+    : final
+      ? [t('crm.card.optedOut')]
+      : person
+        ? [person.title, company.name]
+        : [actions.sectorName(company.sector), t('crm.card.days.short', { count: inStage })];
+
   return (
     <>
-      {person ? (
-        <p className="kanban-card-sub">
-          {[person.title, company.name].filter(Boolean).join(' · ')}
-        </p>
-      ) : (
-        <p className="kanban-card-sub">
-          {company.sector && <span>{company.sector}</span>}
-          {company.sector && site && ' · '}
-          {site && (
-            <a
-              href={site}
-              target="_blank"
-              rel="noreferrer noopener"
-              aria-label={t('crm.card.website', { name })}
-            >
-              {hostOf(company.website ?? '')}
-            </a>
+      {person ? <PersonAvatar card={card} /> : <CompanyThumb card={card} />}
+      <div className="kanban-card-main">
+        <div className="kanban-card-row">
+          <h4 className="kanban-card-title" title={name}>
+            {name}
+          </h4>
+          {card.score !== null && !inNoise && (
+            <span className="badge" aria-label={t('crm.card.score', { total: card.score })}>
+              {card.score}
+            </span>
           )}
+        </div>
+        <p className="kanban-card-sub" title={`${sub.filter(Boolean).join(' · ')} · ${stageText}`}>
+          {sub.filter(Boolean).join(' · ')}
         </p>
-      )}
-      <p className="kanban-card-channels">
-        {phone && (
-          <a
-            href={`tel:${phone.replace(/\s+/g, '')}`}
-            aria-label={t('crm.card.phone', { value: phone })}
-            title={phone}
-          >
-            <Phone size={ICON} aria-hidden="true" />
-          </a>
-        )}
-        {email && (
-          <a
-            href={`mailto:${email}`}
-            aria-label={t('crm.card.email', { value: email })}
-            title={email}
-          >
-            <Mail size={ICON} aria-hidden="true" />
-          </a>
-        )}
-        {linkedin && (
-          <a
-            href={linkedin}
-            target="_blank"
-            rel="noreferrer noopener"
-            aria-label={t('crm.card.linkedin', { name })}
-            title={t('crm.card.linkedin', { name })}
-          >
-            <LinkedinIcon />
-          </a>
-        )}
-      </p>
-      <p className="kanban-card-meta">
-        {card.stage === 'noise' ? (
-          <>
-            {card.removedFrom && (
-              <span>
-                {t('crm.card.removedFrom', { stage: t(`boardStage.${card.removedFrom}`) })}
-              </span>
+        <div className="kanban-card-tools">
+          <span className="kanban-card-channels">
+            {phone && (
+              <ChannelLink
+                href={`tel:${phone.replace(/\s+/g, '')}`}
+                label={t('crm.card.phone', { value: phone })}
+              >
+                <Phone size={ICON} aria-hidden="true" />
+              </ChannelLink>
             )}
-            {left !== null && <strong>{t(leftKey(left), { count: left })}</strong>}
-          </>
-        ) : card.stage === 'opted_out' ? (
-          <span>{t('crm.card.optedOut')}</span>
-        ) : (
-          <span>
-            {t(
-              (inStage === 0
-                ? 'crm.card.days.zero'
-                : inStage === 1
-                  ? 'crm.card.days.one'
-                  : 'crm.card.days.many') as StringKey,
-              { count: inStage },
+            {email && (
+              <ChannelLink href={`mailto:${email}`} label={t('crm.card.email', { value: email })}>
+                <Mail size={ICON} aria-hidden="true" />
+              </ChannelLink>
+            )}
+            {site && (
+              <ChannelLink href={site} label={t('crm.card.website', { name })} external>
+                <Globe size={ICON} aria-hidden="true" />
+              </ChannelLink>
+            )}
+            {linkedin && (
+              <ChannelLink href={linkedin} label={t('crm.card.linkedin', { name })} external>
+                <LinkedinIcon />
+              </ChannelLink>
             )}
           </span>
-        )}
-      </p>
+          {!final && (
+            <span className="kanban-card-actions">
+              {targets.length > 0 && (
+                <Popover
+                  label={t('crm.card.moveTo.label', { name })}
+                  icon={<ArrowRightLeft size={ICON} aria-hidden="true" />}
+                  align="right"
+                  portal
+                >
+                  {(close) => (
+                    <ul className="menu" aria-label={t('crm.card.moveTo')}>
+                      {targets.map((stage) => (
+                        <li key={stage.key}>
+                          <button
+                            type="button"
+                            className="menu-item"
+                            onClick={() => {
+                              close();
+                              actions.onMove(card, stage.key);
+                            }}
+                          >
+                            {t(`boardStage.${stage.key}`)}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </Popover>
+              )}
+              {inNoise ? (
+                <button
+                  type="button"
+                  className="button button-icon"
+                  aria-label={t('crm.card.restore.label', { name })}
+                  title={t('crm.card.restore.label', { name })}
+                  onClick={() => actions.onRestore(card)}
+                >
+                  <Undo2 size={ICON} aria-hidden="true" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="button button-icon"
+                  aria-label={t('crm.card.remove.label', { name })}
+                  title={t('crm.card.remove.label', { name })}
+                  onClick={() => actions.onRemove(card)}
+                >
+                  <Trash2 size={ICON} aria-hidden="true" />
+                </button>
+              )}
+            </span>
+          )}
+        </div>
+      </div>
     </>
   );
 }
 
+/** A click that ends a drag must not also open the card. */
+const CLICK_AFTER_DRAG_MS = 250;
+
+/**
+ * A card in a column. The whole card is the drag handle: the mouse starts a drag after 6px of
+ * movement (so a plain click opens the card and its phone, email and website icons work), a
+ * finger after a short press, and the keyboard with Space on the focused card.
+ */
 export function BoardCard({ card, actions }: { card: CrmCard; actions: CardActions }) {
   const t = useT();
   const name = cardName(card);
@@ -135,80 +276,45 @@ export function BoardCard({ card, actions }: { card: CrmCard; actions: CardActio
     id: card.id,
     disabled: final,
   });
-  const targets = final ? [] : actions.targets(card);
+  const endedAt = useRef(0);
+  const wasDragging = useRef(false);
+  useEffect(() => {
+    if (wasDragging.current && !isDragging) endedAt.current = Date.now();
+    wasDragging.current = isDragging;
+  }, [isDragging]);
+
+  const open = (event: MouseEvent<HTMLElement>) => {
+    // Menus drawn on the page are children of the card for React, but not for the DOM.
+    if (!event.currentTarget.contains(event.target as Node)) return;
+    if ((event.target as HTMLElement).closest('a, button, input, select')) return;
+    if (Date.now() - endedAt.current < CLICK_AFTER_DRAG_MS) return;
+    actions.onOpen(card);
+  };
+  const keyDown = (event: KeyboardEvent<HTMLElement>) => {
+    listeners?.onKeyDown?.(event);
+    if (event.key === 'Enter' && event.target === event.currentTarget) {
+      // Focus moves into the dialog; without this the same key press would then press its button.
+      event.preventDefault();
+      actions.onOpen(card);
+    }
+  };
+
   return (
-    <li
+    <div
       ref={setNodeRef}
-      className={`kanban-card${isDragging ? ' is-dragging' : ''}`}
+      {...attributes}
+      {...listeners}
+      // The card holds links and buttons, so it is a group, not a button.
+      role="group"
       aria-label={name}
+      aria-roledescription={final ? undefined : t('crm.card.draggable')}
+      tabIndex={0}
+      data-card-id={card.id}
+      className={`kanban-card kanban-card-${card.pipeline}${isDragging ? ' is-dragging' : ''}${final ? ' is-final' : ''}`}
+      onClick={open}
+      onKeyDown={keyDown}
     >
-      <div className="kanban-card-head">
-        {!final && (
-          <button
-            type="button"
-            className="drag-handle"
-            aria-label={t('crm.card.drag', { name })}
-            {...attributes}
-            {...listeners}
-          >
-            <GripVertical size={16} aria-hidden="true" />
-          </button>
-        )}
-        <h4 className="kanban-card-title">{name}</h4>
-        {card.score !== null && (
-          <span className="badge">{t('crm.card.score', { total: card.score })}</span>
-        )}
-      </div>
-      <CardBody card={card} />
-      {!final && (
-        <div className="kanban-card-actions">
-          {targets.length > 0 && (
-            <Popover
-              label={t('crm.card.moveTo.label', { name })}
-              icon={<ArrowRightLeft size={ICON} aria-hidden="true" />}
-              align="left"
-            >
-              {(close) => (
-                <ul className="menu" aria-label={t('crm.card.moveTo')}>
-                  {targets.map((stage) => (
-                    <li key={stage.key}>
-                      <button
-                        type="button"
-                        className="menu-item"
-                        onClick={() => {
-                          close();
-                          actions.onMove(card, stage.key);
-                        }}
-                      >
-                        {t(`boardStage.${stage.key}`)}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Popover>
-          )}
-          {card.stage === 'noise' ? (
-            <button
-              type="button"
-              className="button"
-              aria-label={t('crm.card.restore.label', { name })}
-              onClick={() => actions.onRestore(card)}
-            >
-              <Undo2 size={ICON} aria-hidden="true" /> {t('crm.card.restore')}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="button"
-              aria-label={t('crm.card.remove.label', { name })}
-              onClick={() => actions.onRemove(card)}
-            >
-              <Trash2 size={ICON} aria-hidden="true" /> {t('crm.card.remove')}
-            </button>
-          )}
-        </div>
-      )}
-    </li>
+      <CardFace card={card} actions={actions} />
+    </div>
   );
 }

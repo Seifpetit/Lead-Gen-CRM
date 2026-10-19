@@ -7,7 +7,12 @@ import {
   emailLookupKey,
   leadLine,
 } from './emailFinder.js';
-import { GOOGLE_MAPS_ACTOR, GoogleMapsApifyDiscovery, mapsInput } from './googleMapsApify.js';
+import {
+  GOOGLE_MAPS_ACTOR,
+  GoogleMapsApifyDiscovery,
+  mapPlaces,
+  mapsInput,
+} from './googleMapsApify.js';
 import {
   DEFAULT_FIELD_MASK,
   ENTERPRISE_FIELD_MASK,
@@ -18,6 +23,7 @@ import {
   COMPANY_EMPLOYEES_ACTOR,
   CompanyEmployeesFinder,
   LinkedinPeopleFinder,
+  mapPeople,
   PROFILE_SEARCH_ACTOR,
   ProfileSearchFinder,
 } from './linkedin.js';
@@ -491,5 +497,32 @@ describe('costsFromUsage', () => {
         reportedPrices: {},
       }),
     ).toThrow(/No price/);
+  });
+});
+
+describe('thumbnails and photos', () => {
+  const place = { placeId: 'p1', title: 'Huilerie', url: 'https://maps.example/p1' };
+  it('keeps the Maps photo address when the Actor returns one, and only an http(s) one', () => {
+    const [ok] = mapPlaces([{ ...place, imageUrl: 'https://lh3.example/photo.jpg' }], FIXED_NOW);
+    expect(ok!.imageUrl).toBe('https://lh3.example/photo.jpg');
+    const [none] = mapPlaces([place], FIXED_NOW);
+    expect(none!.imageUrl).toBeNull();
+    const [bad] = mapPlaces([{ ...place, imageUrl: 'javascript:alert(1)' }], FIXED_NOW);
+    expect(bad!.imageUrl).toBeNull();
+  });
+
+  it('keeps a profile photo address only when the provider returned one', () => {
+    const base = { linkedinUrl: 'https://www.linkedin.com/in/amel-ben', fullName: 'Amel Ben' };
+    const photoOf = (extra: object) =>
+      mapPeople([{ ...base, ...extra }], 'company_employees', FIXED_NOW)[0]!.photoUrl;
+    expect(photoOf({ photo: 'https://media.example/a.jpg' })).toBe('https://media.example/a.jpg');
+    expect(photoOf({ photo: { url: 'https://media.example/b.jpg' } })).toBe(
+      'https://media.example/b.jpg',
+    );
+    expect(photoOf({ pictureUrl: 'https://media.example/c.jpg' })).toBe(
+      'https://media.example/c.jpg',
+    );
+    expect(photoOf({})).toBeNull();
+    expect(photoOf({ photo: 'data:image/png;base64,AAAA' })).toBeNull();
   });
 });

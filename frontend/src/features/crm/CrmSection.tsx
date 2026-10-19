@@ -10,7 +10,7 @@ export function CrmSection() {
   const navigate = useNavigate();
   const current: Board = useLocation().pathname.startsWith('/crm/people') ? 'people' : 'companies';
   return (
-    <main id="main" className="page">
+    <main id="main" className="page crm-page">
       <h1>{t('crm.title')}</h1>
       <Tabs
         label={t('crm.tabs.label')}

@@ -50,6 +50,14 @@ database driver (enforced by ESLint).
 - **Run attribution**: companies, contacts and CRM leads keep the `run_id` that first produced
   them (a later run that finds them again does not overwrite it); companies also keep their
   `region_cell_id`, which is how cost per lead is computed per cell.
+- **Board pictures** (migration 010): `companies.image_url`, `image_source` (`og` for the website's
+  og:image or twitter:image, `maps` for the Maps photo) and `image_checked_at`, and
+  `contacts.photo_url` when the provider returned one. Only the address is stored, never the file.
+  `companyImages.ts` sets the Maps photo when a company is first found, lists companies still to be
+  looked up, and `finishImageLookup` records the result (a website image replaces the Maps one).
+- **CRM boards**: `listCards` and `loadBoard` page every column with a keyset cursor over
+  `(sort key, id)`, so a page boundary is exact even when many cards tie. Search, sector, minimum
+  score and sort are applied in SQL; each column's `total` counts what matches the filters.
 - **CRM leads** are unique per user, company and contact, and an upsert never changes the
   stage, so a dismissed or opted-out lead never comes back as new.
 

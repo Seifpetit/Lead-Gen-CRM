@@ -1,185 +1,35 @@
-import type {
-  BoardStage,
-  BoardStageKey,
-  CrmBoard,
-  CrmCard,
-  CrmPipeline,
-} from '@lead-gen-crm/shared';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Navigate, Route, Routes } from 'react-router';
 import { describe, expect, it } from 'vitest';
-import { fakeServer, type Handler } from '../../test/fakeServer.js';
+import { fakeServer } from '../../test/fakeServer.js';
 import { renderWith } from '../../test/render.js';
 import { BoardPage } from './BoardPage.js';
+import {
+  SECTORS,
+  STAGES,
+  ago,
+  boardServer,
+  card,
+  column,
+  companyCard,
+  inDays,
+  menu,
+  personCard,
+} from './boardTestKit.js';
 import { CrmSection } from './CrmSection.js';
-
-const DAY = 86_400_000;
-const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString();
-const inDays = (days: number) => new Date(Date.now() + days * DAY).toISOString();
-
-const STAGES: Record<CrmPipeline, BoardStage[]> = {
-  companies: [
-    { key: 'found', name: 'Found', collapsedByDefault: false },
-    { key: 'investigating', name: 'Investigating', collapsedByDefault: false },
-    {
-      key: 'decision_maker_identified',
-      name: 'Decision-maker identified',
-      collapsedByDefault: false,
-    },
-    { key: 'noise', name: 'Noise', collapsedByDefault: true },
-  ],
-  people: [
-    { key: 'new', name: 'New', collapsedByDefault: false },
-    { key: 'contacted', name: 'Contacted', collapsedByDefault: false },
-    { key: 'replied', name: 'Replied', collapsedByDefault: false },
-    { key: 'won', name: 'Won', collapsedByDefault: false },
-    { key: 'lost', name: 'Lost', collapsedByDefault: false },
-    { key: 'opted_out', name: 'Opted out', collapsedByDefault: false },
-    { key: 'noise', name: 'Noise', collapsedByDefault: true },
-  ],
-};
-
-function companyCard(over: Partial<CrmCard> & { id: string; name: string }): CrmCard {
-  const { name, ...rest } = over;
-  return {
-    pipeline: 'companies',
-    stage: 'found',
-    stageEnteredAt: ago(3),
-    noiseAt: null,
-    purgeAt: null,
-    removedFrom: null,
-    company: {
-      id: `co-${over.id}`,
-      name,
-      sector: 'textile',
-      website: 'https://www.alpha.example.test/',
-      phone: '+216 74 111 222',
-      email: 'contact@alpha.example.test',
-    },
-    person: null,
-    score: 72,
-    ...rest,
-  };
-}
-
-function personCard(over: Partial<CrmCard> & { id: string }): CrmCard {
-  return {
-    pipeline: 'people',
-    stage: 'new',
-    stageEnteredAt: ago(1),
-    noiseAt: null,
-    purgeAt: null,
-    removedFrom: null,
-    company: {
-      id: 'co-a',
-      name: 'Alpha SARL',
-      sector: 'textile',
-      website: null,
-      phone: null,
-      email: null,
-    },
-    person: {
-      id: `p-${over.id}`,
-      fullName: 'Amel Ben Salah',
-      title: 'Responsable logistique',
-      email: 'amel@alpha.example.test',
-      phone: null,
-      linkedinUrl: 'https://www.linkedin.com/in/amel',
-    },
-    score: null,
-    ...over,
-  };
-}
-
-/** A server that keeps one board in memory and applies the same rules as the real one. */
-function boardServer(
-  pipeline: CrmPipeline,
-  initial: CrmCard[],
-  reject?: (req: { stage?: string }) => unknown,
-) {
-  const cards = new Map(initial.map((c) => [c.id, c]));
-  const routes: Record<string, Handler> = {
-    [`GET /api/crm/${pipeline}`]: (): CrmBoard => ({
-      pipeline,
-      stages: STAGES[pipeline],
-      cards: [...cards.values()],
-    }),
-  };
-  for (const c of initial) {
-    const put = (next: CrmCard) => {
-      cards.set(c.id, next);
-      return next;
-    };
-    routes[`POST /api/crm/cards/${c.id}/move`] = (req) => {
-      const refused = reject?.(req.body);
-      if (refused) return refused;
-      return put({
-        ...cards.get(c.id)!,
-        stage: req.body.stage as BoardStageKey,
-        stageEnteredAt: new Date().toISOString(),
-      });
-    };
-    routes[`POST /api/crm/cards/${c.id}/remove`] = () =>
-      put({
-        ...cards.get(c.id)!,
-        stage: 'noise',
-        noiseAt: new Date().toISOString(),
-        purgeAt: inDays(30),
-        removedFrom: cards.get(c.id)!.stage,
-      });
-    routes[`POST /api/crm/cards/${c.id}/restore`] = () =>
-      put({
-        ...cards.get(c.id)!,
-        stage: cards.get(c.id)!.removedFrom ?? 'found',
-        noiseAt: null,
-        purgeAt: null,
-        removedFrom: null,
-      });
-    routes[`POST /api/crm/cards/${c.id}/decision-maker`] = (req) => {
-      const company = put({ ...cards.get(c.id)!, stage: 'decision_maker_identified' });
-      return {
-        status: 201,
-        body: {
-          company,
-          person: personCard({
-            id: 'new-person',
-            company: company.company,
-            person: {
-              id: 'p-new',
-              fullName: req.body.fullName,
-              title: req.body.title ?? null,
-              email: req.body.email ?? null,
-              phone: req.body.phone ?? null,
-              linkedinUrl: req.body.linkedinUrl ?? null,
-            },
-          }),
-        },
-      };
-    };
-  }
-  const server = fakeServer(routes);
-  renderWith(<BoardPage pipeline={pipeline} />, server);
-  return { server, user: userEvent.setup() };
-}
-
-const column = (name: string) => screen.getByRole('region', { name });
-const card = (name: string) => screen.getByRole('listitem', { name });
-const menu = async (user: ReturnType<typeof userEvent.setup>, name: string, to: string) => {
-  await user.click(within(card(name)).getByRole('button', { name: `Move ${name} to` }));
-  await user.click(screen.getByRole('button', { name: to }));
-};
 
 describe('Companies board', () => {
   it('shows the four columns, Noise collapsed, and what each card carries', async () => {
-    boardServer('companies', [companyCard({ id: '1', name: 'Alpha Textile' })]);
-    expect(await screen.findByRole('listitem', { name: 'Alpha Textile' })).toBeInTheDocument();
+    boardServer('companies', [companyCard({ id: 'alpha', name: 'Alpha Textile' })]);
+    expect(await screen.findByRole('group', { name: 'Alpha Textile' })).toBeInTheDocument();
     for (const name of ['Found', 'Investigating', 'Decision-maker identified', 'Noise']) {
       expect(column(name)).toBeInTheDocument();
     }
     const alpha = within(card('Alpha Textile'));
     expect(within(column('Found')).getByText('Alpha Textile')).toBeInTheDocument();
-    expect(alpha.getByText('textile')).toBeInTheDocument();
+    // The sector's name and the days in the stage, on one line under the name.
+    expect(alpha.getByText('Textile · 3d')).toBeInTheDocument();
     expect(alpha.getByRole('link', { name: 'Website of Alpha Textile' })).toHaveAttribute(
       'href',
       'https://www.alpha.example.test/',
@@ -192,10 +42,11 @@ describe('Companies board', () => {
       'href',
       'mailto:contact@alpha.example.test',
     );
-    expect(alpha.getByText('Score 72')).toBeInTheDocument();
-    expect(alpha.getByText('3 days in stage')).toBeInTheDocument();
-    expect(alpha.getByRole('button', { name: 'Drag Alpha Textile' })).toBeInTheDocument();
-    // Noise starts collapsed.
+    expect(alpha.getByLabelText('Score 72')).toHaveTextContent('72');
+    // The whole card is the drag handle.
+    expect(card('Alpha Textile')).toHaveAttribute('aria-roledescription', 'draggable card');
+    // The count in a header is the column's true total; Noise starts collapsed.
+    expect(within(column('Found')).getByLabelText('1 in total')).toHaveTextContent('1');
     expect(within(column('Noise')).getByRole('button', { name: 'Show Noise (0)' })).toHaveAttribute(
       'aria-expanded',
       'false',
@@ -216,7 +67,7 @@ describe('Companies board', () => {
     const { server, user } = boardServer('companies', [
       companyCard({ id: '1', name: 'Alpha Textile' }),
     ]);
-    await screen.findByRole('listitem', { name: 'Alpha Textile' });
+    await screen.findByRole('group', { name: 'Alpha Textile' });
     await menu(user, 'Alpha Textile', 'Investigating');
     expect(within(column('Investigating')).getByText('Alpha Textile')).toBeInTheDocument();
     await waitFor(() => expect(server.to('POST /api/crm/cards/1/move')).toHaveLength(1));
@@ -226,15 +77,13 @@ describe('Companies board', () => {
   });
 
   it('puts the card back and says why when the server refuses the move', async () => {
-    const { user } = boardServer(
-      'companies',
-      [companyCard({ id: '1', name: 'Alpha Textile' })],
-      () => ({
+    const { user } = boardServer('companies', [companyCard({ id: '1', name: 'Alpha Textile' })], {
+      reject: () => ({
         status: 409,
         body: { error: 'decision_maker_required', message: 'x' },
       }),
-    );
-    await screen.findByRole('listitem', { name: 'Alpha Textile' });
+    });
+    await screen.findByRole('group', { name: 'Alpha Textile' });
     await menu(user, 'Alpha Textile', 'Investigating');
     expect(
       await screen.findByText('Alpha Textile could not be moved: Add the decision-maker first.'),
@@ -246,7 +95,7 @@ describe('Companies board', () => {
   describe('the decision-maker form', () => {
     async function open() {
       const ctx = boardServer('companies', [companyCard({ id: '1', name: 'Alpha Textile' })]);
-      await screen.findByRole('listitem', { name: 'Alpha Textile' });
+      await screen.findByRole('group', { name: 'Alpha Textile' });
       await menu(ctx.user, 'Alpha Textile', 'Decision-maker identified');
       return {
         ...ctx,
@@ -345,7 +194,7 @@ describe('Companies board', () => {
     const { server, user } = boardServer('companies', [
       companyCard({ id: '1', name: 'Alpha Textile' }),
     ]);
-    await screen.findByRole('listitem', { name: 'Alpha Textile' });
+    await screen.findByRole('group', { name: 'Alpha Textile' });
     await user.click(
       within(card('Alpha Textile')).getByRole('button', { name: 'Remove Alpha Textile' }),
     );
@@ -356,8 +205,7 @@ describe('Companies board', () => {
     // Noise is collapsed: open it to see the card, what it was and when it goes.
     await user.click(within(column('Noise')).getByRole('button', { name: 'Show Noise (1)' }));
     const removed = within(card('Alpha Textile'));
-    expect(removed.getByText('30 days left')).toBeInTheDocument();
-    expect(removed.getByText('Removed from Found')).toBeInTheDocument();
+    expect(removed.getByText('Removed from Found · 30 days left')).toBeInTheDocument();
     await user.click(removed.getByRole('button', { name: 'Restore Alpha Textile' }));
     expect(await screen.findByText('Alpha Textile restored to Found.')).toBeInTheDocument();
     expect(within(column('Found')).getByText('Alpha Textile')).toBeInTheDocument();
@@ -367,7 +215,7 @@ describe('Companies board', () => {
     const { server, user } = boardServer('companies', [
       companyCard({ id: '1', name: 'Alpha Textile' }),
     ]);
-    await screen.findByRole('listitem', { name: 'Alpha Textile' });
+    await screen.findByRole('group', { name: 'Alpha Textile' });
     server.set('POST /api/crm/cards/1/remove', { status: 500, body: { error: 'internal' } });
     await user.click(
       within(card('Alpha Textile')).getByRole('button', { name: 'Remove Alpha Textile' }),
@@ -399,11 +247,11 @@ describe('Companies board', () => {
 describe('People board', () => {
   it('shows the seven columns and the person, title, company and channels', async () => {
     boardServer('people', [personCard({ id: '1' })]);
-    await screen.findByRole('listitem', { name: 'Amel Ben Salah' });
+    await screen.findByRole('group', { name: 'Amel Ben Salah' });
     for (const name of ['New', 'Contacted', 'Replied', 'Won', 'Lost', 'Opted out', 'Noise']) {
       expect(column(name)).toBeInTheDocument();
     }
-    const amel = within(within(column('New')).getByRole('listitem', { name: 'Amel Ben Salah' }));
+    const amel = within(within(column('New')).getByRole('group', { name: 'Amel Ben Salah' }));
     expect(amel.getByText('Responsable logistique · Alpha SARL')).toBeInTheDocument();
     expect(amel.getByRole('link', { name: 'Email: amel@alpha.example.test' })).toBeInTheDocument();
     expect(amel.getByRole('link', { name: 'LinkedIn profile of Amel Ben Salah' })).toHaveAttribute(
@@ -411,7 +259,7 @@ describe('People board', () => {
       'https://www.linkedin.com/in/amel',
     );
     expect(amel.queryByRole('link', { name: /^Phone/ })).not.toBeInTheDocument();
-    expect(amel.getByText('1 day in stage')).toBeInTheDocument();
+    expect(amel.getByRole('heading', { name: 'Amel Ben Salah' })).toBeInTheDocument();
   });
 
   it('explains the empty board and points to the Companies board', async () => {
@@ -425,7 +273,7 @@ describe('People board', () => {
 
   it('moves a person through the board', async () => {
     const { user } = boardServer('people', [personCard({ id: '1' })]);
-    await screen.findByRole('listitem', { name: 'Amel Ben Salah' });
+    await screen.findByRole('group', { name: 'Amel Ben Salah' });
     for (const to of ['Contacted', 'Replied', 'Won']) {
       await menu(user, 'Amel Ben Salah', to);
       expect(await screen.findByText(`Amel Ben Salah moved to ${to}.`)).toBeInTheDocument();
@@ -435,7 +283,7 @@ describe('People board', () => {
 
   it('asks for the objection reason before opting out, and then the card has no controls', async () => {
     const { server, user } = boardServer('people', [personCard({ id: '1' })]);
-    await screen.findByRole('listitem', { name: 'Amel Ben Salah' });
+    await screen.findByRole('group', { name: 'Amel Ben Salah' });
     await menu(user, 'Amel Ben Salah', 'Opted out');
     const dialog = await screen.findByRole('dialog', { name: 'Record an objection and opt out?' });
     // Nothing moved or was sent yet.
@@ -453,15 +301,15 @@ describe('People board', () => {
     expect(within(column('Opted out')).getByText('Amel Ben Salah')).toBeInTheDocument();
     const done = within(card('Amel Ben Salah'));
     expect(done.getByText('Opted out for good')).toBeInTheDocument();
-    expect(done.queryByRole('button', { name: /Remove|Move|Drag/ })).not.toBeInTheDocument();
+    expect(done.queryByRole('button', { name: /Remove|Move/ })).not.toBeInTheDocument();
+    expect(card('Amel Ben Salah')).not.toHaveAttribute('aria-roledescription');
   });
 
   it('puts the person back when the opt-out is refused', async () => {
-    const { user } = boardServer('people', [personCard({ id: '1' })], () => ({
-      status: 500,
-      body: { error: 'internal' },
-    }));
-    await screen.findByRole('listitem', { name: 'Amel Ben Salah' });
+    const { user } = boardServer('people', [personCard({ id: '1' })], {
+      reject: () => ({ status: 500, body: { error: 'internal' } }),
+    });
+    await screen.findByRole('group', { name: 'Amel Ben Salah' });
     await menu(user, 'Amel Ben Salah', 'Opted out');
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('What did they say?'), 'Asked to stop');
@@ -473,17 +321,21 @@ describe('People board', () => {
 
 describe('the CRM section', () => {
   it('switches between the two boards with tabs, one page each', async () => {
+    const board = (pipeline: 'companies' | 'people', cards: unknown[]) => ({
+      pipeline,
+      stages: STAGES[pipeline].map((s, i) => ({
+        ...s,
+        total: i === 0 ? cards.length : 0,
+        cards: i === 0 ? cards : [],
+        nextCursor: null,
+      })),
+      sectors: SECTORS,
+    });
     const server = fakeServer({
-      'GET /api/crm/companies': {
-        pipeline: 'companies',
-        stages: STAGES.companies,
-        cards: [companyCard({ id: '1', name: 'Alpha Textile' })],
-      },
-      'GET /api/crm/people': {
-        pipeline: 'people',
-        stages: STAGES.people,
-        cards: [personCard({ id: '2' })],
-      },
+      'GET /api/crm/companies': board('companies', [
+        companyCard({ id: '1', name: 'Alpha Textile' }),
+      ]),
+      'GET /api/crm/people': board('people', [personCard({ id: '2' })]),
     });
     renderWith(
       <Routes>
@@ -503,15 +355,15 @@ describe('the CRM section', () => {
       'aria-selected',
       'true',
     );
-    expect(await screen.findByRole('listitem', { name: 'Alpha Textile' })).toBeInTheDocument();
+    expect(await screen.findByRole('group', { name: 'Alpha Textile' })).toBeInTheDocument();
     await user.click(within(tabs).getByRole('tab', { name: 'People' }));
-    expect(await screen.findByRole('listitem', { name: 'Amel Ben Salah' })).toBeInTheDocument();
+    expect(await screen.findByRole('group', { name: 'Amel Ben Salah' })).toBeInTheDocument();
     expect(within(tabs).getByRole('tab', { name: 'People' })).toHaveAttribute(
       'aria-selected',
       'true',
     );
-    expect(screen.queryByRole('listitem', { name: 'Alpha Textile' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Alpha Textile' })).not.toBeInTheDocument();
     await user.click(within(tabs).getByRole('tab', { name: 'Companies' }));
-    expect(await screen.findByRole('listitem', { name: 'Alpha Textile' })).toBeInTheDocument();
+    expect(await screen.findByRole('group', { name: 'Alpha Textile' })).toBeInTheDocument();
   });
 });
