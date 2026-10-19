@@ -7,7 +7,8 @@ import { Layout } from './components/Layout.js';
 import { AuthProvider, useAuth } from './features/auth/AuthContext.js';
 import { RequireAuth } from './features/auth/RequireAuth.js';
 import { SignInPage } from './features/auth/SignInPage.js';
-import { CrmPage } from './features/crm/CrmPage.js';
+import { BoardPage } from './features/crm/BoardPage.js';
+import { CrmSection } from './features/crm/CrmSection.js';
 import { CostsPage } from './features/leadgen/CostsPage.js';
 import { CoveragePage } from './features/leadgen/CoveragePage.js';
 import { DashboardPage } from './features/leadgen/DashboardPage.js';
@@ -45,7 +46,11 @@ function Screens() {
             <Route path="settings" element={<SettingsPage />} />
             <Route path="help" element={<HelpPage />} />
           </Route>
-          <Route path="/crm" element={<CrmPage />} />
+          <Route path="/crm" element={<CrmSection />}>
+            <Route index element={<Navigate to="/crm/companies" replace />} />
+            <Route path="companies" element={<BoardPage pipeline="companies" />} />
+            <Route path="people" element={<BoardPage pipeline="people" />} />
+          </Route>
           <Route path="*" element={<NotFound />} />
         </Route>
       </Route>

@@ -1,16 +1,31 @@
 import { expect, test, type Page } from '@playwright/test';
 
 // One pass through the whole journey against the fake Apify: sign in, preview and start a run,
-// watch it on the Logs page, open the result, and move a lead through every CRM stage.
+// watch it on the Logs page, open the result, and work the two CRM boards.
 
 const EMAIL = 'e2e@example.test';
 const PASSWORD = 'e2e-password-123';
 
-async function moveTo(page: Page, card: ReturnType<Page['locator']>, label: string) {
-  await card.getByLabel(/Move .* to another stage/).selectOption({ label });
+/** Drags a card by its grip onto a column with the mouse, the way a person does. */
+async function dragTo(page: Page, name: string, column: string) {
+  const grip = page.getByRole('button', { name: `Drag ${name}` });
+  const target = page.getByRole('region', { name: column, exact: true });
+  const from = (await grip.boundingBox())!;
+  const to = (await target.boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2 + 12, from.y + from.height / 2 + 12, { steps: 4 });
+  await page.mouse.move(to.x + to.width / 2, to.y + 80, { steps: 12 });
+  await page.mouse.up();
 }
 
-test('sign in, run, watch, open the result, and work a lead through the CRM', async ({ page }) => {
+/** The keyboard way: a card's "Move to" menu. */
+async function moveTo(page: Page, name: string, column: string) {
+  await page.getByRole('button', { name: `Move ${name} to` }).click();
+  await page.getByRole('list', { name: 'Move to' }).getByRole('button', { name: column }).click();
+}
+
+test('sign in, run, watch, open the result, and work the two CRM boards', async ({ page }) => {
   // Signed out: everything leads to the sign-in screen.
   await page.goto('/crm');
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
@@ -24,9 +39,10 @@ test('sign in, run, watch, open the result, and work a lead through the CRM', as
 
   await page.getByLabel('Password').fill(PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  // Sign-in returns to the page that was asked for: the CRM, which starts empty.
+  // Sign-in returns to the page that was asked for: the CRM (Companies board), which starts empty.
   await expect(page.getByRole('heading', { name: 'CRM', level: 1 })).toBeVisible();
-  await expect(page.getByText('No leads in your pipeline yet')).toBeVisible();
+  await expect(page).toHaveURL(/\/crm\/companies$/);
+  await expect(page.getByText('No companies on the board yet')).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Main' });
   await expect(nav.getByRole('link')).toHaveText(['Lead Gen', 'CRM']);
   await nav.getByRole('link', { name: 'Lead Gen' }).click();
@@ -107,39 +123,82 @@ test('sign in, run, watch, open the result, and work a lead through the CRM', as
   await expect(card.getByRole('heading', { name: 'Decision-maker' })).toBeVisible();
   await expect(card.locator('.tag-fact, .tag-estimate').first()).toBeVisible();
   await expect(card.getByText('A score is a computed estimate')).toBeVisible();
-  const name = (await card.getByRole('heading', { level: 3 }).textContent()) ?? '';
 
   // Into the CRM from the run.
   await card.getByRole('button', { name: 'Confirm' }).click();
   await expect(page.getByText('Moved to Confirmed.')).toBeVisible();
 
-  // The CRM board: the lead is in Confirmed. Walk it through every other stage.
+  // The Companies board: every company the run found is in Found.
   await nav.getByRole('link', { name: 'CRM' }).click();
-  await page.getByRole('button', { name: /Show closed leads/ }).click();
+  await expect(page).toHaveURL(/\/crm\/companies$/);
   const column = (title: string) => page.getByRole('region', { name: title, exact: true });
-  const cardIn = (title: string) =>
-    column(title).locator('li.card').filter({ hasText: name }).first();
+  const cards = column('Found').getByRole('listitem');
+  await expect(cards.first()).toBeVisible();
+  const names = await cards.evaluateAll((els) =>
+    els.map((el) => el.getAttribute('aria-label') ?? ''),
+  );
+  expect(names.length).toBeGreaterThanOrEqual(2);
+  const [first, second] = names as [string, string];
+  await expect(column('Noise')).toContainText('Show Noise (0)');
 
-  await expect(cardIn('Confirmed')).toBeVisible();
-  const steps = ['Contacted (waiting)', 'Response', 'Won', 'Lost', 'Dismissed'];
-  for (const title of steps) {
-    const current = page.locator('li.card').filter({ hasText: name }).first();
-    await moveTo(page, current, title);
-    await expect(cardIn(title)).toBeVisible();
-  }
+  // Drag a card with the mouse, and with the keyboard menu.
+  await dragTo(page, first, 'Investigating');
+  await expect(column('Investigating').getByRole('listitem', { name: first })).toBeVisible();
+  await moveTo(page, first, 'Found');
+  await expect(column('Found').getByRole('listitem', { name: first })).toBeVisible();
 
-  // Back to a live stage, then opt out: asks first, records the objection.
-  await moveTo(page, cardIn('Dismissed'), 'System suggested');
-  await expect(cardIn('System suggested')).toBeVisible();
-  await moveTo(page, cardIn('System suggested'), 'Opted out');
+  // The last column needs a decision-maker: cancel puts the card back, saving moves it.
+  await dragTo(page, first, 'Decision-maker identified');
+  const form = page.getByRole('dialog', { name: `Who is the decision-maker at ${first}?` });
+  await expect(form).toBeVisible();
+  await form.getByRole('button', { name: 'Cancel' }).click();
+  await expect(column('Found').getByRole('listitem', { name: first })).toBeVisible();
+  await moveTo(page, first, 'Decision-maker identified');
+  await form.getByRole('button', { name: 'Save decision-maker' }).click();
+  await expect(form.getByText('Write their name.')).toBeVisible();
+  await form.getByLabel('Full name').fill('Amel E2E');
+  await form.getByLabel('Job title').fill('Responsable logistique');
+  await form.getByLabel('Email').fill('amel.e2e@example.test');
+  await form.getByRole('button', { name: 'Save decision-maker' }).click();
+  await expect(form).toHaveCount(0);
+  await expect(
+    page.getByText(`Amel E2E added. ${first} moved to Decision-maker identified.`),
+  ).toBeVisible();
+  await expect(
+    column('Decision-maker identified').getByRole('listitem', { name: first }),
+  ).toBeVisible();
+
+  // The person is on the People board, in New. Work them, then opt them out.
+  await page.getByRole('tab', { name: 'People' }).click();
+  await expect(page).toHaveURL(/\/crm\/people$/);
+  await expect(column('New').getByRole('listitem', { name: 'Amel E2E' })).toBeVisible();
+  await dragTo(page, 'Amel E2E', 'Contacted');
+  await expect(column('Contacted').getByRole('listitem', { name: 'Amel E2E' })).toBeVisible();
+  await moveTo(page, 'Amel E2E', 'Opted out');
   const optOut = page.getByRole('dialog', { name: 'Record an objection and opt out?' });
   await optOut.getByRole('button', { name: 'Record objection and opt out' }).click();
   await expect(optOut.getByText('Write the reason first.')).toBeVisible();
   await optOut.getByLabel('What did they say?').fill('Asked by phone not to be contacted');
   await optOut.getByRole('button', { name: 'Record objection and opt out' }).click();
   await expect(optOut).toHaveCount(0);
-  await expect(cardIn('Opted out')).toBeVisible();
-  await expect(cardIn('Opted out').getByLabel(/Move .* to another stage/)).toHaveCount(0);
+  const optedOut = column('Opted out').getByRole('listitem', { name: 'Amel E2E' });
+  await expect(optedOut).toBeVisible();
+  await expect(optedOut.getByRole('button')).toHaveCount(0);
+  // Reloading keeps it: the server holds the board.
+  await page.reload();
+  await expect(column('Opted out').getByRole('listitem', { name: 'Amel E2E' })).toBeVisible();
+
+  // Back on Companies: remove another company to Noise and restore it.
+  await page.getByRole('tab', { name: 'Companies' }).click();
+  await page.getByRole('button', { name: `Remove ${second}` }).click();
+  await expect(page.getByText(`${second} moved to Noise. 30 days left.`)).toBeVisible();
+  await column('Noise')
+    .getByRole('button', { name: /Show Noise/ })
+    .click();
+  const removed = column('Noise').getByRole('listitem', { name: second });
+  await expect(removed.getByText('30 days left')).toBeVisible();
+  await removed.getByRole('button', { name: `Restore ${second}` }).click();
+  await expect(column('Found').getByRole('listitem', { name: second })).toBeVisible();
 
   // Sign out ends the session; it is in the profile menu.
   await page.getByRole('button', { name: new RegExp(EMAIL) }).click();

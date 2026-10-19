@@ -692,35 +692,7 @@ progress {
   font-size: 0.9rem;
 }
 
-/* CRM board */
-.board {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(240px, 1fr));
-  gap: var(--gap);
-  margin-top: var(--gap);
-  overflow-x: auto;
-  padding-bottom: 8px;
-  align-items: start;
-}
-@media (max-width: 900px) {
-  .board {
-    grid-template-columns: 1fr;
-    overflow-x: visible;
-  }
-}
-.board[hidden] {
-  display: none;
-}
-.column {
-  background: color-mix(in srgb, var(--surface) 60%, var(--bg));
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 10px;
-  min-width: 0;
-}
-.column h3 {
-  margin-top: 0;
-}
+/* Count beside a column title */
 .count {
   display: inline-block;
   min-width: 1.6em;
@@ -730,17 +702,6 @@ progress {
   font-size: 0.8rem;
   padding: 0 6px;
 }
-.cards {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  gap: 10px;
-}
-.closed {
-  margin-top: 24px;
-}
-
 /* Dialogs */
 .modal-backdrop {
   position: fixed;
@@ -2692,4 +2653,186 @@ fieldset.segmented legend {
   background: var(--paper);
   border-top: 2px solid var(--ink);
   border-left: 2px solid var(--ink);
+}
+
+/* CRM boards: columns of cards. Each column has a pastel header band; the cards on them stay
+   plain so the data reads easily. Card menus open over the column, so it must not clip. */
+.kanban {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-start;
+  margin-top: var(--space-4);
+  padding: var(--space-1) var(--space-1) var(--space-4);
+  overflow-x: auto;
+}
+.kanban-column {
+  flex: 1 0 260px;
+  min-width: 0;
+  border: 2px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+.kanban-column.is-collapsed {
+  flex: 0 0 220px;
+}
+.kanban-column.is-over {
+  background: var(--accent-tint);
+}
+.kanban-column > p {
+  margin: 0;
+  padding: var(--space-3);
+}
+.kanban-column-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 2px solid var(--ink);
+  border-radius: calc(var(--radius) - 2px) calc(var(--radius) - 2px) 0 0;
+  background: var(--yellow-soft);
+  color: var(--text);
+}
+.kanban-column.is-collapsed .kanban-column-head {
+  border-bottom: 0;
+  border-radius: calc(var(--radius) - 2px);
+}
+.kanban-column-head h3 {
+  margin: 0;
+}
+.kanban-column-investigating .kanban-column-head,
+.kanban-column-contacted .kanban-column-head {
+  background: var(--lavender);
+}
+.kanban-column-decision_maker_identified .kanban-column-head,
+.kanban-column-replied .kanban-column-head {
+  background: var(--mint);
+}
+.kanban-column-won .kanban-column-head {
+  background: var(--lime);
+}
+.kanban-column-lost .kanban-column-head,
+.kanban-column-opted_out .kanban-column-head {
+  background: var(--pink);
+}
+.kanban-column-noise .kanban-column-head {
+  background: var(--bg);
+}
+.kanban-toggle {
+  min-height: var(--hit);
+  padding: 0 var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-caption);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.kanban-cards {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-3);
+  list-style: none;
+}
+.kanban-card {
+  padding: var(--space-3);
+  border: 2px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+.kanban-card.is-dragging {
+  opacity: 0.35;
+}
+.kanban-card-overlay {
+  box-shadow: var(--shadow-2);
+  cursor: grabbing;
+}
+.kanban-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.kanban-card-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.drag-handle {
+  display: inline-grid;
+  place-items: center;
+  min-width: var(--hit);
+  min-height: var(--hit);
+  margin: 0 calc(var(--space-2) * -1) 0 calc(var(--space-3) * -1);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: grab;
+  touch-action: none;
+}
+.kanban-card-sub,
+.kanban-card-meta {
+  margin: var(--space-1) 0 0;
+  color: var(--muted);
+  font-size: var(--fs-caption);
+  overflow-wrap: anywhere;
+}
+.kanban-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.kanban-card-meta strong {
+  color: var(--text);
+}
+.kanban-card-channels {
+  display: flex;
+  gap: var(--space-1);
+  margin: 0;
+}
+.kanban-card-channels a {
+  display: inline-grid;
+  place-items: center;
+  min-width: var(--hit);
+  min-height: var(--hit);
+  color: var(--accent-ink);
+}
+.kanban-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .kanban-column {
+    transition: background-color 120ms ease;
+  }
+}
+
+/* A label keeps its 44px hit area but sits against its field instead of floating above it. */
+.form-field > label {
+  display: flex;
+  align-items: flex-end;
+}
+
+/* Board column counts: a small white pill on the colored band; menus without bullets. */
+.kanban-column-head .count {
+  min-width: 2em;
+  border: 2px solid var(--ink);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 700;
+}
+.menu,
+.menu li {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
