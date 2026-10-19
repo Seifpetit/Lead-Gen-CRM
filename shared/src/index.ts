@@ -166,3 +166,4 @@ export interface Run {
 export * from './api.js';
 export * from './checkpoints.js';
 export * from './places.js';
+export * from './runOutcome.js';

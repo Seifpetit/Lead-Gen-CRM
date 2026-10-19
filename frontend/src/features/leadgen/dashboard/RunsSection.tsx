@@ -3,10 +3,10 @@ import { STAGE_CHECKPOINT, type RunSummary } from '@lead-gen-crm/shared';
 import { Link } from 'react-router';
 import { EmptyState, ErrorState, LoadingState } from '../../../components/states.js';
 import { PanelSection } from '../../../components/shared/PanelSection.js';
-import { runResultText } from '../runResult.js';
+import { OutcomeBadge, outcomeText } from '../runOutcomeView.js';
 import { useT } from '../../../i18n/index.js';
 import { formatUsd } from '../../../lib/format.js';
-import { isActive, StatusBadge } from '../runParts.js';
+import { isActive } from '../runParts.js';
 
 /** Runs as compact rows: region, status, a small bar of spend against the cap, and found to leads. */
 export function RunsSection({
@@ -51,7 +51,7 @@ export function RunsSection({
                     )}
                   </span>
                   <span className="run-status">
-                    <StatusBadge status={run.status} />
+                    <OutcomeBadge run={run} />
                     {isActive(run.status) && run.currentStage && (
                       <span className="muted small">
                         {' '}
@@ -63,7 +63,7 @@ export function RunsSection({
                     <progress max={1} value={share} aria-label={spent} />
                     <span className="small">{spent}</span>
                   </span>
-                  <span className="run-found small">{runResultText(t, run)}</span>
+                  <span className="run-found small">{outcomeText(t, run)}</span>
                 </Link>
               </li>
             );

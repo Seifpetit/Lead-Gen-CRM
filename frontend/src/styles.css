@@ -6050,3 +6050,26 @@ a.channel:hover .channel-text {
   flex: none;
   white-space: nowrap;
 }
+
+/* Run outcome badges: green only for a run that produced leads */
+.badge-outcome {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink);
+}
+.badge-outcome[data-tone='green'] {
+  background: var(--teal);
+}
+.badge-outcome[data-tone='yellow'] {
+  background: var(--yellow);
+}
+.badge-outcome[data-tone='red'] {
+  background: var(--coral);
+}
+.badge-outcome[data-tone='blue'] {
+  background: var(--sky);
+}
+.badge-outcome[data-tone='grey'] {
+  background: var(--surface);
+}

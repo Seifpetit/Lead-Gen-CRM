@@ -5,7 +5,7 @@ import { ProgressTrack } from '../../../components/shared/ProgressTrack.js';
 import { useT } from '../../../i18n/index.js';
 import { formatUsd } from '../../../lib/format.js';
 import { useThrottled } from '../../../lib/useThrottled.js';
-import { StatusBadge } from '../runParts.js';
+import { OutcomeBadge } from '../runOutcomeView.js';
 import { describeRun } from './runView.js';
 import './live.css';
 
@@ -17,7 +17,7 @@ function StripRow({ run }: { run: RunSummary }) {
   const view = describeRun(t, run);
   return (
     <li className="strip-row">
-      <StatusBadge status={run.status} />
+      <OutcomeBadge run={run} />
       <Link
         className="strip-sentence"
         to={`/leadgen/runs/${run.id}`}
