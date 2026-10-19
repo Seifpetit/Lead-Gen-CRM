@@ -106,13 +106,19 @@ describe('design tokens', () => {
 });
 
 describe('scrollbars', () => {
-  it('are drawn as a black-edged teal thumb on a cream track', () => {
-    expect(css).toMatch(/::-webkit-scrollbar-thumb\s*\{[^}]*border: 2px solid var\(--ink\)/);
-    expect(css).toMatch(/::-webkit-scrollbar-thumb\s*\{[^}]*background: var\(--teal\)/);
-    expect(css).toMatch(/::-webkit-scrollbar-track\s*\{[^}]*background: var\(--paper\)/);
+  it('are thin and invisible until the area is hovered', () => {
+    expect(css).toMatch(/::-webkit-scrollbar\s*\{[^}]*width: 12px/);
+    expect(css).toMatch(/::-webkit-scrollbar-thumb\s*\{[^}]*background: transparent/);
+    expect(css).toMatch(/:hover::-webkit-scrollbar-thumb\s*\{[^}]*var\(--scroll-timid\)/);
   });
-  it('give Firefox the same colours without hiding the parts from Chrome', () => {
+  it('are bold, black-edged and teal only while focus is inside the area', () => {
+    expect(css).toMatch(
+      /:focus-within::-webkit-scrollbar-thumb\s*\{[^}]*border: 2px solid var\(--ink\)[^}]*var\(--teal\)/,
+    );
+  });
+  it('give Firefox the same behaviour without hiding the parts from Chrome', () => {
     expect(css).toMatch(/@supports not selector\(::-webkit-scrollbar\)[\s\S]*scrollbar-color/);
+    expect(css).toMatch(/\*:hover\s*\{[^}]*scrollbar-color: var\(--scroll-timid\)/);
   });
 });
 
@@ -210,14 +216,34 @@ describe('dashboard panel layout', () => {
     expect(rule('.dash-panel')).toMatch(/box-shadow:/);
     expect(rule('.dash-panel')).toMatch(/container:\s*dashpanel/);
     expect(rule('.panel-section')).toMatch(/min-height:\s*0/);
-    expect(rule('.dp-leads')).toMatch(/flex:\s*55/);
-    expect(rule('.dp-bottom')).toMatch(/flex:\s*35/);
+    expect(rule('.dp-leads')).toMatch(/flex:\s*var\(--dp-top, 61\)/);
+    expect(rule('.dp-bottom')).toMatch(/flex:\s*var\(--dp-bottom, 39\)/);
     expect(rule('.panel-head')).toMatch(/height:\s*32px/);
   });
 
   it('scrolls the card grid and the runs inside their sections', () => {
     expect(rule('.panel-body')).toMatch(/overflow:\s*hidden auto/);
     expect(rule('.panel-body')).toMatch(/min-height:\s*0/);
+  });
+});
+
+describe('dashboard divider and cards', () => {
+  it('colors the divider and its knob, and lets the grid resize it', () => {
+    expect(rule('.panel-splitter')).toMatch(/background: var\(--splitter\)/);
+    expect(rule('.panel-splitter')).toMatch(/cursor: row-resize/);
+    expect(rule('.splitter-knob')).toMatch(/background:/);
+    expect(rule('.dp-leads')).toMatch(/flex: var\(--dp-top/);
+    expect(rule('.dp-bottom')).toMatch(/flex: var\(--dp-bottom/);
+  });
+  it('makes cards hop with an overshooting curve, only for people who allow motion', () => {
+    expect(css).toMatch(
+      /prefers-reduced-motion: no-preference\)\s*\{\s*\.tile\s*\{[^}]*cubic-bezier\(0\.34, 2\.4/,
+    );
+    expect(css).toMatch(/\.tile:hover\s*\{\s*transform: translateY\(-6px\)/);
+    expect(rule('.tile.is-dragging')).toMatch(/opacity/);
+  });
+  it('gives the sidebar list room for the hard shadow and the count badge', () => {
+    expect(css).toMatch(/\.sidebar nav\s*\{[^}]*padding: 4px 8px 8px 4px/);
   });
 });
 

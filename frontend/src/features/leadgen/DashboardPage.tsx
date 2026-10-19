@@ -1,7 +1,8 @@
 import type { Coverage, Lead, RunSummary } from '@lead-gen-crm/shared';
 import { Plus } from 'lucide-react';
-import { useCallback, useId, useMemo, useState } from 'react';
+import { useCallback, useId, useMemo, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router';
+import { Splitter } from '../../components/shared/Splitter.js';
 import { useApi } from '../../api/context.js';
 import { SectionTitle } from '../../components/shared/SectionTitle.js';
 import { useToast } from '../../components/shared/Toast.js';
@@ -18,6 +19,21 @@ const ACTIVE_POLL_MS = 5_000;
 const LEAD_PAGE = 100;
 /** Pages of leads read at most: enough for the charts to be true without reading without end. */
 const LEAD_PAGES = 10;
+
+const SPLIT_KEY = 'leadgen.dash.split';
+const SPLIT_DEFAULT = 61;
+const SPLIT_MIN = 35;
+const SPLIT_MAX = 80;
+
+/** The leads' share of the leads-and-charts area, as the person last left it. */
+function readSplit(): number {
+  try {
+    const n = Number(window.localStorage.getItem(SPLIT_KEY));
+    return n >= SPLIT_MIN && n <= SPLIT_MAX ? n : SPLIT_DEFAULT;
+  } catch {
+    return SPLIT_DEFAULT;
+  }
+}
 
 interface LoadedLeads {
   items: Lead[];
@@ -39,6 +55,15 @@ export function DashboardPage() {
   const refresh = useCallback(() => setRefreshKey((n) => n + 1), []);
   const [creating, setCreating] = useState(false);
   const [regionId, setRegionId] = useState('');
+  const [split, setSplit] = useState(readSplit);
+  const resize = useCallback((value: number) => {
+    setSplit(value);
+    try {
+      window.localStorage.setItem(SPLIT_KEY, String(value));
+    } catch {
+      // Not remembered; the bar still moves.
+    }
+  }, []);
 
   const regions = useResource(() => api.regions.list({ limit: 100 }));
   const active = useResource(() => api.runs.list({ status: ['pending', 'running'], limit: 10 }), {
@@ -88,7 +113,10 @@ export function DashboardPage() {
 
   return (
     <main id="main" className="page dash-page">
-      <div className="dash-panel">
+      <div
+        className="dash-panel"
+        style={{ '--dp-top': split, '--dp-bottom': 100 - split } as CSSProperties}
+      >
         <header className="dp-header">
           <SectionTitle level={1}>{t('side.dashboard')}</SectionTitle>
           <div className="dp-header-controls">
@@ -143,6 +171,16 @@ export function DashboardPage() {
           refreshKey={refreshKey}
           runs={runItems}
           onCreateRun={() => setCreating(true)}
+        />
+
+        <Splitter
+          label={t('dash.split')}
+          valueText={t('dash.split.value', { percent: Math.round(split) })}
+          value={split}
+          min={SPLIT_MIN}
+          max={SPLIT_MAX}
+          onChange={resize}
+          onReset={() => resize(SPLIT_DEFAULT)}
         />
 
         <div className="dp-bottom">

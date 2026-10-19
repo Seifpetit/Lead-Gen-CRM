@@ -4,6 +4,9 @@
   --white: #ffffff;
   --cream-page: #fdf1e8;
   --coral: #ff6b5e;
+  --scroll-timid: rgba(26, 26, 26, 0.28);
+  --scroll-timid-strong: rgba(26, 26, 26, 0.5);
+  --splitter: #ff4fa3;
   --purple: #9b7be9;
   --teal: #3cc8c0;
   --yellow: #ffe066;
@@ -2465,45 +2468,54 @@ fieldset.segmented legend {
   background: var(--cream);
 }
 
-/* Scrollbars: a thick black-edged thumb on a paper track. Chrome, Edge and Safari take the
-   ::-webkit-scrollbar parts; Firefox takes scrollbar-color. (Where scrollbar-color is set,
-   Chrome ignores the parts, so it is given to Firefox only.) */
+/* Scrollbars: thin and timid. Nothing shows until the area is hovered, then a slim soft thumb; when
+   focus is inside the area the thumb is bold, with a black edge. Chrome, Edge and Safari take the
+   ::-webkit-scrollbar parts; Firefox takes scrollbar-color. (Where scrollbar-color is set, Chrome
+   ignores the parts, so it is given to Firefox only.) The gutter is always there, so nothing
+   moves when the thumb appears. */
 @supports not selector(::-webkit-scrollbar) {
   * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  *:hover {
+    scrollbar-color: var(--scroll-timid) transparent;
+  }
+  :not(html, body):focus-within {
     scrollbar-width: auto;
     scrollbar-color: var(--teal) var(--paper);
   }
 }
 ::-webkit-scrollbar {
-  width: 16px;
-  height: 16px;
+  width: 12px;
+  height: 12px;
 }
-::-webkit-scrollbar-track {
-  background: var(--paper);
-  border-left: 2px solid var(--ink);
-}
-::-webkit-scrollbar:horizontal,
-::-webkit-scrollbar-track:horizontal {
-  border-left: 0;
-}
-::-webkit-scrollbar-track:horizontal {
-  border-top: 2px solid var(--ink);
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--teal);
-  border: 2px solid var(--ink);
-  border-radius: var(--radius);
+  background: transparent;
+  border: 4px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+:hover::-webkit-scrollbar-thumb {
+  background-color: var(--scroll-timid);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--yellow-soft);
+  background-color: var(--scroll-timid-strong);
 }
-::-webkit-scrollbar-thumb:active {
-  background: var(--pink);
+:not(html, body):focus-within::-webkit-scrollbar-thumb {
+  border: 2px solid var(--ink);
+  background-color: var(--teal);
+  background-clip: border-box;
 }
-::-webkit-scrollbar-corner {
-  background: var(--paper);
-  border-top: 2px solid var(--ink);
-  border-left: 2px solid var(--ink);
+:not(html, body):focus-within::-webkit-scrollbar-thumb:hover {
+  background-color: var(--yellow-soft);
+}
+:not(html, body):focus-within::-webkit-scrollbar-thumb:active {
+  background-color: var(--pink);
 }
 
 /* CRM boards. The page is exactly as tall as the window and does not scroll; the toolbar stays
@@ -3994,8 +4006,8 @@ select.quiet-select {
 
 /* Recent leads (about 55%) above the bottom row (about 35%) */
 .dp-leads {
-  flex: 55 1 0;
-  min-height: 280px;
+  flex: var(--dp-top, 61) 1 0;
+  min-height: 220px;
 }
 .dp-leads > .panel-body {
   display: flex;
@@ -4004,11 +4016,10 @@ select.quiet-select {
   overflow: hidden;
 }
 .dp-bottom {
-  flex: 35 1 0;
-  min-height: 200px;
+  flex: var(--dp-bottom, 39) 1 0;
+  min-height: 160px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.1fr);
-  border-top: var(--bw) solid var(--ink);
 }
 .dp-bottom > .panel-section + .panel-section {
   border-left: var(--bw) solid var(--ink);
@@ -4020,6 +4031,10 @@ select.quiet-select {
   .dp-bottom {
     flex: none;
     grid-template-columns: minmax(0, 1fr);
+    border-top: var(--bw) solid var(--ink);
+  }
+  .panel-splitter {
+    display: none;
   }
   .dp-bottom > .panel-section {
     height: 240px;
@@ -4033,6 +4048,10 @@ select.quiet-select {
   .dp-bottom {
     flex: none;
     min-height: 220px;
+    border-top: var(--bw) solid var(--ink);
+  }
+  .panel-splitter {
+    display: none;
   }
 }
 
@@ -4489,4 +4508,102 @@ a.tile-name:hover {
 .run-spend progress {
   flex: 0 0 56px;
   width: 56px;
+}
+
+/* The bar between the leads and the three charts: its own color, with a knob to grab */
+.panel-splitter {
+  position: relative;
+  flex: none;
+  height: 12px;
+  background: var(--splitter);
+  border-block: var(--bw) solid var(--ink);
+  cursor: row-resize;
+  touch-action: none;
+  user-select: none;
+}
+.splitter-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 56px;
+  height: 20px;
+  transform: translate(-50%, -50%);
+  border: var(--bw) solid var(--ink);
+  border-radius: 999px;
+  background: var(--yellow) repeating-linear-gradient(90deg, transparent 0 6px, var(--ink) 6px 8px)
+    center / 24px 8px no-repeat;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .splitter-knob {
+    transition:
+      transform 260ms cubic-bezier(0.34, 2.2, 0.5, 1),
+      background-color 150ms;
+  }
+}
+.panel-splitter:hover .splitter-knob {
+  transform: translate(-50%, -50%) scale(1.12);
+}
+.panel-splitter:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: -3px;
+}
+.panel-splitter:focus-visible .splitter-knob,
+.panel-splitter.is-dragging .splitter-knob {
+  background-color: var(--teal);
+  transform: translate(-50%, -50%) scale(1.2);
+}
+.panel-splitter.is-dragging {
+  filter: saturate(1.3);
+}
+
+/* Lead cards: they hop and overshoot under the pointer, and can be picked up */
+.tile {
+  cursor: grab;
+}
+.tile:active {
+  cursor: grabbing;
+}
+.tile:hover {
+  z-index: 1;
+  box-shadow: 4px 6px 0 var(--shadow-color);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tile {
+    transition:
+      transform 420ms cubic-bezier(0.34, 2.4, 0.5, 1),
+      box-shadow 200ms ease,
+      background-color 150ms ease;
+  }
+  .tile:hover {
+    transform: translateY(-6px) rotate(-0.6deg);
+  }
+}
+.tile.is-dragging {
+  opacity: 0.45;
+  transform: scale(0.97) rotate(1.5deg);
+  box-shadow: none;
+}
+.tile:focus-within {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* No crops: the active link's hard shadow and the count badge get room inside the scrolling list */
+.sidebar nav {
+  padding: 4px 8px 8px 4px;
+  margin: -4px -8px -8px -4px;
+}
+.is-collapsed .sidebar a {
+  padding: 0;
+  justify-content: center;
+}
+.is-collapsed .sidebar a svg {
+  flex: none;
+}
+.is-collapsed .nav-badge {
+  top: -4px;
+  right: -6px;
+}
+.chip-row {
+  padding: 4px 4px 6px;
 }

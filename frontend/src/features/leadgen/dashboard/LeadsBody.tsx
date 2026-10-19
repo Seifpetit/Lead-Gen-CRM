@@ -173,6 +173,7 @@ export function LeadsBody({
         onLoadMore={() => void data.loadMore()}
         empty={empty}
         label={label}
+        resetKey={`${query.pipeline}|${query.sort}|${query.dir ?? ''}`}
         {...(selectable ? { selected: chosen, onToggle: toggle } : {})}
       />
     </>

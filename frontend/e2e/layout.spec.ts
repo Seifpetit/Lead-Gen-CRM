@@ -211,6 +211,45 @@ test('with 100 leads the page never scrolls, only the card grid inside the panel
   expect(after.nested).toEqual([]);
 });
 
+test('the divider resizes the leads and the charts, and the cards hop under the pointer', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await signIn(page);
+  await page.goto('/leadgen');
+  await expect(page.locator('.tile-grid > .tile').first()).toBeVisible();
+  const bar = page.getByRole('separator', { name: 'Resize leads and charts' });
+  const before = (await page.locator('.dp-leads').boundingBox())!;
+  const box = (await bar.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y - 120, { steps: 6 });
+  await page.mouse.up();
+  const after = (await page.locator('.dp-leads').boundingBox())!;
+  expect(after.height).toBeLessThan(before.height - 80);
+  // The page still does not scroll, and the divider keeps its place between the two.
+  const m = await page.evaluate(measure);
+  expect(m.docHeight).toBeLessThanOrEqual(m.height);
+  // The keyboard moves it too.
+  await bar.focus();
+  await page.keyboard.press('End');
+  await expect(bar).toHaveAttribute('aria-valuenow', '80');
+
+  // A card lifts when hovered, and a drag moves it before another.
+  const tiles = page.locator('.tile-grid > .tile');
+  const second = tiles.nth(1);
+  const at = (await second.boundingBox())!;
+  await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2);
+  await expect.poll(() => second.evaluate((el) => getComputedStyle(el).transform)).not.toBe('none');
+  const first = (await tiles.nth(0).boundingBox())!;
+  const name = await second.locator('.tile-name').textContent();
+  await page.mouse.move(at.x + 20, at.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(first.x + 10, first.y + 20, { steps: 8 });
+  await page.mouse.up();
+  await expect(tiles.nth(0).locator('.tile-name')).toHaveText(name!);
+});
+
 test('Expand opens a window over about 95% of the screen, with the same cards, and Escape closes it', async ({
   page,
 }) => {

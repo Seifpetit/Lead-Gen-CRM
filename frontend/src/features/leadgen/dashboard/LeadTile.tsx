@@ -1,6 +1,6 @@
 import type { CrmCard } from '@lead-gen-crm/shared';
 import { Globe, Phone } from 'lucide-react';
-import type { MouseEvent } from 'react';
+import type { DragEvent, KeyboardEvent, MouseEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useT } from '../../../i18n/index.js';
 import { safeHref } from '../../../lib/format.js';
@@ -19,6 +19,15 @@ export const ALL_PARTS: TileParts = { stage: true, score: true, found: true, con
 
 const ICON = 14;
 
+/** What a tile needs to be dragged to another place in the grid, or moved with Alt and an arrow. */
+export interface TileDrag {
+  dragging: boolean;
+  onDragStart: (event: DragEvent<HTMLLIElement>) => void;
+  onDragOver: (event: DragEvent<HTMLLIElement>) => void;
+  onDragEnd: () => void;
+  onKeyDown: (event: KeyboardEvent<HTMLLIElement>) => void;
+}
+
 /** Where a tile opens: the company page of its best lead; null when it has none. */
 export function cardPath(card: CrmCard): string | null {
   return card.runId && card.leadId ? `/leadgen/runs/${card.runId}/leads/${card.leadId}` : null;
@@ -34,9 +43,12 @@ export function LeadTile({
   parts,
   selected,
   onToggle,
+  drag,
 }: {
   card: CrmCard;
   parts: TileParts;
+  /** Set to let the tile be rearranged. */
+  drag?: TileDrag;
   /** Set (with `onToggle`) when the tile can be ticked for a bulk action. */
   selected?: boolean;
   onToggle?: () => void;
@@ -58,9 +70,18 @@ export function LeadTile({
 
   return (
     <li
-      className={`tile${selected ? ' is-selected' : ''}${path ? ' is-link' : ''}`}
+      className={`tile${selected ? ' is-selected' : ''}${path ? ' is-link' : ''}${drag?.dragging ? ' is-dragging' : ''}`}
       data-card-id={card.id}
       onClick={open}
+      {...(drag
+        ? {
+            draggable: true,
+            onDragStart: drag.onDragStart,
+            onDragOver: drag.onDragOver,
+            onDragEnd: drag.onDragEnd,
+            onKeyDown: drag.onKeyDown,
+          }
+        : {})}
     >
       {onToggle && (
         <input
@@ -74,7 +95,7 @@ export function LeadTile({
       {person ? <PersonAvatar card={card} /> : <CompanyThumb card={card} size={48} />}
       <div className="tile-main">
         {path ? (
-          <Link to={path} className="tile-name" title={title}>
+          <Link to={path} className="tile-name" title={title} draggable={false}>
             {name}
           </Link>
         ) : (
@@ -105,6 +126,7 @@ export function LeadTile({
                   href={`tel:${phone.replace(/\s+/g, '')}`}
                   aria-label={t('crm.card.phone', { value: phone })}
                   title={phone}
+                  draggable={false}
                 >
                   <Phone size={ICON} aria-hidden="true" />
                 </a>
@@ -120,6 +142,7 @@ export function LeadTile({
                   rel="noreferrer noopener"
                   aria-label={t('crm.card.website', { name })}
                   title={company.website ?? undefined}
+                  draggable={false}
                 >
                   <Globe size={ICON} aria-hidden="true" />
                 </a>

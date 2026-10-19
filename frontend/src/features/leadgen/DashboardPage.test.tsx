@@ -1,5 +1,5 @@
 import type { CrmCard, CrmFacets } from '@lead-gen-crm/shared';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useLocation } from 'react-router';
 import { describe, expect, it } from 'vitest';
@@ -293,6 +293,90 @@ describe('Recent leads cards', () => {
     await waitFor(() =>
       expect(server.to('GET /api/crm/companies/cards').at(-1)!.query.get('regionId')).toBe('sfax'),
     );
+  });
+});
+
+describe('Rearranging cards', () => {
+  const tile = (name: string) => within(grid()).getByText(name).closest('li')!;
+
+  it('lets a card be dragged to another place, and keeps it there', async () => {
+    await setup();
+    expect(names(grid())).toEqual(['Fixture Transport SARL', 'Second Freight']);
+    expect(tile('Second Freight')).toHaveAttribute('draggable', 'true');
+    const data = { setData: () => undefined, effectAllowed: '', dropEffect: '' };
+    fireEvent.dragStart(tile('Second Freight'), { dataTransfer: data });
+    expect(tile('Second Freight')).toHaveClass('is-dragging');
+    // Over the left half of the first card: it goes before it.
+    fireEvent.dragOver(tile('Fixture Transport SARL'), { dataTransfer: data, clientX: 0 });
+    expect(names(grid())).toEqual(['Second Freight', 'Fixture Transport SARL']);
+    fireEvent.dragEnd(tile('Second Freight'));
+    expect(tile('Second Freight')).not.toHaveClass('is-dragging');
+    expect(names(grid())).toEqual(['Second Freight', 'Fixture Transport SARL']);
+  });
+
+  it('moves a card with Alt and an arrow key, and says where it went', async () => {
+    const { user } = await setup();
+    within(tile('Fixture Transport SARL'))
+      .getByRole('link', { name: 'Fixture Transport SARL' })
+      .focus();
+    await user.keyboard('{Alt>}{ArrowRight}{/Alt}');
+    expect(names(grid())).toEqual(['Second Freight', 'Fixture Transport SARL']);
+    expect(
+      await screen.findByText('Fixture Transport SARL moved to place 2 of 2.'),
+    ).toBeInTheDocument();
+    await user.keyboard('{Alt>}{ArrowLeft}{/Alt}');
+    expect(names(grid())).toEqual(['Fixture Transport SARL', 'Second Freight']);
+  });
+
+  it('goes back to the sort order when the sort changes', async () => {
+    const { user } = await setup();
+    await user.keyboard('{Tab}');
+    within(tile('Fixture Transport SARL'))
+      .getByRole('link', { name: 'Fixture Transport SARL' })
+      .focus();
+    await user.keyboard('{Alt>}{ArrowRight}{/Alt}');
+    expect(names(grid())).toEqual(['Second Freight', 'Fixture Transport SARL']);
+    await user.selectOptions(within(panel()).getByLabelText('Sort by'), 'Name A to Z');
+    await waitFor(() =>
+      expect(names(grid())).toEqual(['Fixture Transport SARL', 'Second Freight']),
+    );
+  });
+
+  it('describes how to rearrange for people who cannot see the cards', async () => {
+    await setup();
+    expect(grid()).toHaveAccessibleDescription(
+      'Drag a card to rearrange it, or press Alt and an arrow key.',
+    );
+  });
+});
+
+describe('Divider between leads and charts', () => {
+  const bar = () => screen.getByRole('separator', { name: 'Resize leads and charts' });
+
+  it('starts at the default share and moves with the keyboard, remembering where it was left', async () => {
+    window.localStorage.removeItem('leadgen.dash.split');
+    const { user, container } = await setup();
+    const panelBox = container.querySelector<HTMLElement>('.dash-panel')!;
+    expect(bar()).toHaveAttribute('aria-valuenow', '61');
+    expect(panelBox.style.getPropertyValue('--dp-top')).toBe('61');
+    bar().focus();
+    await user.keyboard('{ArrowUp}{ArrowUp}');
+    expect(bar()).toHaveAttribute('aria-valuenow', '57');
+    expect(panelBox.style.getPropertyValue('--dp-top')).toBe('57');
+    expect(panelBox.style.getPropertyValue('--dp-bottom')).toBe('43');
+    expect(window.localStorage.getItem('leadgen.dash.split')).toBe('57');
+    // It sits between the leads and the three charts.
+    expect(bar().previousElementSibling).toHaveClass('dp-leads');
+    expect(bar().nextElementSibling).toHaveClass('dp-bottom');
+    await user.dblClick(bar());
+    expect(bar()).toHaveAttribute('aria-valuenow', '61');
+  });
+
+  it('opens where it was left last time', async () => {
+    window.localStorage.setItem('leadgen.dash.split', '70');
+    await setup();
+    expect(bar()).toHaveAttribute('aria-valuenow', '70');
+    window.localStorage.removeItem('leadgen.dash.split');
   });
 });
 
