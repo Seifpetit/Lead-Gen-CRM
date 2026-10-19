@@ -747,20 +747,42 @@ describe('Dashboard empty state', () => {
     ).toBeVisible();
     const user = userEvent.setup();
     await user.click(within(section).getByRole('button', { name: 'Create run' }));
-    expect(await screen.findByRole('dialog', { name: 'Create run' })).toBeVisible();
+    expect(await screen.findByRole('dialog', { name: 'Start a run' })).toBeVisible();
   });
 });
 
 describe('Create run', () => {
   it('opens a blocking dialog from the button and cancels cleanly', async () => {
     const { server, user } = await setup();
-    await user.click(screen.getByRole('button', { name: 'Create run' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Create run' });
+    const button = screen.getByRole('button', { name: 'Create run' });
+    await user.click(button);
+    const dialog = await screen.findByRole('dialog', { name: 'Start a run' });
     expect(dialog).toHaveAttribute('aria-modal', 'true');
-    expect(within(dialog).getByRole('region', { name: 'Start a run' })).toBeVisible();
+    expect(within(dialog).getByLabelText('Region')).toHaveFocus();
+    expect(within(dialog).getByText('Advanced').closest('details')).not.toHaveAttribute('open');
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(server.to('POST /api/runs')).toHaveLength(0);
+  });
+
+  it('closes on Escape and gives the focus back to the Create run button', async () => {
+    const { user } = await setup();
+    const button = screen.getByRole('button', { name: 'Create run' });
+    await user.click(button);
+    await screen.findByRole('dialog', { name: 'Start a run' });
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(button).toHaveFocus();
+  });
+
+  it('keeps Tab inside the dialog', async () => {
+    const { user } = await setup();
+    await user.click(screen.getByRole('button', { name: 'Create run' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Start a run' });
+    for (let i = 0; i < 40; i++) {
+      await user.tab();
+      expect(dialog).toContainElement(document.activeElement as HTMLElement);
+    }
   });
 
   it('starts on the region picked in the header, and confirms the new run with a toast', async () => {
@@ -770,19 +792,20 @@ describe('Create run', () => {
     await screen.findByRole('option', { name: 'Sfax' });
     await user.selectOptions(screen.getAllByLabelText('Region')[0]!, 'Sfax');
     await user.click(screen.getByRole('button', { name: 'Create run' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Create run' });
+    const dialog = await screen.findByRole('dialog', { name: 'Start a run' });
     await waitFor(() => expect(within(dialog).getByLabelText('Region')).toHaveValue('sfax'));
-    await user.type(within(dialog).getByLabelText('Spend cap (USD)'), '5');
-    const review = within(dialog).getByRole('button', { name: 'Review and start' });
-    await waitFor(() => expect(review).toBeEnabled());
-    await user.click(review);
-    await user.click(await screen.findByRole('button', { name: 'Confirm and start run' }));
+    const start = within(dialog).getByRole('button', { name: 'Start run, up to $2.00' });
+    await waitFor(() => expect(start).toHaveAttribute('aria-disabled', 'false'));
+    await user.click(start);
+    // The estimate ($3.50) is above the $2.00 cap, so there is one more question.
+    await user.click(await within(dialog).findByRole('button', { name: 'Yes, start the run' }));
 
     expect(await screen.findByText('Run started in sfax.')).toBeVisible();
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(server.to('POST /api/runs')[0]!.body).toEqual({
       regionId: 'sfax',
-      budgetCapUsd: 5,
+      sectorIds: ['textile'],
+      budgetCapUsd: 2,
       confirm: true,
     });
   });

@@ -59,26 +59,28 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
 
   // Preview: Create run opens the flow; region first, nothing is spent or started.
   await page.getByRole('button', { name: 'Create run' }).first().click();
-  const start = page.getByRole('dialog', { name: 'Create run' }).getByRole('region', {
-    name: 'Start a run',
-  });
-  await start.getByLabel('Region').selectOption({ label: 'Sfax' });
+  const start = page.getByRole('dialog', { name: 'Start a run' });
+  await start.getByLabel('Region').selectOption({ label: 'Sfax, 0 leads, not searched yet' });
   const estimate = start.getByRole('region', { name: 'Estimate' });
+  // A new region has no suggested sector, so nothing is ticked and Start says why.
+  const go = start.getByRole('button', { name: /^Start run/ });
+  await expect(go).toHaveAttribute('aria-disabled', 'true');
+  await start.locator('.sr-chip').first().click();
   await expect(estimate.getByText('Estimated cost')).toBeVisible();
   await expect(estimate.locator('.tag-estimate').first()).toBeVisible();
   await expect(runs.getByText('No runs yet')).toBeVisible();
 
-  // The cap is required; then an explicit confirm.
-  const review = start.getByRole('button', { name: 'Review and start' });
-  await expect(review).toBeDisabled();
-  await start.getByLabel('Spend cap (USD)').fill('5');
-  await expect(review).toBeEnabled();
-  await review.click();
-  const dialog = page.getByRole('dialog', { name: 'Confirm this run' });
-  await expect(dialog).toContainText('It will not spend more than $5.00');
-  await dialog.getByRole('button', { name: 'Confirm and start run' }).click();
+  // The cap is filled in ($2.00) and shown on the button; Start asks once more if the estimate
+  // is above it.
+  await expect(go).toHaveText('Start run, up to $2.00');
+  await expect(go).toHaveAttribute('aria-disabled', 'false');
+  await go.click();
+  const yes = start.getByRole('button', { name: 'Yes, start the run' });
+  const toast = page.getByText('Run started in sfax.');
+  await expect(yes.or(toast)).toBeVisible();
+  if (await yes.isVisible()) await yes.click();
   // A toast confirms it and the dialog closes.
-  await expect(page.getByText('Run started in sfax.')).toBeVisible();
+  await expect(toast).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
   // The dashboard shows it as active: a link under the header and a row in Runs.
