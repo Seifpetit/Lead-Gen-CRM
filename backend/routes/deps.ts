@@ -1,5 +1,8 @@
 import type { Db } from '../data/db.js';
+import type { ErrorReporter } from '../lib/errorReporter.js';
+import type { DailyJumpConfig, HealthFacts } from '../lib/health.js';
 import type { Orchestrator } from '../runner/orchestrator.js';
+import type { Watchdog } from '../runner/watchdog.js';
 
 /** What every route module needs. Handlers call these and the data layer, nothing else. */
 export interface RouteDeps {
@@ -18,4 +21,12 @@ export interface RouteDeps {
   maxRunCapUsd: number;
   /** Values that must never be shown in a run's log (API tokens); patterns are hidden anyway. */
   secrets: readonly (string | null | undefined)[];
+  /** Where failures are noted; null in tests that do not look at them. */
+  errors: ErrorReporter | null;
+  /** Looks over runs in progress for stuck and costly ones. */
+  watchdog: Watchdog;
+  /** What the server was started with, for the Health panel's checks. */
+  healthFacts: HealthFacts;
+  /** When a day's spend counts as a jump. */
+  dailyJump: DailyJumpConfig;
 }

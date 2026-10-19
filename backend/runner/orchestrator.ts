@@ -10,6 +10,7 @@ import type {
 } from '@lead-gen-crm/shared';
 import { APIFY_MIN_MAX_CHARGE_USD } from '../config/pricing.js';
 import { recordApifyEvent, type ApifyState } from '../data/apifyEvents.js';
+import { getRunProblem, setRunProblem } from '../data/runHealth.js';
 import { claimCells, listLiveClaims, releaseClaims, renewClaims } from '../data/cellClaims.js';
 import { getCompany, setCompanySector, upsertCompany } from '../data/companies.js';
 import { setContactPhoto, setMapsImage } from '../data/companyImages.js';
@@ -38,6 +39,8 @@ import { getRegionBounds, getRegionOutline } from '../data/regions.js';
 import { FREIGHT_SECTORS } from '../config/sectors.js';
 import { cellOverlap, placeInOutline } from '../lib/geo.js';
 import { liveMessages, type SearchFacts } from '../lib/liveMessages.js';
+import type { ErrorReporter } from '../lib/errorReporter.js';
+import { classifyProviderFailure, type ProviderFailure } from '../lib/providerFailure.js';
 import { redactSecrets } from '../lib/redact.js';
 import {
   addRunCompany,
@@ -57,6 +60,7 @@ import {
   updateRun,
 } from '../data/runs.js';
 import {
+  clearStepReservation,
   completeStep,
   ensureStep,
   getStep,
@@ -157,6 +161,10 @@ export interface OrchestratorDeps {
   log?: (data: Record<string, unknown>, message: string) => void;
   /** Values that must never appear in a run's log, such as API tokens (patterns are hidden too). */
   secrets?: readonly (string | null | undefined)[];
+  /** Where failures are noted and provider health is kept. Without one, failures are only logged on the run. */
+  errors?: ErrorReporter;
+  /** Waits between a failed call and its retry; tests pass a no-op. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 export interface AdvanceResult {
@@ -282,6 +290,62 @@ export class Orchestrator {
       secrets: this.deps.secrets,
     });
     this.changes.notify(userId);
+  }
+
+  /**
+   * A failure in the run's log: the plain explanation first, the technical detail after, as one
+   * line at warn or error level.
+   */
+  private async failureLine(
+    userId: UserId,
+    runId: string,
+    runStepId: string | null,
+    level: 'warn' | 'error',
+    failure: ProviderFailure,
+  ): Promise<void> {
+    await appendRunLog(this.db, userId, {
+      runId,
+      runStepId,
+      level,
+      message: `${failure.plain}. Technical detail: ${failure.detail}`,
+      secrets: this.deps.secrets,
+    });
+    this.changes.notify(userId);
+  }
+
+  /** Notes a failed provider call and returns how it was classified. */
+  private async noteFailure(
+    err: unknown,
+    userId: UserId,
+    runId: string,
+    stage: RunStage,
+  ): Promise<ProviderFailure> {
+    if (this.deps.errors) {
+      return this.deps.errors.providerFailed('apify', err, { userId, runId, step: stage });
+    }
+    return classifyProviderFailure('apify', err);
+  }
+
+  /** Shows "searching again" on the run until the next step lands. */
+  private async setRetrying(userId: UserId, runId: string, plain: string): Promise<void> {
+    const previous = await getRunProblem(this.db, userId, runId);
+    await setRunProblem(this.db, userId, runId, {
+      kind: 'retrying',
+      message: `${plain}. Trying again shortly`,
+      since: previous?.kind === 'retrying' ? previous.since : new Date().toISOString(),
+      action: 'stop',
+    });
+    this.changes.notify(userId);
+  }
+
+  /** A provider call went through: the provider is fine, and "trying again" no longer applies. */
+  private async providerWorked(userId: UserId, runId: string): Promise<void> {
+    await this.deps.errors?.providerOk('apify');
+    const problem = await getRunProblem(this.db, userId, runId);
+    if (problem?.kind === 'retrying' || problem?.kind === 'provider_down') {
+      await setRunProblem(this.db, userId, runId, null);
+      this.changes.notify(userId);
+    }
   }
 
   /** The region's name and the sector names a run searches, for its sentences. */
@@ -847,7 +911,9 @@ export class Orchestrator {
         ? { webhooks: [webhookFor(this.config.webhook, userId, step.id)] }
         : {}),
     };
-    const job = await this.callProvider(step.stage, input, options);
+    const called = await this.callWithRetry(userId, run, step, input, options);
+    if (called.outcome !== 'ok') return called.outcome;
+    const job = called.job;
     await this.checkpoint(`${step.stage}:called`);
 
     if (job.state !== 'succeeded' && job.state !== 'failed') {
@@ -865,9 +931,104 @@ export class Orchestrator {
     return 'done';
   }
 
+  /**
+   * Calls the provider. A failure is sorted into a kind (lib/providerFailure.ts): a request the
+   * provider certainly did not run is tried again once, then left for the next pass; a refused
+   * key, no credit or a reached limit ends the run with a plain reason; anything that may have
+   * started a paid run is closed as failed with its estimate kept as spend, as after a crash.
+   */
+  private async callWithRetry(
+    userId: UserId,
+    run: Run,
+    step: RunStep,
+    input: unknown,
+    options: object,
+  ): Promise<
+    { outcome: 'ok'; job: ProviderJob<unknown> } | { outcome: 'skipped' | 'waiting' | 'capped' }
+  > {
+    const delays = this.config.providerRetryDelaysMs;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const job = await this.callProvider(step.stage, input, options);
+        await this.providerWorked(userId, run.id);
+        return { outcome: 'ok', job };
+      } catch (err) {
+        if (err instanceof SimulatedCrash) throw err;
+        const failure = await this.noteFailure(err, userId, run.id, step.stage);
+        const willRetry = failure.safeToRetry && attempt < delays.length;
+        await this.failureLine(userId, run.id, step.id, willRetry ? 'warn' : 'error', failure);
+        if (willRetry) {
+          await this.say(
+            this.db,
+            userId,
+            run.id,
+            liveMessages.searchingAgain({ plain: failure.plain }),
+            'warn',
+          );
+          await this.setRetrying(userId, run.id, failure.plain);
+          await (this.deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))))(
+            delays[attempt]!,
+          );
+          continue;
+        }
+        return { outcome: await this.giveUpOnStep(userId, run, step, failure) };
+      }
+    }
+  }
+
+  /** What happens to a step whose call failed for good: see callWithRetry. */
+  private async giveUpOnStep(
+    userId: UserId,
+    run: Run,
+    step: RunStep,
+    failure: ProviderFailure,
+  ): Promise<'skipped' | 'waiting' | 'capped'> {
+    const cleanFailure = failure.needsPerson || failure.safeToRetry;
+    if (cleanFailure) {
+      // Nothing was started and nothing was charged: take back the estimate and the reservation.
+      await withTransaction(this.db, async (tx) => {
+        await settleStepCosts(tx, userId, {
+          runId: run.id,
+          runStepId: step.id,
+          regionCellId: step.regionCellId,
+          actuals: [],
+        });
+        await clearStepReservation(tx, userId, step.id);
+      });
+    }
+    if (failure.needsPerson) {
+      await withTransaction(this.db, (tx) =>
+        completeStep(tx, userId, step.id, { status: 'failed', error: failure.plain }),
+      );
+      await this.note(this.db, userId, step.id, `Step failed: ${failure.plain}`, 'error');
+      await this.finish(userId, run.id, 'failed', failure.plain);
+      // The run is over: start nothing more in this pass.
+      return 'capped';
+    }
+    if (failure.safeToRetry) {
+      // The provider could not be reached: the step stays pending and the next pass asks again.
+      await this.setRetrying(userId, run.id, failure.plain);
+      return 'waiting';
+    }
+    // The request may have started a paid run we cannot see: never repeat it.
+    await withTransaction(this.db, (tx) =>
+      completeStep(tx, userId, step.id, {
+        status: 'failed',
+        error: `${failure.plain}; estimate kept as spend`,
+      }),
+    );
+    await this.note(this.db, userId, step.id, `Step failed: ${failure.plain}`, 'error');
+    await this.applyFailedStep(userId, run, step);
+    return 'skipped';
+  }
+
+  /** True when the step has an estimate that was written and not taken back (the call may have gone out). */
   private async hasEstimate(userId: UserId, stepId: string): Promise<boolean> {
     const { rows } = await this.db.query(
-      "SELECT 1 FROM cost_ledger WHERE user_id = $1 AND run_step_id = $2 AND kind = 'estimated' LIMIT 1",
+      `SELECT 1 FROM cost_ledger e
+        WHERE e.user_id = $1 AND e.run_step_id = $2 AND e.kind = 'estimated' AND e.corrects_id IS NULL
+          AND NOT EXISTS (SELECT 1 FROM cost_ledger c WHERE c.corrects_id = e.id)
+        LIMIT 1`,
       [userId, stepId],
     );
     return rows.length > 0;
@@ -934,7 +1095,26 @@ export class Orchestrator {
       runId: step.apifyRunId,
       datasetId: step.apifyDatasetId,
     };
-    const job = await this.providerFor(step.stage).collect(ref);
+    let job: ProviderJob<unknown>;
+    try {
+      job = await this.providerFor(step.stage).collect(ref);
+    } catch (err) {
+      if (err instanceof SimulatedCrash) throw err;
+      // The run is paid for and still out with the provider: look again on the next pass,
+      // unless the key or credit is gone, when nothing more can come of this run.
+      const failure = await this.noteFailure(err, userId, run.id, step.stage);
+      await this.failureLine(
+        userId,
+        run.id,
+        step.id,
+        failure.needsPerson ? 'error' : 'warn',
+        failure,
+      );
+      if (failure.needsPerson) await this.finish(userId, run.id, 'failed', failure.plain);
+      else await this.setRetrying(userId, run.id, failure.plain);
+      return false;
+    }
+    await this.providerWorked(userId, run.id);
     if (job.state !== 'succeeded' && job.state !== 'failed') {
       const restarts = job.restarts ?? step.apifyRestarts;
       const firstRunning = step.status === 'started';
@@ -1782,6 +1962,12 @@ export class Orchestrator {
       ...(error ? { error } : {}),
       onlyFrom: ['running', 'pending'],
     });
+    if (ended && status === 'failed') {
+      await this.deps.errors?.message('run', 'run_failed', error ?? 'The run failed', {
+        userId,
+        runId,
+      });
+    }
     if (ended) {
       await this.say(
         this.db,
@@ -1852,7 +2038,14 @@ export class Orchestrator {
     let n = 0;
     for (const userId of await listUsersWithUnfinishedWork(this.db)) {
       for (const runId of await listUnfinishedRunIds(this.db, userId)) {
-        await this.advance(userId, runId);
+        try {
+          await this.advance(userId, runId);
+        } catch (err) {
+          // One run's failure must not stop the others from being looked after.
+          if (err instanceof SimulatedCrash) throw err;
+          this.deps.log?.({ runId }, 'advance failed');
+          await this.deps.errors?.error('run', 'advance_failed', err, { userId, runId });
+        }
         n++;
       }
     }

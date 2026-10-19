@@ -31,7 +31,7 @@ export async function openTestDb(): Promise<Db> {
 /** Empties every user-owned table (regions stay). */
 export async function resetData(db: Db): Promise<void> {
   await db.query(
-    'TRUNCATE users, suppression_list, login_failures, invites RESTART IDENTITY CASCADE',
+    'TRUNCATE users, suppression_list, login_failures, invites, app_errors, provider_health RESTART IDENTITY CASCADE',
   );
 }
 

@@ -12,6 +12,7 @@ import { migration as m010 } from './migrations/010_board_images.js';
 import { migration as m011 } from './migrations/011_company_notes_history.js';
 import { migration as m012 } from './migrations/012_run_live.js';
 import { migration as m013 } from './migrations/013_company_place.js';
+import { migration as m014 } from './migrations/014_failure_tracking.js';
 
 export interface Migration {
   id: string;
@@ -34,6 +35,7 @@ export const MIGRATIONS: readonly Migration[] = [
   m011,
   m012,
   m013,
+  m014,
 ];
 
 const ENSURE_TABLE = `
@@ -48,16 +50,46 @@ async function applied(db: Queryable): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
+/** A migration that failed: which one, and why. It ran in its own transaction, so it left nothing half-applied. */
+export class MigrationError extends Error {
+  constructor(
+    public readonly migrationId: string,
+    cause: unknown,
+  ) {
+    super(
+      `Migration ${migrationId} failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    );
+    this.name = 'MigrationError';
+  }
+}
+
+/** The IDs of migrations not applied yet, oldest first. All of them when the database has none applied (or none at all). */
+export async function pendingMigrations(db: Queryable, migrations = MIGRATIONS): Promise<string[]> {
+  let done: Set<string>;
+  try {
+    const { rows } = await db.query<{ id: string }>('SELECT id FROM schema_migrations');
+    done = new Set(rows.map((r) => r.id));
+  } catch {
+    done = new Set();
+  }
+  return migrations.filter((m) => !done.has(m.id)).map((m) => m.id);
+}
+
 /** Applies every pending migration, each in its own transaction. Returns the IDs applied. */
 export async function migrateUp(db: Queryable, migrations = MIGRATIONS): Promise<string[]> {
   const done = new Set(await applied(db));
   const ran: string[] = [];
   for (const m of migrations) {
     if (done.has(m.id)) continue;
-    await withTransaction(db, async (tx) => {
-      await tx.query(m.up);
-      await tx.query('INSERT INTO schema_migrations (id) VALUES ($1)', [m.id]);
-    });
+    try {
+      await withTransaction(db, async (tx) => {
+        await tx.query(m.up);
+        await tx.query('INSERT INTO schema_migrations (id) VALUES ($1)', [m.id]);
+      });
+    } catch (err) {
+      throw new MigrationError(m.id, err);
+    }
     ran.push(m.id);
   }
   return ran;

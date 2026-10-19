@@ -22,6 +22,9 @@ describe('loadEnv', () => {
       DEV_ADMIN_LOGIN: false,
       CLASSIFIER_MODEL: 'claude-haiku-5-5',
       CLASSIFIER_RUN_CAP_USD: 0.5,
+      STUCK_RUN_MINUTES: 20,
+      SPEND_ANOMALY_FACTOR: 2,
+      DAILY_SPEND_JUMP_FACTOR: 3,
     });
   });
 

@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { currentUser } from '../auth/plugin.js';
 import { listRunLog } from '../data/runLog.js';
-import { activeRunSummaries, runSummaries } from '../data/views.js';
+import { activeRunSummaries, recentlyEndedRunSummaries, runSummaries } from '../data/views.js';
 import type { RouteDeps } from './deps.js';
 import { notFound, query, uuidParam } from './http.js';
 
@@ -26,7 +26,11 @@ export async function runLiveRoutes(app: FastifyInstance, deps: RouteDeps): Prom
 
   // The runs in progress: what the stream sends, for a client that cannot use the stream.
   app.get('/api/runs/live', async (request): Promise<LiveRuns> => {
-    return { runs: await activeRunSummaries(db, currentUser(request).id) };
+    const user = currentUser(request).id;
+    return {
+      runs: await activeRunSummaries(db, user),
+      ended: await recentlyEndedRunSummaries(db, user, new Date()),
+    };
   });
 
   // Server-Sent Events: the same payload, pushed whenever something about the user's runs
@@ -58,6 +62,7 @@ export async function runLiveRoutes(app: FastifyInstance, deps: RouteDeps): Prom
       try {
         const data = JSON.stringify({
           runs: await activeRunSummaries(db, user),
+          ended: await recentlyEndedRunSummaries(db, user, new Date()),
         } satisfies LiveRuns);
         // Only a change is worth an event; the heartbeat covers the quiet.
         if (!closed && data !== last) {

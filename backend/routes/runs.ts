@@ -15,6 +15,7 @@ import {
 } from '../data/views.js';
 import { RunStartError } from '../runner/orchestrator.js';
 import { cleanWordings, MAX_CUSTOM_WORDINGS, MAX_WORDING_CHARS } from '../stages/queryGrid.js';
+import { pendingMigrations } from '../data/migrate.js';
 import type { RouteDeps } from './deps.js';
 import { ApiError, body, csvList, notFound, PageQuery, query, toPage, uuidParam } from './http.js';
 
@@ -122,6 +123,16 @@ export async function runRoutes(app: FastifyInstance, deps: RouteDeps): Promise<
       );
     }
     await requireRegion(deps, input.regionId);
+    // A database that is behind the code fails in ways that look like random errors (a run that
+    // hangs on a missing column), so say so before spending anything.
+    const waiting = await pendingMigrations(db);
+    if (waiting.length > 0) {
+      throw new ApiError(
+        409,
+        'migrations_pending',
+        'The database needs updating before a run can start: run npm run db:migrate and restart the server',
+      );
+    }
     const { confirm: _confirm, ...start } = tidy(input);
 
     const preview = await runner.preview(user, defined(start));

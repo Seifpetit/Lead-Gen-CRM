@@ -40,6 +40,17 @@ const EnvSchema = z.object({
   CLASSIFIER_RUN_CAP_USD: z.coerce.number().positive().default(0.5),
   /** The most one run's spend cap may be, in USD. Typed caps above it are refused. */
   MAX_RUN_CAP_USD: z.coerce.number().min(0.5).default(50),
+  /** Minutes without progress after which a run is shown as "may be stuck". 0 turns it off. */
+  STUCK_RUN_MINUTES: z.coerce.number().min(0).default(20),
+  /** Warn when a run's finished steps cost more than this many times their estimate. 0 turns it off. */
+  SPEND_ANOMALY_FACTOR: z.coerce.number().min(0).default(2),
+  /** Warn when a day's spend is at least this many times the usual day. 0 turns it off. */
+  DAILY_SPEND_JUMP_FACTOR: z.coerce.number().min(0).default(3),
+  /**
+   * Optional Sentry DSN. Off by default: without it nothing leaves this machine. With it, the
+   * masked message and kind of each new failure are sent (no user, run or company data).
+   */
+  SENTRY_DSN: z.string().url().optional(),
   /** A session ends after this many hours without a request. */
   // Days a removed CRM card waits in Noise before the daily job deletes it (a marker stays).
   NOISE_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
