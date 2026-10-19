@@ -1,5 +1,4 @@
 import { screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { dashboardRoutes, page, run } from '../../test/fixtures.js';
 import { fakeServer } from '../../test/fakeServer.js';
@@ -11,23 +10,6 @@ const signedIn = {
   'GET /api/auth/config': {
     body: { signupMode: 'invite', minPasswordLength: 12, devAdminLogin: false },
   },
-};
-
-const coverage = {
-  regions: [{ regionId: 'sfax', name: 'Sfax' }],
-  sectors: [{ id: 'textile', name: 'Textile' }],
-  entries: [
-    {
-      regionId: 'sfax',
-      sectorId: 'textile',
-      queriesRun: 12,
-      newPlaces: 40,
-      leads: 5,
-      spendUsd: 2.5,
-      costPerLeadUsd: 0.5,
-      state: 'yielding',
-    },
-  ],
 };
 
 const activeRun = run({
@@ -66,12 +48,12 @@ describe('Lead Gen sidebar and pages', () => {
     }
   });
 
-  it('renders the Coverage page: matrix, map and history', async () => {
+  it('renders the Coverage page: one panel with the matrix and the map', async () => {
     renderApp(fakeServer(signedIn), '/leadgen/coverage');
     expect(await screen.findByRole('heading', { name: 'Coverage', level: 1 })).toBeVisible();
     expect(await screen.findByRole('region', { name: 'Coverage by sector' })).toBeVisible();
     expect(await screen.findByRole('region', { name: 'Coverage map' })).toBeVisible();
-    expect(screen.getByRole('region', { name: 'History results' })).toBeVisible();
+    expect(screen.queryByRole('region', { name: 'History results' })).toBeNull();
   });
 
   it('renders the Costs page with the costs widget', async () => {
@@ -106,29 +88,5 @@ describe('Lead Gen sidebar and pages', () => {
     renderApp(fakeServer(signedIn), '/leadgen/help');
     expect(await screen.findByRole('heading', { name: 'Help', level: 1 })).toBeVisible();
     expect(screen.getByText('What is the spend cap?')).toBeVisible();
-  });
-
-  it('opens the planning and lists past searches when a coverage square is clicked', async () => {
-    const server = fakeServer({
-      ...signedIn,
-      'GET /api/coverage': coverage,
-      'GET /api/runs': page([run({ id: 'old', sectors: ['textile'] })]),
-    });
-    renderApp(server, '/leadgen/coverage');
-    await userEvent.click(await screen.findByRole('button', { name: /^Sfax, Textile/ }));
-    expect(await screen.findByRole('region', { name: 'Start a run' })).toBeVisible();
-    const history = screen.getByRole('region', { name: 'History results' });
-    expect(await within(history).findByText('Past searches in Sfax for Textile')).toBeVisible();
-    expect(within(history).getByRole('link', { name: 'Open run for sfax' })).toBeVisible();
-  });
-
-  it('toggles the matrix fullscreen', async () => {
-    renderApp(fakeServer({ ...signedIn, 'GET /api/coverage': coverage }), '/leadgen/coverage');
-    const matrix = await screen.findByRole('region', { name: 'Coverage by sector' });
-    await userEvent.click(await within(matrix).findByRole('radio', { name: 'Fullscreen' }));
-    const view = matrix.querySelector('.matrix-view')!;
-    expect(view).toHaveClass('is-fullscreen');
-    await userEvent.click(within(matrix).getByRole('radio', { name: 'Normal' }));
-    expect(view).not.toHaveClass('is-fullscreen');
   });
 });

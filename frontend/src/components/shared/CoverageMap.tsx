@@ -1,5 +1,5 @@
 import type { CellSummary, RegionGeometry } from '@lead-gen-crm/shared';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useT } from '../../i18n/index.js';
 import { formatDateTime, formatNumber, formatUsd } from '../../lib/format.js';
 import {
@@ -10,214 +10,228 @@ import {
   unionBounds,
   type CellState,
   type LatLngBounds,
+  type Projection,
 } from '../../lib/mapGeometry.js';
 import { ErrorState, LoadingState } from '../states.js';
 
-const STATES: CellState[] = ['never', 'claimed', 'searched', 'leads', 'saturated'];
+const CELL_STATES: CellState[] = ['never', 'claimed', 'searched', 'leads', 'saturated'];
+const ZOOM_MS = 380;
+
+interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+const boxOf = (b: LatLngBounds, p: Projection): Box => {
+  const x = p.x(b.west);
+  const y = p.y(b.north);
+  return { x, y, w: Math.max(p.x(b.east) - x, 1), h: Math.max(p.y(b.south) - y, 1) };
+};
+
+/** The viewBox eased from where it is to `target`; at once when motion is reduced. */
+function useEasedBox(target: Box): Box {
+  const [box, setBox] = useState(target);
+  const current = useRef(box);
+  current.current = box;
+  useEffect(() => {
+    const from = current.current;
+    const reduced =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced || typeof requestAnimationFrame !== 'function') {
+      setBox(target);
+      return;
+    }
+    let frame = 0;
+    const start = performance.now();
+    const step = (now: number) => {
+      const k = Math.min(1, (now - start) / ZOOM_MS);
+      const e = 1 - Math.pow(1 - k, 3);
+      setBox({
+        x: from.x + (target.x - from.x) * e,
+        y: from.y + (target.y - from.y) * e,
+        w: from.w + (target.w - from.w) * e,
+        h: from.h + (target.h - from.h) * e,
+      });
+      if (k < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [target.x, target.y, target.w, target.h]);
+  return box;
+}
 
 /**
- * Tunisia drawn from the governorate outlines, no map tiles, coloured by search state. Click a
- * region to zoom to its search cells; click a cell for its stats. Takes its data as props: the
- * outlines, and the cells of the selected region once they are loaded.
+ * Tunisia drawn from the governorate outlines, no map tiles. Picking a region zooms to it
+ * (smoothly), outlines it and dims the others, and shows its search cells; picking nothing
+ * shows the whole country. A region with nothing to show yet is greyed out and cannot be picked.
+ * Takes its data as props; what is picked belongs to the caller.
  */
 export function CoverageMap({
   regions,
+  exploredIds,
   regionId,
   onRegionChange,
   cells,
   cellsLoading = false,
   cellsError = null,
   onRetryCells,
-  onPick,
+  onPlanCell,
 }: {
   regions: RegionGeometry[];
-  /** The selected region, or null for the whole country. */
+  /** The regions that can be picked; the others are greyed out. */
+  exploredIds: ReadonlySet<string>;
+  /** The picked region, or null for the whole country. */
   regionId: string | null;
-  onRegionChange: (regionId: string | null) => void;
-  /** The selected region's cells; null until loaded. */
+  onRegionChange: (regionId: string) => void;
+  /** The picked region's cells; null until loaded. */
   cells: CellSummary[] | null;
   cellsLoading?: boolean;
   cellsError?: unknown;
   onRetryCells?: () => void;
-  /** Called with the region and cell when a cell is clicked. */
-  onPick: (pick: { regionId: string; cellKeys: string[] }) => void;
+  /** Plan a run in one cell of the picked region. */
+  onPlanCell: (regionId: string, cellKey: string) => void;
 }) {
   const t = useT();
   const [cellKey, setCellKey] = useState<string | null>(null);
+  useEffect(() => setCellKey(null), [regionId]);
 
   const drawable = regions.filter((r) => r.outline && r.bounds);
   const missing = regions.filter((r) => !r.outline);
   const region = drawable.find((r) => r.regionId === regionId) ?? null;
-  const regionCells = regionId !== null ? (cells ?? []) : [];
+  const regionCells = region ? (cells ?? []) : [];
   const selectedCell = regionCells.find((c) => c.cellKey === cellKey) ?? null;
 
-  const view: LatLngBounds | null = useMemo(() => {
-    if (region?.bounds) {
-      const cellBounds = regionCells.map((c) => c.bounds);
-      return padBounds(unionBounds([region.bounds, ...cellBounds])!);
-    }
-    const all = drawable.map((r) => r.bounds!);
-    const u = unionBounds(all);
+  const whole = useMemo(() => {
+    const u = unionBounds(drawable.map((r) => r.bounds!));
     return u ? padBounds(u) : null;
-  }, [region, regionCells.length, drawable.length]);
+  }, [drawable.length]);
+  const projection = useMemo(() => (whole ? makeProjection(whole) : null), [whole]);
 
-  function chooseRegion(id: string | null) {
-    onRegionChange(id);
-    setCellKey(null);
-  }
+  const target: Box = useMemo(() => {
+    if (!projection || !whole) return { x: 0, y: 0, w: 1, h: 1 };
+    if (!region?.bounds) return { x: 0, y: 0, w: projection.width, h: projection.height };
+    const withCells = unionBounds([region.bounds, ...regionCells.map((c) => c.bounds)])!;
+    return boxOf(padBounds(withCells, 0.1), projection);
+  }, [projection, whole, region, regionCells.length]);
+  const box = useEasedBox(target);
 
-  if (view === null) return <p className="muted">{t('map.noGeometry')}</p>;
+  if (!projection) return <p className="muted">{t('map.noGeometry')}</p>;
+  const pick = (id: string) => exploredIds.has(id) && onRegionChange(id);
+
   return (
-    <>
-      <div className="form-field map-select">
-        <label htmlFor="map-region">{t('map.region')}</label>
-        <select
-          id="map-region"
-          value={regionId ?? ''}
-          onChange={(e) => chooseRegion(e.target.value || null)}
-        >
-          <option value="">{t('map.all')}</option>
-          {drawable.map((r) => (
-            <option key={r.regionId} value={r.regionId}>
-              {r.name}
-            </option>
+    <div className="cov-map">
+      <svg
+        className="coverage-map"
+        viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
+        preserveAspectRatio="xMidYMid meet"
+        role="group"
+        aria-label={t('map.title')}
+        data-focus={regionId ?? ''}
+      >
+        {drawable.map((r) => {
+          const explored = exploredIds.has(r.regionId);
+          const chosen = r.regionId === regionId;
+          const classes = [
+            'region-shape',
+            chosen ? 'is-selected' : '',
+            regionId !== null && !chosen ? 'is-dimmed' : '',
+            explored ? '' : 'is-grey',
+          ]
+            .filter(Boolean)
+            .join(' ');
+          return (
+            <path
+              key={r.regionId}
+              d={outlinePath(r.outline!, projection)}
+              fillRule="evenodd"
+              className={classes}
+              role="button"
+              tabIndex={explored ? 0 : -1}
+              aria-label={t('map.regionShape', { region: r.name })}
+              aria-pressed={explored ? chosen : undefined}
+              aria-disabled={!explored}
+              onClick={() => pick(r.regionId)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  pick(r.regionId);
+                }
+              }}
+            >
+              <title>{explored ? r.name : `${r.name}: ${t('cov.notExplored')}`}</title>
+            </path>
+          );
+        })}
+        {regionCells.map((c) => {
+          const state = cellState(c);
+          const x = projection.x(c.bounds.west);
+          const y = projection.y(c.bounds.north);
+          return (
+            <rect
+              key={c.regionCellId}
+              x={x}
+              y={y}
+              width={Math.max(projection.x(c.bounds.east) - x, 0.5)}
+              height={Math.max(projection.y(c.bounds.south) - y, 0.5)}
+              className={`map-cell cell-${state}${c.cellKey === cellKey ? ' is-selected' : ''}`}
+              role="button"
+              tabIndex={0}
+              aria-label={t('map.cellShape', { cell: c.cellKey, state: t(`map.state.${state}`) })}
+              aria-pressed={c.cellKey === cellKey}
+              onClick={() => setCellKey(c.cellKey)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setCellKey(c.cellKey);
+                }
+              }}
+            >
+              <title>{`${c.cellKey}: ${t(`map.state.${state}`)}`}</title>
+            </rect>
+          );
+        })}
+      </svg>
+      {regionCells.length > 0 && (
+        <ul className="legend cov-map-legend" aria-label={t('map.legend')}>
+          {CELL_STATES.map((s) => (
+            <li key={s}>
+              <span className={`swatch cell-${s}`} aria-hidden="true" /> {t(`map.state.${s}`)}
+            </li>
           ))}
-        </select>
-        {regionId !== null && (
-          <button type="button" className="button" onClick={() => chooseRegion(null)}>
-            {t('map.back')}
-          </button>
+        </ul>
+      )}
+      <div className="cov-map-notes" data-keep="">
+        {regionId !== null && cellsError !== null && !cells && (
+          <ErrorState error={cellsError} {...(onRetryCells ? { onRetry: onRetryCells } : {})} />
+        )}
+        {regionId !== null && cellsLoading && !cells && (
+          <LoadingState label={t('map.cells.loading')} />
+        )}
+        {region && cells && cells.length === 0 && (
+          <p className="muted">{t('map.cells.none', { region: region.name })}</p>
+        )}
+        {selectedCell ? (
+          <CellStats
+            cell={selectedCell}
+            onPlan={() => onPlanCell(regionId!, selectedCell.cellKey)}
+          />
+        ) : (
+          <p className="muted">{region ? t('map.hint.reset') : t('map.hint.region')}</p>
+        )}
+        {missing.length > 0 && (
+          <p className="muted">
+            {t('map.missing', { regions: missing.map((r) => r.name).join(', ') })}
+          </p>
         )}
       </div>
-      <Legend />
-      <MapSvg
-        view={view}
-        regions={drawable}
-        selected={regionId}
-        cells={regionCells}
-        cellKey={cellKey}
-        onRegion={chooseRegion}
-        onCell={(c) => {
-          setCellKey(c.cellKey);
-          onPick({ regionId: regionId!, cellKeys: [c.cellKey] });
-        }}
-      />
-      {regionId !== null && cellsError !== null && !cells && (
-        <ErrorState error={cellsError} {...(onRetryCells ? { onRetry: onRetryCells } : {})} />
-      )}
-      {regionId !== null && cellsLoading && !cells && (
-        <LoadingState label={t('map.cells.loading')} />
-      )}
-      {regionId !== null && cells && cells.length === 0 && (
-        <p className="muted">{t('map.cells.none', { region: region?.name ?? regionId })}</p>
-      )}
-      {selectedCell ? (
-        <CellStats cell={selectedCell} />
-      ) : (
-        <p className="muted">{regionId ? t('map.hint.cell') : t('map.hint.region')}</p>
-      )}
-      {missing.length > 0 && (
-        <p className="muted">
-          {t('map.missing', { regions: missing.map((r) => r.name).join(', ') })}
-        </p>
-      )}
-    </>
+    </div>
   );
 }
 
-function Legend() {
-  const t = useT();
-  return (
-    <ul className="legend" aria-label={t('map.legend')}>
-      {STATES.map((s) => (
-        <li key={s}>
-          <span className={`swatch cell-${s}`} aria-hidden="true" /> {t(`map.state.${s}`)}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function MapSvg({
-  view,
-  regions,
-  selected,
-  cells,
-  cellKey,
-  onRegion,
-  onCell,
-}: {
-  view: LatLngBounds;
-  regions: RegionGeometry[];
-  selected: string | null;
-  cells: CellSummary[];
-  cellKey: string | null;
-  onRegion: (id: string) => void;
-  onCell: (c: CellSummary) => void;
-}) {
-  const t = useT();
-  const p = makeProjection(view);
-  return (
-    <svg
-      className="coverage-map"
-      viewBox={`0 0 ${p.width} ${p.height}`}
-      role="group"
-      aria-label={t('map.title')}
-    >
-      {regions.map((r) => (
-        <path
-          key={r.regionId}
-          d={outlinePath(r.outline!, p)}
-          fillRule="evenodd"
-          className={`region-shape${r.regionId === selected ? ' is-selected' : ''}`}
-          role="button"
-          tabIndex={0}
-          aria-label={t('map.regionShape', { region: r.name })}
-          aria-pressed={r.regionId === selected}
-          onClick={() => onRegion(r.regionId)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              onRegion(r.regionId);
-            }
-          }}
-        >
-          <title>{r.name}</title>
-        </path>
-      ))}
-      {cells.map((c) => {
-        const state = cellState(c);
-        const x = p.x(c.bounds.west);
-        const y = p.y(c.bounds.north);
-        return (
-          <rect
-            key={c.regionCellId}
-            x={x}
-            y={y}
-            width={Math.max(p.x(c.bounds.east) - x, 0.5)}
-            height={Math.max(p.y(c.bounds.south) - y, 0.5)}
-            className={`map-cell cell-${state}${c.cellKey === cellKey ? ' is-selected' : ''}`}
-            role="button"
-            tabIndex={0}
-            aria-label={t('map.cellShape', { cell: c.cellKey, state: t(`map.state.${state}`) })}
-            aria-pressed={c.cellKey === cellKey}
-            onClick={() => onCell(c)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onCell(c);
-              }
-            }}
-          >
-            <title>{`${c.cellKey}: ${t(`map.state.${state}`)}`}</title>
-          </rect>
-        );
-      })}
-    </svg>
-  );
-}
-
-function CellStats({ cell }: { cell: CellSummary }) {
+function CellStats({ cell, onPlan }: { cell: CellSummary; onPlan: () => void }) {
   const t = useT();
   const state = cellState(cell);
   return (
@@ -236,10 +250,6 @@ function CellStats({ cell }: { cell: CellSummary }) {
           <dd>{formatNumber(cell.queriesRun)}</dd>
         </div>
         <div>
-          <dt>{t('map.cell.places')}</dt>
-          <dd>{formatNumber(cell.placesFound)}</dd>
-        </div>
-        <div>
           <dt>{t('map.cell.newPlaces')}</dt>
           <dd>{formatNumber(cell.newPlacesFound)}</dd>
         </div>
@@ -256,7 +266,9 @@ function CellStats({ cell }: { cell: CellSummary }) {
           <dd>{cell.lastRunAt ? formatDateTime(cell.lastRunAt) : t('map.cell.never')}</dd>
         </div>
       </dl>
-      <p className="muted">{t('map.cell.selected')}</p>
+      <button type="button" className="button" onClick={onPlan}>
+        {t('cov.plan.cell')}
+      </button>
     </section>
   );
 }
