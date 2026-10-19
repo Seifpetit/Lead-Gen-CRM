@@ -1524,14 +1524,13 @@ fieldset.segmented legend {
   padding: 0;
   cursor: pointer;
 }
+/* The page scrolls, not the table: no second scrollbar inside the card. Only a wide table
+   scrolls sideways. */
 .table-scroll {
-  overflow: auto;
-  max-height: 480px;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 .lead-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
   background: var(--surface);
 }
 .lead-table {

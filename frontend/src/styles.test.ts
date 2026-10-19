@@ -178,3 +178,11 @@ describe('light theme only', () => {
     }
   });
 });
+
+describe('long lists', () => {
+  it('scroll with the page, not inside a capped box', () => {
+    const rules = [...css.matchAll(/\.table-scroll\s*\{([^}]*)\}/g)].map((m) => m[1]!);
+    expect(rules.length).toBeGreaterThan(0);
+    for (const rule of rules) expect(rule).not.toMatch(/max-height|overflow(-y)?:\s*(auto|scroll)/);
+  });
+});
