@@ -1,5 +1,6 @@
 import type {
   AddDecisionMakerResult,
+  CompanyCardDetail,
   ApifyLog,
   BoardFilters,
   CardsQuery,
@@ -141,6 +142,12 @@ export function createApi(client: ApiClient) {
       addDecisionMaker: (id: string, input: DecisionMakerInput) =>
         client.request<AddDecisionMakerResult>('POST', `/api/crm/cards/${id}/decision-maker`, {
           body: input,
+        }),
+      companyDetail: (companyId: string, signal?: AbortSignal) =>
+        client.get<CompanyCardDetail>(`/api/crm/cards/by-company/${companyId}`, undefined, signal),
+      saveNotes: (companyId: string, notes: string) =>
+        client.request<{ notes: string }>('PATCH', `/api/crm/companies/${companyId}/notes`, {
+          body: { notes },
         }),
       remove: (id: string) => client.request<CrmCard>('POST', `/api/crm/cards/${id}/remove`),
       restore: (id: string, stage?: string) =>

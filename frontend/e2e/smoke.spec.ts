@@ -113,8 +113,8 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
   const leads = page.getByRole('table', { name: 'Recent leads' });
   await expect(leads).toBeVisible();
   await leads.getByRole('row').nth(1).getByRole('link').first().click();
-  await expect(page.getByRole('navigation', { name: 'You are here' })).toBeVisible();
-  await expect(page.getByRole('article')).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Overview' })).toBeVisible();
+  await expect(page.getByText('Decision-maker', { exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Back' }).click();
   await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible();
 

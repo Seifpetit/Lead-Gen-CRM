@@ -10,6 +10,8 @@ export function Card({
   className = '',
   anchor,
   tone,
+  leading,
+  level = 2,
   children,
 }: {
   title: string;
@@ -19,9 +21,14 @@ export function Card({
   anchor?: string;
   /** Colour of the header band. Left out, the stylesheet picks one by the kind of card. */
   tone?: 'yellow' | 'purple' | 'teal' | 'coral' | 'orange' | 'sky' | 'blush';
+  /** Shown before the title: a Back button, a picture. */
+  leading?: ReactNode;
+  /** The title is a level 2 heading unless the card is the page. */
+  level?: 1 | 2;
   children: ReactNode;
 }) {
   const id = useId();
+  const Heading = level === 1 ? 'h1' : 'h2';
   return (
     <section
       className={`widget ${className}`.trim()}
@@ -30,7 +37,8 @@ export function Card({
       {...(tone ? { 'data-tone': tone } : {})}
     >
       <header className="widget-header">
-        <h2 id={id}>{title}</h2>
+        {leading}
+        <Heading id={id}>{title}</Heading>
         {actions && <div className="widget-actions">{actions}</div>}
       </header>
       <div className="widget-body">{children}</div>

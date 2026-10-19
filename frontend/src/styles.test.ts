@@ -41,6 +41,7 @@ const PAIRS: [string, string][] = [
   ['--ok', '--ok-bg'],
   ['--warning', '--warning-bg'],
   ['--text', '--accent-tint'],
+  ['--surface', '--ink'],
   // The colour blocks (card headers, buttons, tabs, badges) carry the main text colour.
   ['--text', '--yellow'],
   ['--text', '--coral'],
@@ -201,5 +202,20 @@ describe('fixed to the window', () => {
     expect(rule('.lead-table thead th')).toMatch(/position:\s*sticky/);
     expect(rule('.fit-body > .widget > .widget-body')).toMatch(/overflow-y:\s*auto/);
     expect(rule('.page-scroll')).toMatch(/overflow-y:\s*auto/);
+  });
+});
+
+describe('lead page layout', () => {
+  it('fills the window under the top bar and scrolls each column on its own', () => {
+    expect(rule('.lead-page > .lead-detail')).toMatch(/min-height:\s*0/);
+    expect(rule('.lead-col')).toMatch(/overflow-y:\s*auto/);
+    expect(rule(".lead-col-right [role='tabpanel']")).toMatch(/overflow-y:\s*auto/);
+    expect(rule('.lead-columns')).toMatch(/grid-template-columns:\s*2fr 3fr/);
+  });
+
+  it('stacks the columns on narrow windows and scrolls the card body instead', () => {
+    const narrow = css.slice(css.lastIndexOf('@media (max-width: 900px)'));
+    expect(narrow).toMatch(/\.lead-detail > \.widget-body \{[^}]*overflow-y:\s*auto/);
+    expect(narrow).toMatch(/\.lead-columns \{[^}]*display:\s*block/);
   });
 });

@@ -1,13 +1,10 @@
 import type { Lead } from '@lead-gen-crm/shared';
-import { useState } from 'react';
 import { useParams } from 'react-router';
 import { useApi } from '../../api/context.js';
-import { Breadcrumb } from '../../components/shared/Breadcrumb.js';
-import { useToast } from '../../components/shared/Toast.js';
 import { EmptyState, ErrorState, LoadingState } from '../../components/states.js';
 import { useT } from '../../i18n/index.js';
 import { useResource } from '../../lib/useResource.js';
-import { LeadDetailCard } from './LeadDetailCard.js';
+import { LeadView } from './lead/LeadView.js';
 
 const PAGE = 100;
 const MAX_PAGES = 10;
@@ -21,9 +18,7 @@ interface Found {
 export function LeadPage() {
   const t = useT();
   const api = useApi();
-  const toast = useToast();
   const { runId = '', leadId = '' } = useParams();
-  const [moved, setMoved] = useState<Lead | null>(null);
 
   const found = useResource<Found>(
     async () => {
@@ -39,31 +34,32 @@ export function LeadPage() {
     },
     { deps: [runId, leadId] },
   );
-
-  const lead = moved ?? found.data?.lead ?? null;
-  const region = found.data?.region ?? '';
-  const crumbs = [
-    { label: t('side.dashboard'), to: '/leadgen' },
-    ...(found.data ? [{ label: t('run.title', { region }), to: `/leadgen/runs/${runId}` }] : []),
-    { label: lead?.company.name ?? t('crumb.lead') },
-  ];
+  const lead = found.data?.lead ?? null;
+  // The company's card, notes and history come from the CRM; they follow the lead's company.
+  const detail = useResource((signal) => api.crm.companyDetail(lead?.company.id ?? '', signal), {
+    enabled: lead !== null,
+    deps: [lead?.company.id],
+  });
 
   return (
-    <main id="main" className="page">
-      <Breadcrumb label={t('crumb.label')} backLabel={t('common.back')} crumbs={crumbs} />
+    <main id="main" className="page fit lead-page">
       {found.loading && !found.data ? (
         <LoadingState />
       ) : found.error !== null && !found.data ? (
         <ErrorState error={found.error} onRetry={found.reload} />
       ) : lead === null ? (
         <EmptyState title={t('leadPage.missing')} />
+      ) : detail.data === null ? (
+        detail.error !== null ? (
+          <ErrorState error={detail.error} onRetry={detail.reload} />
+        ) : (
+          <LoadingState />
+        )
       ) : (
-        <LeadDetailCard
+        <LeadView
           lead={lead}
-          onMoved={(next, note) => {
-            setMoved(next);
-            if (note) toast.show(note);
-          }}
+          detail={{ ...detail, data: detail.data }}
+          backTo={`/leadgen/runs/${runId}`}
         />
       )}
     </main>

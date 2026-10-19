@@ -6,6 +6,7 @@ import {
   addDecisionMaker,
   BoardError,
   getCard,
+  getCompanyDetail,
   isCompanyRemoved,
   isPersonRemoved,
   loadBoard,
@@ -13,6 +14,7 @@ import {
   purgeNoise,
   removeCard,
   restoreCard,
+  setCompanyNotes,
 } from './crmBoards.js';
 import { listLeads, upsertLead } from './crmLeads.js';
 import type { Db } from './db.js';
@@ -432,5 +434,51 @@ describe('the Noise purge', () => {
     ).rows[0]!.id;
     expect(await code(removeCard(db, user, theirCard))).toBe('not_found');
     expect(await getCard(db, user, theirCard, RETENTION)).toBeNull();
+  });
+});
+
+describe("a company's page data", () => {
+  it('has the card, a history that grows with every move, and the sector name', async () => {
+    const start = await getCompanyDetail(db, user, companyId, RETENTION);
+    expect(start).toMatchObject({
+      card: { stage: 'found', company: { id: companyId } },
+      notes: '',
+      person: null,
+    });
+    expect(start.history).toEqual([{ from: null, to: 'found', at: expect.any(String) as string }]);
+    const card = await companyCard();
+    await moveCard(db, user, card, 'investigating');
+    await removeCard(db, user, card);
+    await restoreCard(db, user, card);
+    const detail = await getCompanyDetail(db, user, companyId, RETENTION);
+    expect(detail.history.map((e) => [e.from, e.to])).toEqual([
+      ['noise', 'investigating'],
+      ['investigating', 'noise'],
+      ['found', 'investigating'],
+      [null, 'found'],
+    ]);
+    // A move to the stage it is already in is not a step.
+    await moveCard(db, user, card, 'investigating');
+    expect((await getCompanyDetail(db, user, companyId, RETENTION)).history).toHaveLength(4);
+  });
+
+  it('shows the decision-maker once named, and keeps the notes the user wrote', async () => {
+    const card = await companyCard();
+    await addDecisionMaker(db, user, card, { fullName: 'Sami', phone: '98 000 111' }, RETENTION);
+    expect(await setCompanyNotes(db, user, companyId, 'Ask for Sami.\n  Second line  ')).toBe(
+      'Ask for Sami.\n  Second line  ',
+    );
+    const detail = await getCompanyDetail(db, user, companyId, RETENTION);
+    expect(detail.notes).toBe('Ask for Sami.\n  Second line  ');
+    expect(detail.person).toMatchObject({ pipeline: 'people', person: { fullName: 'Sami' } });
+    expect(detail.history[0]).toMatchObject({ to: 'decision_maker_identified' });
+  });
+
+  it('puts a company that has no card in Found, and is not open to another user', async () => {
+    await db.query('DELETE FROM crm_cards WHERE company_id = $1', [companyId]);
+    expect((await getCompanyDetail(db, user, companyId, RETENTION)).card.stage).toBe('found');
+    const other = await makeUser(db);
+    expect(await code(getCompanyDetail(db, other, companyId, RETENTION))).toBe('not_found');
+    expect(await code(setCompanyNotes(db, other, companyId, 'x'))).toBe('not_found');
   });
 });

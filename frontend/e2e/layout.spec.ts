@@ -170,3 +170,87 @@ for (const size of SIZES) {
     }
   });
 }
+
+test('the lead page is one card: the page stays still and a long evidence list scrolls inside', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await signIn(page);
+  const long = Array.from({ length: 80 }, (_, i) => ({
+    field: `raw${i}`,
+    value: `raw value ${i}`,
+    kind: 'fact',
+    sourceUrl: 'https://source.example.test/page',
+    fetchedAt: '2026-10-18T09:30:00.000Z',
+  }));
+  const lead = {
+    ...leads[0]!,
+    company: { ...leads[0]!.company, evidence: long },
+  };
+  const cardData = {
+    card: {
+      id: 'layout-card',
+      pipeline: 'companies',
+      stage: 'found',
+      stageEnteredAt: '2026-10-18T09:30:00.000Z',
+      noiseAt: null,
+      purgeAt: null,
+      removedFrom: null,
+      company: {
+        id: lead.company.id,
+        name: lead.company.name,
+        sector: 'textile',
+        website: lead.company.website,
+        phone: lead.company.phone,
+        email: null,
+        imageUrl: null,
+        imageSource: null,
+      },
+      person: null,
+      score: 90,
+    },
+    sectorName: 'Textile',
+    notes: '',
+    history: [{ from: null, to: 'found', at: '2026-10-18T09:30:00.000Z' }],
+    person: null,
+  };
+  await page.route('**/api/runs/layout-run', (route) =>
+    route.fulfill({
+      json: {
+        id: 'layout-run',
+        regionId: 'sfax',
+        status: 'finished',
+        leads: [lead],
+        leadsTotal: 1,
+        leadsNextOffset: null,
+      },
+    }),
+  );
+  await page.route('**/api/crm/cards/by-company/*', (route) => route.fulfill({ json: cardData }));
+
+  for (const size of [
+    { width: 1280, height: 720 },
+    { width: 800, height: 600 },
+  ]) {
+    await page.setViewportSize(size);
+    await page.goto(`/leadgen/runs/layout-run/leads/${lead.id}`);
+    await expect(page.getByRole('heading', { level: 1, name: lead.company.name })).toBeVisible();
+    await page.getByRole('tab', { name: 'Evidence' }).click();
+    const m = await page.evaluate(measure);
+    expect(m.docHeight).toBeLessThanOrEqual(m.height);
+    expect(m.docWidth).toBeLessThanOrEqual(m.width);
+    expect(m.sideways).toBe(false);
+    expect(m.nested).toEqual([]);
+  }
+
+  // Wide: the evidence scrolls in the right column, the left column stays put.
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.getByRole('tab', { name: 'Evidence' }).click();
+  await page.locator('details.evidence-fold > summary').first().click();
+  const panel = page.locator('.lead-col-right [role="tabpanel"]');
+  expect(await panel.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+  await panel.hover();
+  await page.mouse.wheel(0, 800);
+  await expect.poll(() => panel.evaluate((el) => el.scrollTop)).toBeGreaterThan(100);
+  expect(await page.locator('.lead-col-left').evaluate((el) => el.scrollTop)).toBe(0);
+});
