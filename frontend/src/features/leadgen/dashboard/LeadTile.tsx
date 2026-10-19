@@ -8,14 +8,29 @@ import { CompanyThumb, PersonAvatar } from '../../crm/BoardCard.js';
 import { daysSince } from '../../crm/boardTime.js';
 import { cardName } from '../../crm/useBoard.js';
 
-/** Which badges a tile shows; the display settings turn them on and off. */
+/** Which badges a tile shows, and how big it is; the card density in the filters chooses. */
 export interface TileParts {
   stage: boolean;
   score: boolean;
   found: boolean;
   contact: boolean;
+  /** A smaller picture and tighter padding. */
+  compact: boolean;
 }
-export const ALL_PARTS: TileParts = { stage: true, score: true, found: true, contact: true };
+export const ALL_PARTS: TileParts = {
+  stage: true,
+  score: true,
+  found: true,
+  contact: true,
+  compact: false,
+};
+export const COMPACT_PARTS: TileParts = {
+  stage: true,
+  score: true,
+  found: false,
+  contact: false,
+  compact: true,
+};
 
 const ICON = 14;
 
@@ -70,7 +85,7 @@ export function LeadTile({
 
   return (
     <li
-      className={`tile${selected ? ' is-selected' : ''}${path ? ' is-link' : ''}${drag?.dragging ? ' is-dragging' : ''}`}
+      className={`tile${parts.compact ? ' tile-compact' : ''}${selected ? ' is-selected' : ''}${path ? ' is-link' : ''}${drag?.dragging ? ' is-dragging' : ''}`}
       data-card-id={card.id}
       onClick={open}
       {...(drag
@@ -92,7 +107,11 @@ export function LeadTile({
           onChange={onToggle}
         />
       )}
-      {person ? <PersonAvatar card={card} /> : <CompanyThumb card={card} size={48} />}
+      {person ? (
+        <PersonAvatar card={card} />
+      ) : (
+        <CompanyThumb card={card} size={parts.compact ? 36 : 48} />
+      )}
       <div className="tile-main">
         {path ? (
           <Link to={path} className="tile-name" title={title} draggable={false}>

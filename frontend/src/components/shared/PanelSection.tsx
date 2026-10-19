@@ -10,6 +10,7 @@ export type PanelTone = 'yellow' | 'purple' | 'teal' | 'coral' | 'orange' | 'sky
 export function PanelSection({
   title,
   tone,
+  leading,
   controls,
   className = '',
   headingLevel = 2,
@@ -17,6 +18,8 @@ export function PanelSection({
 }: {
   title: string;
   tone: PanelTone;
+  /** Sits right after the title (a switch that belongs to it). */
+  leading?: ReactNode;
   controls?: ReactNode;
   className?: string;
   headingLevel?: 2 | 3;
@@ -29,6 +32,7 @@ export function PanelSection({
       <header className="panel-head">
         <span className="panel-tag" data-tone={tone} aria-hidden="true" />
         <Heading id={id}>{title}</Heading>
+        {leading}
         {controls && <div className="panel-controls">{controls}</div>}
       </header>
       <div className="panel-body">{children}</div>

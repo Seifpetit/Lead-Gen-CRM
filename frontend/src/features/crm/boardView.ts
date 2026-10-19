@@ -13,9 +13,6 @@ export const DEFAULT_DIRECTION: Record<BoardSort, SortDirection> = {
 
 export const DEFAULT_SORT: BoardSort = 'score';
 
-/** Score choices: 0 is "any". */
-export const MIN_SCORES = [0, 50, 70] as const;
-
 export interface BoardQuery extends BoardFilters {
   view: BoardView;
 }

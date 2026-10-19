@@ -247,6 +247,22 @@ describe('dashboard divider and cards', () => {
   });
 });
 
+describe('filters panel', () => {
+  it('draws the active filters as small chips in one thin scrolling row', () => {
+    expect(rule('.filter-chips')).toMatch(/overflow-x:\s*auto/);
+    expect(rule('.filter-chip')).toMatch(/height:\s*24px/);
+  });
+  it('keeps the radio inputs usable by keyboard while the pill is drawn for them', () => {
+    expect(rule('.filter-option input')).toMatch(/opacity:\s*0/);
+    expect(rule('.filter-option input:focus-visible + span')).toMatch(/outline:\s*3px/);
+  });
+  it('lets the header of Recent leads stay on one line when there is room', () => {
+    expect(css).toMatch(
+      /@container dashpanel \(min-width: 640px\)\s*\{\s*\.dp-leads \.panel-head\s*\{[^}]*nowrap/,
+    );
+  });
+});
+
 describe('lead page layout', () => {
   it('fills the window under the top bar and scrolls each column on its own', () => {
     expect(rule('.lead-page > .lead-detail')).toMatch(/min-height:\s*0/);

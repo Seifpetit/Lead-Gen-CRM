@@ -11,7 +11,7 @@ import { DEFAULT_DIRECTION, effectiveDirection, effectiveSort } from '../../crm/
 import type { LeadsView } from './LeadsControls.js';
 import { LeadGrid } from './LeadGrid.js';
 import { cardPath, type TileParts } from './LeadTile.js';
-import type { LeadsQuery } from './leadsQuery.js';
+import { hasFilters, type LeadsQuery } from './leadsQuery.js';
 import type { LeadCards } from './useLeadCards.js';
 
 /** The stages a bulk move offers: the others need a form or a reason, so they are one at a time. */
@@ -95,7 +95,7 @@ export function LeadsBody({
   if (data.loading) return <LoadingState />;
   if (data.error !== null) return <ErrorState error={data.error} onRetry={data.reload} />;
 
-  const filtered = query.q.trim() !== '' || query.minScore !== '0';
+  const filtered = hasFilters(query);
   const empty = t(filtered ? 'leads.none.filtered' : 'leads.none.view');
   const label = t(query.pipeline === 'companies' ? 'leads.list.companies' : 'leads.list.people');
 
