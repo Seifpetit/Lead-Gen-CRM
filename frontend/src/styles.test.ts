@@ -12,10 +12,7 @@ function tokens(block: string, inherited: Record<string, string> = {}): Record<s
 
 const rootStart = css.indexOf(':root {');
 const lightBlock = css.slice(rootStart, css.indexOf('\n}\n', rootStart));
-const darkStart = css.indexOf('@media (prefers-color-scheme: dark)');
-const darkBlock = css.slice(darkStart, css.indexOf('\n  }\n}', darkStart));
 const light = tokens(lightBlock);
-const dark = tokens(darkBlock, light);
 
 const channel = (v: number) => {
   const c = v / 255;
@@ -30,7 +27,7 @@ function contrast(a: string, b: string): number {
   return (hi! + 0.05) / (lo! + 0.05);
 }
 
-// Text and the surface it sits on, in both themes. Each must reach WCAG AA (4.5:1).
+// Text and the surface it sits on. Each must reach WCAG AA (4.5:1).
 const PAIRS: [string, string][] = [
   ['--text', '--bg'],
   ['--text', '--surface'],
@@ -44,26 +41,36 @@ const PAIRS: [string, string][] = [
   ['--ok', '--ok-bg'],
   ['--warning', '--warning-bg'],
   ['--text', '--accent-tint'],
-  // The pastel blocks (card headers, bars, selected tabs) carry the main text colour.
-  ['--text', '--yellow-soft'],
-  ['--text', '--lime'],
-  ['--text', '--mint'],
-  ['--text', '--lavender'],
-  ['--text', '--pink'],
-  ['--text', '--cream'],
+  // The colour blocks (card headers, buttons, tabs, badges) carry the main text colour.
+  ['--text', '--yellow'],
+  ['--text', '--coral'],
+  ['--text', '--purple'],
+  ['--text', '--teal'],
+  ['--text', '--orange'],
+  ['--text', '--sky'],
+  ['--text', '--blush'],
 ];
 
 describe('design tokens', () => {
   it('uses the palette, radius, shadows and spacing scale of the design system', () => {
-    expect(light['--teal']).toBe('#00c2cb');
-    expect(light['--magenta']).toBe('#ff00ff');
-    expect(light['--yellow']).toBe('#ffe600');
-    expect(light['--paper']).toBe('#f5f0e1');
-    expect(light['--bg']).toBe('#f5f0e1');
-    expect(light['--radius']).toBe('6px');
+    const palette = {
+      '--coral': '#ff6b5e',
+      '--purple': '#9b7be9',
+      '--teal': '#3cc8c0',
+      '--yellow': '#ffe066',
+      '--orange': '#ff9a55',
+      '--sky': '#4da8e0',
+      '--blush': '#ffc9c2',
+      '--bg': '#fdf1e8',
+      '--ink': '#111111',
+      '--surface': '#ffffff',
+    };
+    for (const [name, value] of Object.entries(palette)) expect(light[name], name).toBe(value);
+    expect(light['--radius']).toBe('12px');
+    expect(light['--bw']).toBe('2.5px');
     expect(light['--shadow-0']).toBe('none');
-    expect(light['--shadow-1']).toBe('3px 3px 0 #000000');
-    expect(light['--shadow-2']).toBe('6px 6px 0 #000000');
+    expect(light['--shadow-1']).toBe('4px 4px 0 #111111');
+    expect(light['--shadow-2']).toBe('6px 6px 0 #111111');
     expect([1, 2, 3, 4, 5, 6, 7].map((i) => light[`--space-${i}`])).toEqual([
       '4px',
       '8px',
@@ -84,28 +91,12 @@ describe('design tokens', () => {
     expect(light['--font']).toMatch(/^'Space Grotesk'/);
   });
 
-  for (const [theme, set] of [
-    ['light', light],
-    ['dark', dark],
-  ] as const) {
-    it(`keeps text readable (WCAG AA) in ${theme} mode`, () => {
-      for (const [fg, bg] of PAIRS) {
-        expect(set[fg], fg).toMatch(/^#[0-9a-f]{6}$/);
-        expect(set[bg], bg).toMatch(/^#[0-9a-f]{6}$/);
-        expect(contrast(set[fg]!, set[bg]!), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
-      }
-    });
-  }
-
-  it('puts black text on the colour blocks (teal, yellow, magenta)', () => {
-    for (const block of ['--teal', '--yellow', '--magenta']) {
-      expect(contrast('#000000', light[block]!), block).toBeGreaterThanOrEqual(4.5);
+  it('keeps text readable (WCAG AA)', () => {
+    for (const [fg, bg] of PAIRS) {
+      expect(light[fg], fg).toMatch(/^#[0-9a-f]{6}$/);
+      expect(light[bg], bg).toMatch(/^#[0-9a-f]{6}$/);
+      expect(contrast(light[fg]!, light[bg]!), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
     }
-  });
-
-  it('has a near-black page in dark mode with light borders', () => {
-    expect(luminance(dark['--bg']!)).toBeLessThan(0.02);
-    expect(luminance(dark['--border']!)).toBeGreaterThan(0.7);
   });
 
   it('switches off motion for people who ask for less', () => {
@@ -114,7 +105,7 @@ describe('design tokens', () => {
 });
 
 describe('scrollbars', () => {
-  it('are drawn as a black-edged teal thumb on a paper track', () => {
+  it('are drawn as a black-edged teal thumb on a cream track', () => {
     expect(css).toMatch(/::-webkit-scrollbar-thumb\s*\{[^}]*border: 2px solid var\(--ink\)/);
     expect(css).toMatch(/::-webkit-scrollbar-thumb\s*\{[^}]*background: var\(--teal\)/);
     expect(css).toMatch(/::-webkit-scrollbar-track\s*\{[^}]*background: var\(--paper\)/);
@@ -131,11 +122,11 @@ describe('focus outline', () => {
     document.body.innerHTML = '';
   });
 
-  it('is a 3px yellow outline with a black inner edge on buttons, inputs and links', () => {
+  it('is a 3px black outline with a white inner edge on buttons, inputs and links', () => {
     // The sheet itself: one rule gives every interactive element the same ring.
     const rule = css.match(/:focus-visible,[\s\S]*?\{([^}]*)\}/)![1]!;
-    expect(rule).toContain('outline: 3px solid #ffe600');
-    expect(rule).toContain('box-shadow: 0 0 0 1px #000');
+    expect(rule).toContain('outline: 3px solid #111111');
+    expect(rule).toContain('box-shadow: 0 0 0 1px #fff');
     for (const selector of ['button:focus-visible', 'input:focus-visible', 'a:focus-visible']) {
       expect(css).toContain(selector);
     }
@@ -153,8 +144,37 @@ describe('focus outline', () => {
       const computed = getComputedStyle(el);
       // jsdom reports the shorthand only.
       expect(computed.outline.replace(/\s+/g, ' '), el.tagName).toMatch(
-        /^3px solid (#ffe600|rgb\(255, ?230, ?0\))$/i,
+        /^3px solid (#111111|rgb\(17, ?17, ?17\))$/i,
       );
+    }
+  });
+});
+
+describe('light theme only', () => {
+  it('has no dark-scheme media query, only a hidden data-theme hook', () => {
+    expect(css).not.toContain('prefers-color-scheme');
+    expect(css).toMatch(/:root\[data-theme='dark'\]/);
+    expect(lightBlock).toMatch(/color-scheme:\s*light;/);
+  });
+
+  it('applies no dark theme when the operating system prefers dark', () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes('prefers-color-scheme: dark'),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      onchange: null,
+      dispatchEvent: () => false,
+    })) as typeof window.matchMedia;
+    try {
+      expect(window.matchMedia('(prefers-color-scheme: dark)').matches).toBe(true);
+      expect(document.documentElement.getAttribute('data-theme')).not.toBe('dark');
+      expect(light['--bg']).toBe('#fdf1e8');
+    } finally {
+      window.matchMedia = original;
     }
   });
 });

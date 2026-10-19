@@ -10,6 +10,7 @@ export function ProgressTrack({
   startLabel,
   endLabel,
   checkpointsLabel,
+  tone = 'coral',
 }: {
   value: number;
   /** Accessible name of the bar. */
@@ -21,11 +22,13 @@ export function ProgressTrack({
   endLabel?: string;
   /** Caption shown between the Start and End labels, e.g. "Cost checkpoints". */
   checkpointsLabel?: string;
+  /** Fill colour. */
+  tone?: 'coral' | 'purple' | 'teal';
 }) {
   const share = Math.min(1, Math.max(0, value));
   const hasScale = startLabel !== undefined || endLabel !== undefined || checkpointsLabel;
   return (
-    <div className="progress">
+    <div className="progress" data-tone={tone}>
       {hasScale && (
         <div className="progress-scale" aria-hidden="true">
           <span>{startLabel}</span>

@@ -1,24 +1,30 @@
 :root {
-  /* Palette */
-  --teal: #00c2cb;
-  --magenta: #ff00ff;
-  --yellow: #ffe600;
-  --black: #000000;
+  /* Palette: a loud, colourful neo-brutalist set. Black text on every coloured block. */
+  --black: #111111;
   --white: #ffffff;
-  --paper: #f5f0e1;
-  /* Light, loud pastels for card headers, bars and selected states */
-  --yellow-soft: #ffd95a;
-  --lime: #d7f05a;
-  --mint: #a9f2e6;
-  --lavender: #cdb6fa;
-  --pink: #ff8db8;
-  --cream: #fffbd6;
+  --cream-page: #fdf1e8;
+  --coral: #ff6b5e;
+  --purple: #9b7be9;
+  --teal: #3cc8c0;
+  --yellow: #ffe066;
+  --orange: #ff9a55;
+  --sky: #4da8e0;
+  --blush: #ffc9c2;
+  --paper: var(--cream-page);
+  /* Older names, kept so existing rules resolve to the new palette */
+  --yellow-soft: var(--yellow);
+  --lime: var(--orange);
+  --mint: var(--teal);
+  --lavender: var(--purple);
+  --pink: var(--blush);
+  --cream: var(--cream-page);
+  --magenta: var(--coral);
 
   /* Roles: teal = action and status, magenta = danger only, yellow = focus and warnings only */
   --bg: var(--paper);
   --surface: var(--white);
   --text: var(--black);
-  --muted: #4d4d4d;
+  --muted: #444444;
   --ink: var(--black);
   --border: var(--black);
   --border-soft: #d4d4d4;
@@ -26,15 +32,15 @@
   --accent: var(--teal);
   --accent-text: var(--black);
   /* Teal dark enough to read as text, links and chart marks on white and paper. */
-  --accent-ink: #006a70;
-  --accent-tint: #ddf7f8;
+  --accent-ink: #00666b;
+  --accent-tint: #d9f4f2;
   --danger: var(--magenta);
-  --danger-text: #8f008f;
-  --danger-bg: #ffd9ff;
+  --danger-text: #a3200f;
+  --danger-bg: #ffd9d4;
   --warning: #4f4200;
   --warning-bg: #fff7b3;
-  --ok: #00575c;
-  --ok-bg: #ddf7f8;
+  --ok: #00555a;
+  --ok-bg: #d9f4f2;
   --fact: var(--ok);
   --fact-bg: var(--ok-bg);
   --estimate: var(--warning);
@@ -43,10 +49,12 @@
   --shadow-color: var(--black);
 
   /* Shape: 6px on buttons, inputs and cards; tables are square */
-  --radius: 6px;
-  --radius-sm: 6px;
+  --radius: 12px;
+  --radius-sm: 12px;
+  --radius-pill: 999px;
+  --bw: 2.5px;
   --shadow-0: none;
-  --shadow-1: 3px 3px 0 var(--shadow-color);
+  --shadow-1: 4px 4px 0 var(--shadow-color);
   --shadow-2: 6px 6px 0 var(--shadow-color);
 
   /* Spacing scale */
@@ -69,34 +77,35 @@
   --fs-caption: 13px;
 
   --hit: 44px;
-  color-scheme: light dark;
+  color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0d0d0d;
-    --surface: #161616;
-    --text: #f5f5f5;
-    --muted: #b8b8b8;
-    --ink: #ededed;
-    --border: #ededed;
-    --border-soft: #3a3a3a;
-    --grid: #2a2a2a;
-    --accent-ink: #00c2cb;
-    --accent-tint: #0f2e30;
-    --danger-text: #ff7aff;
-    --danger-bg: #3a003a;
-    --warning: #ffe600;
-    --warning-bg: #2e2900;
-    --ok: #00c2cb;
-    --ok-bg: #0f2e30;
-    --shadow-color: #ededed;
-    --yellow-soft: #3a3410;
-    --lime: #2a3310;
-    --mint: #0f2e30;
-    --lavender: #2a2240;
-    --pink: #3a1a2a;
-    --cream: #1b1b1b;
-  }
+/* Dark theme: switched off for now. Only an explicit data-theme="dark" on the page turns it on;
+   the operating system setting is ignored. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0d0d0d;
+  --surface: #161616;
+  --text: #f5f5f5;
+  --muted: #b8b8b8;
+  --ink: #ededed;
+  --border: #ededed;
+  --border-soft: #3a3a3a;
+  --grid: #2a2a2a;
+  --accent-ink: #00c2cb;
+  --accent-tint: #0f2e30;
+  --danger-text: #ff7aff;
+  --danger-bg: #3a003a;
+  --warning: #ffe600;
+  --warning-bg: #2e2900;
+  --ok: #00c2cb;
+  --ok-bg: #0f2e30;
+  --shadow-color: #ededed;
+  --yellow-soft: #3a3410;
+  --lime: #2a3310;
+  --mint: #0f2e30;
+  --lavender: #2a2240;
+  --pink: #3a1a2a;
+  --cream: #1b1b1b;
 }
 
 * {
@@ -1927,7 +1936,7 @@ a {
   color: var(--accent-ink);
 }
 
-/* Focus: always visible, a 3px yellow outline with a black inner edge */
+/* Focus: always visible, a 3px black outline with a white inner edge */
 :focus-visible,
 .button:focus-visible,
 select:focus-visible,
@@ -1937,20 +1946,20 @@ button:focus-visible,
 a:focus-visible,
 summary:focus-visible,
 [tabindex]:focus-visible {
-  outline: 3px solid #ffe600;
+  outline: 3px solid #111111;
   outline-offset: 1px;
-  box-shadow: 0 0 0 1px #000;
+  box-shadow: 0 0 0 1px #fff;
 }
 .button:focus-visible,
 .widget:focus-visible {
   box-shadow:
-    0 0 0 1px #000,
+    0 0 0 1px #fff,
     var(--shadow-1);
 }
 .segmented input:focus-visible + span {
-  outline: 3px solid #ffe600;
+  outline: 3px solid #111111;
   outline-offset: 1px;
-  box-shadow: 0 0 0 1px #000;
+  box-shadow: 0 0 0 1px #fff;
 }
 .skip-link {
   background: var(--accent);
@@ -2603,16 +2612,6 @@ fieldset.segmented legend {
 .suggestion {
   background: var(--cream);
 }
-@media (prefers-color-scheme: dark) {
-  .toast-error,
-  .state-error,
-  .badge-failed,
-  .badge-apify-failed,
-  .badge-stage-opted_out,
-  .tag-missing {
-    color: var(--text);
-  }
-}
 
 /* Scrollbars: a thick black-edged thumb on a paper track. Chrome, Edge and Safari take the
    ::-webkit-scrollbar parts; Firefox takes scrollbar-color. (Where scrollbar-color is set,
@@ -2835,4 +2834,333 @@ fieldset.segmented legend {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* ==========================================================================================
+   Bright neo-brutalism (light only): cream page, coloured card bands, 2.5px black borders,
+   12px corners and hard offset shadows. These rules come last so they win over the older ones.
+   ========================================================================================== */
+.widget,
+.modal,
+.popover-panel,
+.profile-menu,
+.toast,
+.notice,
+.notice-warning,
+.state-error,
+.active-banner,
+.chart-tip,
+.kanban-card,
+.suggestion,
+.bulk-bar {
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+}
+.modal,
+.popover-panel,
+.profile-menu {
+  box-shadow: var(--shadow-2);
+}
+.widget {
+  background: var(--surface);
+}
+.widget-header {
+  border-bottom: var(--bw) solid var(--ink);
+  color: var(--ink);
+}
+.widget-body {
+  background: var(--surface);
+}
+.widget-header,
+.widget[data-tone='yellow'] .widget-header {
+  background: var(--yellow);
+}
+.widget[data-tone='purple'] .widget-header,
+.chart-row .chart-card:nth-child(1) .widget-header {
+  background: var(--purple);
+}
+.widget[data-tone='teal'] .widget-header,
+.chart-row .chart-card:nth-child(2) .widget-header {
+  background: var(--teal);
+}
+.widget[data-tone='coral'] .widget-header,
+.widget-medium:nth-child(1) .widget-header,
+.run-card .widget-header {
+  background: var(--coral);
+}
+.widget[data-tone='orange'] .widget-header,
+.widget-medium:nth-child(2) .widget-header {
+  background: var(--orange);
+}
+.widget[data-tone='sky'] .widget-header,
+.widget-wide .widget-header,
+.coverage-layout .widget-header {
+  background: var(--sky);
+}
+.widget[data-tone='blush'] .widget-header,
+.info-card .widget-header {
+  background: var(--blush);
+}
+.leads-card .widget-header {
+  background: var(--yellow);
+}
+.modal-wide .widget-header {
+  background: var(--yellow);
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--radius);
+}
+
+/* Page sections on a large rounded colour panel */
+.kanban {
+  padding: var(--space-4);
+  border: var(--bw) solid var(--ink);
+  border-radius: calc(var(--radius) * 2);
+  background: var(--blush);
+}
+
+/* Buttons: primary coral, secondary purple, accent teal; black text and border; press down 2px */
+.button,
+.button-icon,
+.button-icon-text {
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+  color: var(--ink);
+}
+.button:hover:not(:disabled) {
+  background: var(--yellow);
+}
+.button-primary,
+.button-primary:hover:not(:disabled) {
+  background: var(--coral);
+  color: var(--ink);
+}
+.button-secondary,
+.button-secondary:hover:not(:disabled) {
+  background: var(--purple);
+  color: var(--ink);
+}
+.button-accent,
+.button-accent:hover:not(:disabled) {
+  background: var(--teal);
+  color: var(--ink);
+}
+.button-danger {
+  background: var(--coral);
+  color: var(--ink);
+}
+.button:active:not(:disabled),
+.button-icon:active:not(:disabled),
+.button-icon-text:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+.state-empty .button-primary {
+  background: var(--coral);
+  box-shadow: var(--shadow-1);
+}
+.button:disabled,
+.button-primary:disabled,
+.button-danger:disabled {
+  box-shadow: none;
+}
+
+/* Inputs */
+select,
+input[type='search'],
+input[type='text'],
+input[type='number'],
+input[type='email'],
+input[type='password'],
+textarea {
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+}
+
+/* Tabs and toggles: one bordered group; the chosen one is yellow (tabs) or teal (toggles) */
+.tablist {
+  display: flex;
+  overflow: hidden;
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+.tab {
+  border: 0;
+  border-radius: 0;
+  border-right: var(--bw) solid var(--ink);
+  color: var(--ink);
+}
+.tab:last-child {
+  border-right: 0;
+}
+.tab[aria-selected='true'] {
+  border: 0;
+  border-right: var(--bw) solid var(--ink);
+  border-radius: 0;
+  background: var(--yellow);
+  color: var(--ink);
+}
+.tab[aria-selected='true']:last-child {
+  border-right: 0;
+}
+.segmented span {
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+}
+.segmented input:checked + span {
+  background: var(--teal);
+  color: var(--ink);
+  box-shadow: var(--shadow-1);
+}
+.segmented input:focus-visible + span {
+  outline: 3px solid #111111;
+  box-shadow: 0 0 0 1px #fff;
+}
+
+/* Menus */
+.menu {
+  border-radius: var(--radius);
+}
+.menu-item:hover,
+.profile-signout:hover {
+  background: var(--yellow);
+}
+
+/* Progress: white track with a black border, coral / purple / teal fill */
+.progress-track {
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+}
+.progress-fill {
+  background: var(--coral);
+  border-right: var(--bw) solid var(--ink);
+}
+.progress[data-tone='purple'] .progress-fill {
+  background: var(--purple);
+}
+.progress[data-tone='teal'] .progress-fill {
+  background: var(--teal);
+}
+.progress-fill[style*='width: 0%'] {
+  border-right: 0;
+}
+
+/* Status badges and tags: solid pills */
+.tag,
+.badge {
+  padding: 1px var(--space-3);
+  border: 2px solid var(--ink);
+  border-radius: var(--radius-pill);
+  color: var(--ink);
+}
+.tag-fact,
+.badge-finished,
+.badge-apify-finished,
+.badge-stage-won,
+.badge-running,
+.badge-pending,
+.badge-apify-running,
+.badge-apify-started {
+  background: var(--teal);
+  color: var(--ink);
+}
+.tag-estimate,
+.badge-apify-restarting,
+.badge-apify-resumed,
+.badge-stopped_by_cap,
+.badge-cancelled {
+  background: var(--yellow);
+  color: var(--ink);
+}
+.tag-missing,
+.badge-failed,
+.badge-apify-failed,
+.badge-stage-opted_out {
+  background: var(--coral);
+  color: var(--ink);
+}
+
+/* Toasts and banners */
+.toast-success,
+.notice,
+.active-banner {
+  background: var(--teal);
+}
+.toast-warning,
+.notice-warning {
+  background: var(--yellow);
+}
+.toast-error,
+.state-error {
+  background: var(--coral);
+}
+
+/* Sidebar: cream, the current page is a solid yellow block with border and shadow */
+.sidebar {
+  background: var(--bg);
+  border-right: var(--bw) solid var(--ink);
+}
+.sidebar a[aria-current='page'] {
+  background: var(--yellow);
+  color: var(--ink);
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+}
+.sidebar a[aria-current='page']::before {
+  display: none;
+}
+.sidebar a:hover {
+  background: var(--blush);
+}
+.topbar {
+  background: var(--bg);
+  border-bottom: var(--bw) solid var(--ink);
+}
+.topnav a[aria-current='page'] {
+  background: var(--yellow);
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--radius);
+}
+
+/* Charts: coral, purple, teal and yellow, with black outlines */
+.chart-line {
+  stroke: var(--purple);
+  stroke-width: 3;
+}
+.chart-dot {
+  fill: var(--coral);
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+.bar-row .bar-fill {
+  background: var(--coral);
+  border-right: 2px solid var(--ink);
+  border-radius: 0;
+}
+.bars > li:nth-child(4n + 2) .bar-fill {
+  background: var(--purple);
+}
+.bars > li:nth-child(4n + 3) .bar-fill {
+  background: var(--teal);
+}
+.bars > li:nth-child(4n) .bar-fill {
+  background: var(--yellow);
+}
+.bar-track {
+  height: 20px;
+  border: 2px solid var(--ink);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  overflow: hidden;
+}
+.avatar {
+  background: var(--purple);
+  color: var(--ink);
 }
