@@ -62,6 +62,10 @@ database driver (enforced by ESLint).
 - **CRM boards**: `listCards` and `loadBoard` page every column with a keyset cursor over
   `(sort key, id)`, so a page boundary is exact even when many cards tie. Search, sector, minimum
   score and sort are applied in SQL; each column's `total` counts what matches the filters.
+  Every card also carries `foundAt` (when the company or person was first found), `runId` and
+  `leadId` (the run and scored lead that first produced the company, which the card opens), so the
+  dashboard can filter by found-in window, run and region. `loadFacets` counts the cards per stage,
+  sector and run for the dashboard's folders.
 - **CRM leads** are unique per user, company and contact, and an upsert never changes the
   stage, so a dismissed or opted-out lead never comes back as new.
 

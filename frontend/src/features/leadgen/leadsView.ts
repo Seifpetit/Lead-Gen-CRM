@@ -1,12 +1,4 @@
 import type { Lead } from '@lead-gen-crm/shared';
-import { bestChannel, companyChannels, type Channel } from '../../lib/lead.js';
-
-export const LEAD_TABS = ['all', 'confirmed', 'dismissed'] as const;
-export type LeadTab = (typeof LEAD_TABS)[number];
-export const LEAD_SORTS = ['newest', 'score', 'company'] as const;
-export type LeadSort = (typeof LEAD_SORTS)[number];
-export const SCORE_FILTERS = ['any', '50', '70'] as const;
-export type ScoreFilter = (typeof SCORE_FILTERS)[number];
 
 export const RANGES = [7, 30, 90] as const;
 export type Range = (typeof RANGES)[number];
@@ -23,56 +15,6 @@ export function foundAt(lead: Lead, runStarted: ReadonlyMap<string, string>): st
     .filter((n) => Number.isFinite(n));
   if (times.length > 0) return new Date(Math.min(...times)).toISOString();
   return runStarted.get(lead.runId) ?? null;
-}
-
-/** The best way to reach the lead: the person's channel first, the company's only as fallback. */
-export function leadChannel(lead: Lead): Channel | null {
-  return bestChannel(lead.contact) ?? companyChannels(lead.company)[0] ?? null;
-}
-
-export interface LeadFilters {
-  tab: LeadTab;
-  query: string;
-  score: ScoreFilter;
-  sort: LeadSort;
-}
-
-const TAB_STAGES: Record<Exclude<LeadTab, 'all'>, Lead['crmStage']> = {
-  confirmed: 'confirmed',
-  dismissed: 'dismissed',
-};
-
-export function inTab(lead: Lead, tab: LeadTab): boolean {
-  return tab === 'all' || lead.crmStage === TAB_STAGES[tab];
-}
-
-/** Search, filter and sort what is loaded. Search looks at the company, person, title and website. */
-export function applyView(
-  leads: readonly Lead[],
-  filters: LeadFilters,
-  runStarted: ReadonlyMap<string, string>,
-): Lead[] {
-  const needle = filters.query.trim().toLowerCase();
-  const minScore = filters.score === 'any' ? 0 : Number(filters.score);
-  const found = new Map(leads.map((l) => [l.id, foundAt(l, runStarted) ?? '']));
-  const rows = leads.filter((lead) => {
-    if (!inTab(lead, filters.tab)) return false;
-    if (lead.score.total < minScore) return false;
-    if (needle === '') return true;
-    return [
-      lead.company.name,
-      lead.company.website,
-      lead.contact?.fullName,
-      lead.contact?.title,
-    ].some((text) => text?.toLowerCase().includes(needle));
-  });
-  const byName = (a: Lead, b: Lead) => a.company.name.localeCompare(b.company.name);
-  const sorters: Record<LeadSort, (a: Lead, b: Lead) => number> = {
-    newest: (a, b) => found.get(b.id)!.localeCompare(found.get(a.id)!) || byName(a, b),
-    score: (a, b) => b.score.total - a.score.total || byName(a, b),
-    company: byName,
-  };
-  return rows.sort(sorters[filters.sort]);
 }
 
 export interface DayCount {
@@ -123,4 +65,14 @@ export function leadsBySector(
   return [...counts]
     .map(([sectorId, count]) => ({ sectorId, count }))
     .sort((a, b) => b.count - a.count);
+}
+
+/**
+ * Whether leads per day read better as bars than as a line: when the range is a week or less, or
+ * when most of its days are empty (a line would only dip to zero between a few spikes).
+ */
+export function showAsBars(days: readonly DayCount[]): boolean {
+  if (days.length <= 7) return true;
+  const empty = days.filter((d) => d.count === 0).length;
+  return empty * 2 > days.length;
 }

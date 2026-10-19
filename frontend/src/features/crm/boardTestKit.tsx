@@ -66,6 +66,9 @@ export function companyCard(over: Partial<CrmCard> & { id: string; name: string 
     },
     person: null,
     score: 72,
+    foundAt: ago(3),
+    leadId: null,
+    runId: 'run-1',
     ...rest,
   };
 }
@@ -98,6 +101,9 @@ export function personCard(over: Partial<CrmCard> & { id: string }): CrmCard {
       photoUrl: null,
     },
     score: null,
+    foundAt: ago(1),
+    leadId: null,
+    runId: 'run-1',
     ...over,
   };
 }

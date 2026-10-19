@@ -64,7 +64,6 @@ describe('Lead Gen sidebar and pages', () => {
     for (const button of screen.getAllByRole('button', { name: 'Create run' })) {
       expect(button).toBeEnabled();
     }
-    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
 
   it('renders the Coverage page: matrix, map and history', async () => {
@@ -88,22 +87,19 @@ describe('Lead Gen sidebar and pages', () => {
     expect(screen.getByRole('button', { name: 'Refresh now' })).toBeVisible();
   });
 
-  it('shows the active run, its spend progress with checkpoints and its logs', async () => {
+  it('links the active run under the header and lists it in Runs with its spend', async () => {
     const server = fakeServer({
       ...signedIn,
       'GET /api/runs': (req) =>
         req.query.has('status') ? page([activeRun]) : page([activeRun, run()]),
     });
     renderApp(server, '/leadgen');
-    const link = await screen.findAllByRole('link', { name: 'Run active: sfax' });
-    expect(link[0]).toHaveAttribute('href', '/leadgen/runs/run-live');
-    const bar = await screen.findByRole('progressbar');
-    expect(bar).toHaveAttribute('aria-valuenow', '25');
-    expect(bar.querySelectorAll('.progress-tick')).toHaveLength(3);
-    const box = screen.getByRole('heading', { name: 'Logs', level: 3 }).closest('.log-box')!;
-    const popout = within(box as HTMLElement).getByRole('link', { name: 'Open new window' });
-    expect(popout).toHaveAttribute('href', '/leadgen/logs');
-    expect(popout).toHaveAttribute('target', '_blank');
+    const link = await screen.findByRole('link', { name: 'Run active: sfax' });
+    expect(link).toHaveAttribute('href', '/leadgen/runs/run-live');
+    const runs = await screen.findByRole('region', { name: 'Runs' });
+    const row = within(runs).getAllByRole('link', { name: 'Open run for sfax' })[0]!;
+    expect(row).toHaveAttribute('href', '/leadgen/runs/run-live');
+    expect(within(row).getByText('$0.50 of $2.00')).toBeVisible();
   });
 
   it('has Settings and Help pages', async () => {

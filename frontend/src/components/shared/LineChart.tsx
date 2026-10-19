@@ -23,6 +23,7 @@ export function LineChart({
   valueText,
   columns,
   showTitle = true,
+  bars = false,
 }: {
   title: string;
   /** One line saying what the chart shows. */
@@ -34,6 +35,8 @@ export function LineChart({
   columns: { x: string; y: string };
   /** Hide the visible title when a card around the chart already shows it. */
   showTitle?: boolean;
+  /** Draw one bar per point instead of a line: for a few points, or when most are zero. */
+  bars?: boolean;
 }) {
   const titleId = useId();
   const svg = useRef<SVGSVGElement>(null);
@@ -44,8 +47,12 @@ export function LineChart({
   const top = ticks[ticks.length - 1]!;
   const innerW = W - M.left - M.right;
   const innerH = H - M.top - M.bottom;
+  const band = innerW / Math.max(points.length, 1);
+  // Bars sit in the middle of their slot; a line runs from the first point to the last.
   const x = (i: number) =>
-    M.left + (points.length <= 1 ? innerW / 2 : (i / (points.length - 1)) * innerW);
+    bars
+      ? M.left + (i + 0.5) * band
+      : M.left + (points.length <= 1 ? innerW / 2 : (i / (points.length - 1)) * innerW);
   const y = (v: number) => M.top + innerH - (v / top) * innerH;
   const path = points
     .map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`)
@@ -57,7 +64,15 @@ export function LineChart({
     if (!box || box.width === 0 || points.length === 0) return;
     const vx = ((event.clientX - box.left) / box.width) * W;
     const ratio = (vx - M.left) / innerW;
-    setActive(Math.min(points.length - 1, Math.max(0, Math.round(ratio * (points.length - 1)))));
+    setActive(
+      Math.min(
+        points.length - 1,
+        Math.max(
+          0,
+          bars ? Math.floor(ratio * points.length) : Math.round(ratio * (points.length - 1)),
+        ),
+      ),
+    );
   }
   function onKeyDown(event: KeyboardEvent) {
     if (points.length === 0) return;
@@ -113,8 +128,24 @@ export function LineChart({
               </text>
             ) : null,
           )}
-          {points.length > 0 && <path className="chart-line" d={path} />}
-          {active !== null && current && (
+          {!bars && points.length > 0 && <path className="chart-line" d={path} />}
+          {bars &&
+            points.map((p, i) => {
+              const width = Math.min(Math.max(band * 0.6, 4), 48);
+              const height = Math.max(innerH - (y(p.value) - M.top), p.value > 0 ? 2 : 0);
+              return (
+                <rect
+                  key={i}
+                  className={`chart-bar${active === i ? ' is-active' : ''}`}
+                  x={x(i) - width / 2}
+                  y={M.top + innerH - height}
+                  width={width}
+                  height={height}
+                  rx={Math.min(4, width / 2)}
+                />
+              );
+            })}
+          {!bars && active !== null && current && (
             <g>
               <line
                 className="chart-cross"

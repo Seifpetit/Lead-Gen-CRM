@@ -473,6 +473,12 @@ export interface CrmCard {
   } | null;
   /** Best lead score of the company (Companies board) or of this person's lead (People board). */
   score: number | null;
+  /** The company's best lead, which the company page opens; null for a card with no lead. */
+  leadId: string | null;
+  /** When the company (or the person) was found; "found 2 days ago" counts from here. */
+  foundAt: string;
+  /** The run that first found it, when that run still exists. */
+  runId: string | null;
 }
 
 /** Cards per request; each column loads this many, then the next page near its bottom. */
@@ -489,6 +495,12 @@ export interface BoardFilters {
   sector?: string | undefined;
   /** Only cards scoring at least this. */
   minScore?: number | undefined;
+  /** Only cards found in the last N days. */
+  foundDays?: number | undefined;
+  /** Only cards first found by this run. */
+  runId?: string | undefined;
+  /** Only companies in this region (and their people). */
+  regionId?: string | undefined;
   sort?: BoardSort | undefined;
   /** Defaults per sort: newest, score and days run newest/highest/longest first; the rest A to Z. */
   dir?: SortDirection | undefined;
@@ -497,6 +509,8 @@ export interface BoardFilters {
 /** The cards route: the board's filters plus the column and the cursor of the next page. */
 export interface CardsQuery extends BoardFilters {
   stage?: string | undefined;
+  /** Leave Noise out: the cards still in play. */
+  excludeNoise?: boolean | undefined;
   cursor?: string | undefined;
   limit?: number | undefined;
 }
@@ -514,6 +528,19 @@ export interface CrmBoard {
   stages: CrmBoardStage[];
   /** Sectors on the board (before filtering), for the sector filter. */
   sectors: { id: string; name: string }[];
+}
+
+/**
+ * How many cards each choice would show, for the folder list of the leads view. Counted with the
+ * search, minimum score and found-in filters, and not with the stage, sector or run chosen, so a
+ * folder shows what it would hold. Noise is left out.
+ */
+export interface CrmFacets {
+  total: number;
+  stages: { key: BoardStageKey; count: number }[];
+  sectors: { id: string; name: string; count: number }[];
+  /** `id` null: found by a run that has since been deleted. */
+  runs: { id: string | null; count: number }[];
 }
 
 export interface CrmCardPage {

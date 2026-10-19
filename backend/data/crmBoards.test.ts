@@ -9,7 +9,9 @@ import {
   getCompanyDetail,
   isCompanyRemoved,
   isPersonRemoved,
+  listCards,
   loadBoard,
+  loadFacets,
   moveCard,
   purgeNoise,
   removeCard,
@@ -480,5 +482,84 @@ describe("a company's page data", () => {
     const other = await makeUser(db);
     expect(await code(getCompanyDetail(db, other, companyId, RETENTION))).toBe('not_found');
     expect(await code(setCompanyNotes(db, other, companyId, 'x'))).toBe('not_found');
+  });
+});
+
+describe('found-in and run filters, and folder counts', () => {
+  async function second(name: string, place: string, sector: string, daysAgo: number) {
+    const id = (
+      await upsertCompany(
+        db,
+        user,
+        {
+          name: fact(name),
+          governorate: fact('sfax'),
+          googlePlaceId: fact(place),
+          sector: fact(sector),
+        },
+        runId,
+      )
+    ).company.id;
+    await db.query(
+      `UPDATE companies SET created_at = now() - $2 * interval '1 day' WHERE id = $1`,
+      [id, daysAgo],
+    );
+    await upsertLead(db, user, { runId, companyId: id, contactId: null, score });
+    return id;
+  }
+
+  it('says when a card was found, by which run, and which lead opens it', async () => {
+    const id = await second('Beta Textile', 'place-beta', 'textile', 3);
+    const page = await listCards(db, user, 'companies', RETENTION, { runId });
+    expect(page.cards.map((c) => c.company.id).sort()).toEqual([companyId, id].sort());
+    const beta = page.cards.find((c) => c.company.id === id)!;
+    expect(beta).toMatchObject({ runId, leadId: expect.any(String) });
+    expect(Date.now() - Date.parse(beta.foundAt)).toBeGreaterThan(2.9 * DAY);
+    expect(Date.now() - Date.parse(beta.foundAt)).toBeLessThan(3.1 * DAY);
+    const other = (await createRun(db, user, { regionId: 'sfax', budgetCapUsd: 10 })).id;
+    expect((await listCards(db, user, 'companies', RETENTION, { runId: other })).cards).toEqual([]);
+  });
+
+  it('keeps only the companies of one region', async () => {
+    await second('Beta Textile', 'place-beta', 'textile', 3);
+    const regions = async (regionId: string) =>
+      (await listCards(db, user, 'companies', RETENTION, { regionId })).total;
+    expect(await regions('sfax')).toBe(2);
+    expect(await regions('tunis')).toBe(0);
+    expect((await loadFacets(db, user, 'companies', { regionId: 'tunis' })).total).toBe(0);
+  });
+
+  it('keeps only cards found in the last N days', async () => {
+    await second('Beta Textile', 'place-beta', 'textile', 3);
+    await second('Gamma Cuir', 'place-gamma', 'leather', 20);
+    const names = async (foundDays?: number) =>
+      (await listCards(db, user, 'companies', RETENTION, { foundDays })).cards
+        .map((c) => c.company.name)
+        .sort();
+    expect(await names(7)).toEqual(['Alpha Huiles', 'Beta Textile']);
+    expect(await names(30)).toEqual(['Alpha Huiles', 'Beta Textile', 'Gamma Cuir']);
+    expect(await names()).toHaveLength(3);
+  });
+
+  it('counts what each stage, sector and run would hold, without Noise', async () => {
+    const beta = await second('Beta Textile', 'place-beta', 'textile', 3);
+    const gamma = await second('Gamma Cuir', 'place-gamma', 'leather', 20);
+    await moveCard(db, user, await companyCard(beta), 'investigating');
+    await removeCard(db, user, await companyCard(gamma));
+    const facets = await loadFacets(db, user, 'companies');
+    expect(facets.total).toBe(2);
+    expect(facets.stages).toEqual([
+      { key: 'found', count: 1 },
+      { key: 'investigating', count: 1 },
+      { key: 'decision_maker_identified', count: 0 },
+    ]);
+    expect(facets.sectors.map((x) => [x.id, x.count])).toEqual([
+      ['food', 1],
+      ['textile', 1],
+    ]);
+    expect(facets.runs).toEqual([{ id: runId, count: 2 }]);
+    // The search and found-in filters narrow the counts.
+    expect((await loadFacets(db, user, 'companies', { q: 'beta' })).total).toBe(1);
+    expect((await loadFacets(db, user, 'companies', { foundDays: 1 })).total).toBe(1);
   });
 });

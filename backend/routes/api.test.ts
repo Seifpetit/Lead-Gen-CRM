@@ -229,6 +229,11 @@ const CASES: RouteCase[] = [
   },
   {
     method: 'GET',
+    pattern: '/api/crm/:pipeline/facets',
+    url: () => '/api/crm/companies/facets',
+  },
+  {
+    method: 'GET',
     pattern: '/api/crm/cards/by-company/:companyId',
     url: (i) => `/api/crm/cards/by-company/${i.company}`,
   },
@@ -1535,6 +1540,26 @@ describe('crm boards', () => {
     expect((await call(bob, 'GET', '/api/crm/companies')).json().stages.map(totalOf)).toEqual([
       0, 0, 0, 0,
     ]);
+  });
+
+  it('counts what each folder holds, filters by found-in and run, and keeps users apart', async () => {
+    const facets = (await call(alice, 'GET', '/api/crm/companies/facets')).json();
+    expect(facets.total).toBeGreaterThan(0);
+    expect(facets.stages.map((x: { key: string }) => x.key)).toEqual([
+      'found',
+      'investigating',
+      'decision_maker_identified',
+    ]);
+    expect((await call(bob, 'GET', '/api/crm/companies/facets')).json().total).toBe(0);
+    expect((await call(alice, 'GET', '/api/crm/companies/facets?foundDays=0')).statusCode).toBe(
+      400,
+    );
+    expect((await call(alice, 'GET', '/api/crm/companies/cards?runId=nope')).statusCode).toBe(400);
+    const recent = (await call(alice, 'GET', '/api/crm/companies/cards?foundDays=7')).json();
+    expect(recent.cards[0]).toHaveProperty('foundAt');
+    expect(recent.cards[0]).toHaveProperty('runId');
+    const lively = await call(alice, 'GET', '/api/crm/companies/cards?excludeNoise=true');
+    expect(lively.json().cards.every((c: { stage: string }) => c.stage !== 'noise')).toBe(true);
   });
 
   it('needs a decision-maker to reach Decision-maker identified, then creates the person card', async () => {

@@ -16,3 +16,10 @@ export function daysLeft(card: CrmCard, now: Date = new Date()): number | null {
   if (Number.isNaN(at)) return null;
   return Math.max(0, Math.ceil((at - now.getTime()) / DAY_MS));
 }
+
+/** Whole days since a date; never negative. */
+export function daysSince(iso: string, now: Date = new Date()): number {
+  const at = Date.parse(iso);
+  if (Number.isNaN(at)) return 0;
+  return Math.max(0, Math.floor((now.getTime() - at) / DAY_MS));
+}
