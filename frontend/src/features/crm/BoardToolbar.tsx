@@ -1,6 +1,6 @@
 import type { BoardSort, CrmBoard, CrmPipeline } from '@lead-gen-crm/shared';
 import { Search } from 'lucide-react';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { FilterChips, FilterMenu, type FilterField } from '../../components/shared/FilterMenu.js';
 import { ToggleGroup } from '../../components/shared/ToggleGroup.js';
 import { useT, type StringKey } from '../../i18n/index.js';
@@ -28,6 +28,7 @@ export function BoardToolbar({
   total,
   busy,
   onChange,
+  exportButton,
 }: {
   pipeline: CrmPipeline;
   query: BoardQuery;
@@ -36,6 +37,8 @@ export function BoardToolbar({
   total: number;
   busy: boolean;
   onChange: (patch: Partial<BoardQuery>) => void;
+  /** The table view's Export button. */
+  exportButton?: ReactNode;
 }) {
   const t = useT();
   const searchId = useId();
@@ -154,6 +157,7 @@ export function BoardToolbar({
         <p className="board-toolbar-count muted" role="status">
           {t('crm.matches', { count: total })}
         </p>
+        {exportButton}
         <div className="board-toolbar-view">
           <ToggleGroup
             label={t('crm.view.label')}

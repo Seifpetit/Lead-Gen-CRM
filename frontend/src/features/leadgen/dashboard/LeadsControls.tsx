@@ -1,5 +1,5 @@
 import { Maximize2, Search } from 'lucide-react';
-import { useId } from 'react';
+import { useId, type ReactNode } from 'react';
 import { FilterMenu, type FilterField } from '../../../components/shared/FilterMenu.js';
 import { ToggleGroup } from '../../../components/shared/ToggleGroup.js';
 import { useT } from '../../../i18n/index.js';
@@ -40,6 +40,7 @@ export function LeadsActions({
   fields,
   onReset,
   onExpand,
+  exportButton,
 }: {
   query: LeadsQuery;
   onQuery: (patch: Partial<LeadsQuery>) => void;
@@ -47,6 +48,8 @@ export function LeadsActions({
   onReset: () => void;
   /** Left out inside the expanded window, which is already expanded. */
   onExpand?: () => void;
+  /** "Export 32 leads", with the filters shown now. */
+  exportButton?: ReactNode;
 }) {
   const t = useT();
   const search = useId();
@@ -66,6 +69,7 @@ export function LeadsActions({
         />
       </div>
       <FilterMenu fields={fields} onReset={onReset} />
+      {exportButton}
       {onExpand && (
         <button
           type="button"

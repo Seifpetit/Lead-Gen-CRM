@@ -18,6 +18,7 @@ import { RunCard } from './RunCard.js';
 import { RunLeads } from './RunLeads.js';
 import { useRunLeads } from './useRunLeads.js';
 import './live.css';
+import { ExportButton } from '../../outreach/ExportButton.js';
 
 type ResultsTab = 'leads' | 'past';
 const ALL = 'all';
@@ -155,24 +156,29 @@ export function RunsPage() {
           className="runs-bottom"
           controls={
             tab === 'leads' ? (
-              <label className="runs-scope">
-                <span>{t('runs.leads.scope')}</span>
-                <Select
-                  className="quiet-select"
-                  value={scope}
-                  onChange={setScope}
-                  options={[
-                    { value: ALL, label: t('runs.leads.scope.all') },
-                    ...scopeOptions.map((r) => ({
-                      value: r.id,
-                      label: t('runs.leads.scope.run', {
-                        region: regionLabel(r.region),
-                        time: formatDateTime(r.createdAt),
-                      }),
-                    })),
-                  ]}
-                />
-              </label>
+              <>
+                <label className="runs-scope">
+                  <span>{t('runs.leads.scope')}</span>
+                  <Select
+                    className="quiet-select"
+                    value={scope}
+                    onChange={setScope}
+                    options={[
+                      { value: ALL, label: t('runs.leads.scope.all') },
+                      ...scopeOptions.map((r) => ({
+                        value: r.id,
+                        label: t('runs.leads.scope.run', {
+                          region: regionLabel(r.region),
+                          time: formatDateTime(r.createdAt),
+                        }),
+                      })),
+                    ]}
+                  />
+                </label>
+                {scoped.length > 0 && (
+                  <ExportButton source={{ kind: 'leads', runIds: scoped }} count={leads.total} />
+                )}
+              </>
             ) : undefined
           }
         >

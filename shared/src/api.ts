@@ -524,6 +524,8 @@ export interface CrmCard {
   foundAt: string;
   /** The run that first found it, when that run still exists. */
   runId: string | null;
+  /** The last time a conversation with this card's contact was opened from the app (WhatsApp). */
+  lastContactAt?: string | null;
 }
 
 /** Cards per request; each column loads this many, then the next page near its bottom. */
@@ -615,6 +617,17 @@ export interface CardEvent {
   at: string;
 }
 
+export const CONTACT_CHANNELS = ['whatsapp'] as const;
+export type ContactChannel = (typeof CONTACT_CHANNELS)[number];
+
+/** A conversation opened from the app with the company or its decision-maker. */
+export interface ContactEvent {
+  channel: ContactChannel;
+  /** The person's name when it was opened with the decision-maker; null for the company. */
+  person: string | null;
+  at: string;
+}
+
 /** Everything the company's own page needs from the CRM, found by company ID. */
 export interface CompanyCardDetail {
   /** The company's card on the Companies board (created in Found if it had none). */
@@ -623,6 +636,8 @@ export interface CompanyCardDetail {
   notes: string;
   /** Newest first. */
   history: CardEvent[];
+  /** Conversations opened from the app with the company or its people, newest first. */
+  contacts?: ContactEvent[];
   /** The decision-maker's card on the People board, when one has been added. */
   person: CrmCard | null;
 }

@@ -123,6 +123,7 @@ export function LeadView({
                     setDraft(null);
                   }}
                   history={history}
+                  contacts={detail.data.contacts ?? []}
                 />
               )}
             </Tabs>

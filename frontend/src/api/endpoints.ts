@@ -17,7 +17,12 @@ import type {
   CrmFacets,
   CrmPipeline,
   CrmStage,
+  CsvDelimiter,
   DecisionMakerInput,
+  ExportFormat,
+  MessageTemplate,
+  MessageTemplateInput,
+  SenderProfile,
   Lead,
   LiveRuns,
   ObjectionResult,
@@ -43,6 +48,15 @@ export interface PageParams {
   limit?: number;
   offset?: number;
 }
+
+/** What an export holds: the cards of a view, or the scored leads of runs. */
+export type ExportSource =
+  | { kind: 'cards'; pipeline: CrmPipeline; filters: CardsQuery }
+  | {
+      kind: 'leads';
+      runIds: readonly string[];
+      filters?: Pick<LeadQuery, 'stage' | 'regionId' | 'minScore' | 'q'>;
+    };
 
 export interface LeadQuery extends PageParams {
   stage?: CrmStage[];
@@ -177,6 +191,47 @@ export function createApi(client: ApiClient) {
       budget: () => client.get<BudgetView>('/api/costs/budget'),
       setCap: (capUsd: number) =>
         client.request<BudgetView>('PUT', '/api/costs/budget', { body: { capUsd } }),
+    },
+
+    exports: {
+      download(source: ExportSource, format: ExportFormat, delimiter: CsvDelimiter = 'comma') {
+        const options = { format, ...(format === 'csv' ? { delimiter } : {}) };
+        if (source.kind === 'cards') {
+          const { cursor: _c, limit: _l, ...filters } = source.filters;
+          return client.download(`/api/exports/cards/${source.pipeline}`, {
+            ...defined(filters),
+            ...options,
+          });
+        }
+        return client.download('/api/exports/leads', {
+          ...defined(source.filters ?? {}),
+          runIds: [...source.runIds],
+          ...options,
+        });
+      },
+    },
+
+    templates: {
+      list: () => client.get<{ items: MessageTemplate[] }>('/api/templates'),
+      create: (input: MessageTemplateInput) =>
+        client.request<MessageTemplate>('POST', '/api/templates', { body: input }),
+      update: (id: string, input: MessageTemplateInput) =>
+        client.request<MessageTemplate>('PUT', `/api/templates/${id}`, { body: input }),
+      remove: (id: string) => client.request<void>('DELETE', `/api/templates/${id}`),
+    },
+
+    profile: {
+      sender: () => client.get<SenderProfile>('/api/profile/sender'),
+      setSender: (profile: SenderProfile) =>
+        client.request<SenderProfile>('PUT', '/api/profile/sender', { body: profile }),
+    },
+
+    contacts: {
+      /** Notes that WhatsApp was opened for the company or its decision-maker. */
+      record: (companyId: string, personId: string | null) =>
+        client.request<{ at: string }>('POST', '/api/crm/contacts', {
+          body: { channel: 'whatsapp', companyId, personId },
+        }),
     },
 
     apify: {

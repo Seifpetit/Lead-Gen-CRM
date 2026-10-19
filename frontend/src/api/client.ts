@@ -166,6 +166,27 @@ export class ApiClient {
     return this.send<T>(method, path, options, true);
   }
 
+  /** A file from the API (an export): its bytes and the name the server gave it. */
+  async download(path: string, query?: QueryParams): Promise<{ blob: Blob; fileName: string }> {
+    let res: Response;
+    try {
+      res = await this.fetchImpl(buildUrl(this.baseUrl, path, query), {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+    } catch {
+      throw new ApiRequestError(0, 'network_error');
+    }
+    if (!res.ok) {
+      const error = await readError(res);
+      if (res.status === 401) for (const listener of this.listeners) listener();
+      throw error;
+    }
+    const disposition = res.headers.get('content-disposition') ?? '';
+    const fileName = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'export';
+    return { blob: await res.blob(), fileName };
+  }
+
   get<T>(path: string, query?: QueryParams, signal?: AbortSignal): Promise<T> {
     return this.request<T>('GET', path, {
       ...(query ? { query } : {}),
