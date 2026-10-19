@@ -5,9 +5,9 @@ import { ApifyLogWidget } from './ApifyLogWidget.js';
 export function LogsPage() {
   const t = useT();
   return (
-    <main id="main" className="page">
+    <main id="main" className="page fit">
       <SectionTitle level={1}>{t('side.logs')}</SectionTitle>
-      <div className="dashboard single">
+      <div className="fit-body">
         <ApifyLogWidget refreshKey={0} />
       </div>
     </main>

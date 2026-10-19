@@ -1524,8 +1524,8 @@ fieldset.segmented legend {
   padding: 0;
   cursor: pointer;
 }
-/* The page scrolls, not the table: no second scrollbar inside the card. Only a wide table
-   scrolls sideways. */
+/* A table scrolls sideways when it is wider than its card; where a list scrolls up and down
+   (the dashboard's leads) it is set at the end of this file. */
 .table-scroll {
   overflow-x: auto;
   overflow-y: visible;
@@ -2656,7 +2656,7 @@ fieldset.segmented legend {
 /* CRM boards. The page is exactly as tall as the window and does not scroll; the toolbar stays
    put, each column keeps its header and scrolls its own cards, and the table scrolls its rows.
    Cards are a fixed 88px so a column can place them without measuring. */
-#root:has(.crm-page) {
+#root:has(.topbar) {
   display: flex;
   flex-direction: column;
   height: 100dvh;
@@ -3514,4 +3514,378 @@ textarea {
 .avatar {
   background: var(--purple);
   color: var(--ink);
+}
+
+/* ==========================================================================================
+   Fixed to the window. Once signed in the frame is exactly as tall as the window and the page
+   never scrolls: the top bar and sidebar stay put, and only content areas scroll, each inside
+   its own card or panel. Pages with a lot to show (a run, a lead, Help) scroll their main panel.
+   ========================================================================================== */
+html:has(.topbar),
+body:has(.topbar) {
+  overflow: hidden;
+}
+#root:has(.topbar) {
+  /* Anything positioned without a positioned parent (the chart data tables are visually hidden
+     this way) is clipped here and does not stretch the page. */
+  position: relative;
+}
+#root:has(.topbar) > .topbar {
+  flex: none;
+}
+#root > .page:not(.crm-page) {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  overflow-y: auto;
+}
+.shell {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+}
+.sidebar {
+  min-height: 0;
+}
+.sidebar nav {
+  min-height: 0;
+  overflow-y: auto;
+}
+.shell-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.shell-main > .page {
+  flex: none;
+  width: 100%;
+}
+.shell-main > .page.fit,
+.page.fit {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: none;
+  min-height: 0;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  overflow: hidden;
+}
+.page.fit > .section-title h1,
+.page.fit > h1 {
+  margin: 0;
+}
+.fit > * {
+  min-width: 0;
+}
+/* A panel that scrolls inside the page: the one area that moves. */
+.page-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0 4px 6px 0;
+}
+.page-scroll > :first-child {
+  margin-top: 0;
+}
+/* One card that fills the page; its body scrolls and its header stays. */
+.fit-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0 4px 6px 0;
+}
+.fit-body > .widget {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 240px;
+}
+.fit-body > .widget > .widget-header {
+  flex: none;
+}
+.fit-body > .widget > .widget-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* Dashboard: header, recent leads taking what is left, then a fixed row of charts and runs.
+   On a short window the cards keep their height and the dashboard scrolls inside the frame. */
+.dash.fit {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.dash.fit > * {
+  flex: none;
+}
+.dash.fit > .dash-main {
+  flex: 1 1 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: var(--space-3);
+  min-height: 240px;
+}
+.dash.fit > .dash-main.has-active {
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+}
+.dash-leads {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.dash-leads > .widget,
+.dash-leads > .state {
+  flex: 1 1 auto;
+}
+.dash-active {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0 4px 6px 0;
+}
+.dash-active .active-run {
+  margin-top: 0;
+}
+@media (max-width: 1100px) {
+  .dash.fit > .dash-main.has-active {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    min-height: 560px;
+  }
+  .dash-active {
+    max-height: 200px;
+  }
+}
+.dash-bottom {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--space-3);
+  height: 250px;
+}
+.dash-charts,
+.dash-runs {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.dash-charts > .chart-row {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.dash-charts .chart-card,
+.dash-runs > .widget {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+}
+.dash-runs > .widget {
+  flex: 1 1 auto;
+}
+.dash-charts .widget-header,
+.dash-runs .widget-header,
+.leads-card .widget-header {
+  flex: none;
+}
+.dash-charts .widget-body,
+.dash-runs .widget-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--space-3) var(--space-4);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.dash-charts .widget-header,
+.dash-runs .widget-header {
+  flex-wrap: nowrap;
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+.dash-charts .widget-header h2 {
+  white-space: nowrap;
+  max-width: none;
+}
+/* The toggle's name is spoken, not drawn, so the header stays one line tall. */
+.dash-charts .widget-actions legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.dash-charts .chart {
+  height: 100%;
+}
+.dash-charts .chart svg {
+  max-height: 100%;
+}
+.dash-runs .table-scroll {
+  overflow: visible;
+}
+.dash-runs .table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+@media (max-width: 900px) {
+  .dash-bottom {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+  .dash-charts,
+  .dash-runs {
+    height: 250px;
+  }
+  .dash-charts > .chart-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dash-charts .chart-card {
+    height: 250px;
+  }
+  .dash-charts > .chart-row {
+    gap: var(--space-3);
+  }
+}
+
+/* Recent leads: the card's body is the list's frame; the list scrolls and its header stays. */
+.leads-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.leads-card > .widget-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  padding: var(--space-3) var(--space-4);
+}
+.leads-card .list-tools,
+.leads-card .bulk-bar {
+  flex: none;
+}
+.leads-card .tabs {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.leads-card .tablist {
+  flex: none;
+}
+.leads-card [role='tabpanel'] {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+}
+.leads-card .table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.leads-card .empty-state {
+  flex: 1 1 auto;
+}
+.lead-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+  box-shadow: 0 2px 0 var(--ink);
+}
+
+/* Room for rows: tight card chrome, one line per row (long text is cut with an ellipsis). */
+.leads-card > .widget-header {
+  padding: var(--space-2) var(--space-4);
+}
+.leads-card .tab {
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+.leads-card .lead-table.density-comfortable th,
+.leads-card .lead-table.density-comfortable td {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.leads-card .lead-table th,
+.leads-card .lead-table td {
+  white-space: nowrap;
+}
+.leads-card .lead-table tbody th,
+.leads-card .lead-table tbody td {
+  max-width: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dash .active-banner {
+  margin: 0;
+  padding: var(--space-1) var(--space-3);
+}
+.dash-bottom {
+  /* 240px on a normal window, a little less on a short one. */
+  height: clamp(180px, 27dvh, 240px);
+}
+.leads-card .list-tools input[type='search'],
+.leads-card .list-tools select {
+  min-height: 34px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+.leads-card .tablist {
+  min-height: 0;
+}
+.leads-card .tab {
+  min-height: 32px;
+}
+.leads-card .lead-table thead th {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.leads-card .lead-table input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+.shell-main > .page.dash.fit,
+.page.dash.fit {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.dash-charts .widget-actions {
+  flex: none;
+}
+.dash-charts fieldset.segmented {
+  flex-wrap: nowrap;
+}
+.dash-charts fieldset.segmented button,
+.dash-charts fieldset.segmented label {
+  min-height: 30px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+@media (max-width: 720px) {
+  .shell {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .sidebar nav {
+    overflow: visible;
+  }
 }

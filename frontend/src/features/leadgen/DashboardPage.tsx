@@ -12,8 +12,9 @@ import { useT } from '../../i18n/index.js';
 import { formatUsd } from '../../lib/format.js';
 import { useResource } from '../../lib/useResource.js';
 import { CreateRunModal } from './CreateRunModal.js';
-import { DashboardCharts } from './DashboardCharts.js';
+import { DashboardCharts, RangeToggle } from './DashboardCharts.js';
 import { LeadsCard } from './LeadsCard.js';
+import type { Range } from './leadsView.js';
 import { RightNow } from './RightNow.js';
 import { RunsWidget } from './RunsWidget.js';
 import { StepLine } from './StepLine.js';
@@ -41,6 +42,7 @@ export function DashboardPage() {
   const refresh = useCallback(() => setRefreshKey((n) => n + 1), []);
   const [creating, setCreating] = useState(false);
   const [regionId, setRegionId] = useState('');
+  const [range, setRange] = useState<Range>(30);
 
   const regions = useResource(() => api.regions.list({ limit: 100 }));
   const active = useResource(() => api.runs.list({ status: ['pending', 'running'], limit: 10 }), {
@@ -105,10 +107,11 @@ export function DashboardPage() {
   }
 
   return (
-    <main id="main" className="page dash">
+    <main id="main" className="page dash fit">
       <header className="dash-top">
         <SectionTitle level={1}>{t('side.dashboard')}</SectionTitle>
         <div className="dash-controls">
+          <RangeToggle value={range} onChange={setRange} />
           <label htmlFor={regionSelect} className="visually-hidden">
             {t('dash.region')}
           </label>
@@ -150,8 +153,8 @@ export function DashboardPage() {
         </p>
       )}
 
-      <div className="dash-grid">
-        <div className="dash-wide">
+      <div className={`dash-main${activeRuns.length > 0 ? ' has-active' : ''}`}>
+        <div className="dash-leads">
           {leads.loading && !leads.data ? (
             <LoadingState />
           ) : leads.error !== null && !leads.data ? (
@@ -167,23 +170,30 @@ export function DashboardPage() {
             />
           )}
         </div>
-        <div className="dash-wide">
+
+        {activeRuns.length > 0 && (
+          <div className="dash-active">
+            {activeRuns.map((run) => (
+              <ActiveRun key={run.id} run={run} refreshKey={refreshKey} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="dash-bottom">
+        <div className="dash-charts">
           <DashboardCharts
             leads={shownLeads}
             runStarted={runStarted}
             coverage={coverage.data}
             regionId={regionId}
             now={now}
+            range={range}
           />
         </div>
-      </div>
-
-      {activeRuns.map((run) => (
-        <ActiveRun key={run.id} run={run} refreshKey={refreshKey} />
-      ))}
-
-      <div className="dashboard single">
-        <RunsWidget refreshKey={refreshKey} />
+        <div className="dash-runs">
+          <RunsWidget refreshKey={refreshKey} />
+        </div>
       </div>
 
       {creating && (

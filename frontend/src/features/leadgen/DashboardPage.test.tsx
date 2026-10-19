@@ -201,6 +201,37 @@ describe('Dashboard leads list', () => {
   });
 });
 
+describe('Dashboard fills the window', () => {
+  it('keeps 100 rows inside the one list that scrolls, under a header that stays', async () => {
+    const many = Array.from({ length: 100 }, (_, i) =>
+      lead({
+        id: `lead-${i}`,
+        company: company({
+          id: `co-${i}`,
+          name: `Company ${i}`,
+          evidence: [fresh('placeId', 'p')],
+        }),
+      }),
+    );
+    const server = fakeServer(routes({ 'GET /api/leads': page(many) }));
+    const { container } = renderWith(<DashboardPage />, server, '/leadgen');
+    await screen.findByText('Company 0');
+    // Header row plus the 100 leads.
+    expect(within(table()).getAllByRole('row')).toHaveLength(101);
+    // The list is the card's own scroll area, and nothing around it grows with the rows.
+    const scroller = table().closest('.table-scroll');
+    expect(scroller).not.toBeNull();
+    expect(scroller?.closest('.leads-card')).not.toBeNull();
+    expect(scroller?.querySelector('thead')).not.toBeNull();
+    const page_ = container.querySelector('main.page.dash.fit');
+    expect(page_).not.toBeNull();
+    // The page's pieces: header, the leads card, then one fixed row of charts and runs.
+    expect([...(page_?.children ?? [])].map((c) => c.className)).toEqual(
+      expect.arrayContaining(['dash-top', 'dash-main', 'dash-bottom']),
+    );
+  });
+});
+
 describe('Dashboard empty state', () => {
   it('invites the first run when there are no leads yet', async () => {
     const server = fakeServer(routes({ 'GET /api/leads': page([]) }));

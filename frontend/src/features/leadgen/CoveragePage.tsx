@@ -28,24 +28,26 @@ export function CoveragePage() {
   }, []);
 
   return (
-    <main id="main" className="page">
+    <main id="main" className="page fit">
       <SectionTitle level={1}>{t('side.coverage')}</SectionTitle>
-      {planning && (
-        <div className="start-panel">
-          <div className="start-panel-bar">
-            <button type="button" className="button" onClick={() => setPlanning(false)}>
-              {t('dash.create.close')}
-            </button>
+      <div className="page-scroll">
+        {planning && (
+          <div className="start-panel">
+            <div className="start-panel-bar">
+              <button type="button" className="button" onClick={() => setPlanning(false)}>
+                {t('dash.create.close')}
+              </button>
+            </div>
+            <StartRunWidget onStarted={refresh} prefill={picked} />
           </div>
-          <StartRunWidget onStarted={refresh} prefill={picked} />
+        )}
+        <div className="coverage-layout">
+          <div className="coverage-left">
+            <CoverageGridWidget refreshKey={refreshKey} onPick={pick} />
+            <HistoryWidget picked={picked} refreshKey={refreshKey} />
+          </div>
+          <CoverageMapWidget refreshKey={refreshKey} onPick={pick} />
         </div>
-      )}
-      <div className="coverage-layout">
-        <div className="coverage-left">
-          <CoverageGridWidget refreshKey={refreshKey} onPick={pick} />
-          <HistoryWidget picked={picked} refreshKey={refreshKey} />
-        </div>
-        <CoverageMapWidget refreshKey={refreshKey} onPick={pick} />
       </div>
     </main>
   );
