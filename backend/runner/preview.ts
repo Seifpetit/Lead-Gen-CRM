@@ -293,6 +293,7 @@ export async function previewRun(
       monthRemainingUsd: monthRemaining === null ? null : round6(monthRemaining),
       activeRuns,
       maxActiveRuns: config.maxConcurrentRunsPerUser,
+      maxRunCapUsd: config.maxRunCapUsd,
     },
     blockers,
     assumptions,

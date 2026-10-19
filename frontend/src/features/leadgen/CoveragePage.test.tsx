@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { dashboardRoutes, page, preview, region, run } from '../../test/fixtures.js';
 import { fakeServer } from '../../test/fakeServer.js';
 import { renderWith } from '../../test/render.js';
+import { chooseOption } from '../../test/select.js';
 import { CoveragePage } from './CoveragePage.js';
 
 const square = (w: number, s: number, e: number, n: number) => ({
@@ -179,7 +180,7 @@ describe('Coverage page', () => {
     const { server, user } = setup();
     await user.click(await screen.findByRole('button', { name: 'Start a run in Sfax' }));
     const dialog = await screen.findByRole('dialog', { name: 'Start a run' });
-    await waitFor(() => expect(within(dialog).getByLabelText('Region')).toHaveValue('sfax'));
+    await waitFor(() => expect(within(dialog).getByLabelText('Region')).toHaveTextContent('Sfax'));
     // The sector chips are there to choose from; one region, so no region chips.
     expect(within(dialog).getByRole('group', { name: 'Sectors to search' })).toBeVisible();
     expect(within(dialog).queryByRole('group', { name: 'Regions to search' })).toBeNull();
@@ -274,6 +275,7 @@ describe('Coverage page', () => {
           monthRemainingUsd: null,
           activeRuns: 1,
           maxActiveRuns: 2,
+          maxRunCapUsd: 50,
         },
       }),
     });
@@ -460,7 +462,7 @@ describe('Coverage page', () => {
         .getAllByRole('columnheader')
         .map((h) => h.textContent);
       expect(head).toEqual(['Date', 'Region', 'Sector', 'Leads found', 'Cost', 'Status']);
-      await user.selectOptions(within(dialog).getByLabelText('Region'), 'Sfax');
+      await chooseOption(user, within(dialog).getByLabelText('Region'), 'Sfax');
       expect(body()).toHaveLength(1);
       expect(body()[0]).toContain('Sfax');
     });

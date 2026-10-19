@@ -1,6 +1,7 @@
 import Fastify, { type FastifyServerOptions } from 'fastify';
 import authPlugin from './auth/plugin.js';
 import type { AuthService } from './auth/service.js';
+import { DEFAULT_MAX_RUN_CAP_USD } from '@lead-gen-crm/shared';
 import type { Db } from './data/db.js';
 import csrfPlugin from './routes/csrf.js';
 import { ApiError } from './routes/http.js';
@@ -41,6 +42,8 @@ export async function buildApp(deps: {
   paidRunsEnabled?: boolean;
   webhookSecret?: string | null;
   noiseRetentionDays?: number;
+  /** Largest spend cap a run may be given (USD); see MAX_RUN_CAP_USD. */
+  maxRunCapUsd?: number;
   /** API tokens and the like: hidden from run logs by value, besides the patterns. */
   secrets?: readonly (string | null | undefined)[];
   logger?: FastifyServerOptions['logger'];
@@ -84,6 +87,7 @@ export async function buildApp(deps: {
     paidRunsEnabled: deps.paidRunsEnabled ?? false,
     webhookSecret: deps.webhookSecret ?? null,
     noiseRetentionDays: deps.noiseRetentionDays ?? 30,
+    maxRunCapUsd: deps.maxRunCapUsd ?? DEFAULT_MAX_RUN_CAP_USD,
     secrets: deps.secrets ?? [],
   });
   return app;

@@ -220,6 +220,7 @@ export function preview(over: Partial<RunPreview> = {}): RunPreview {
       monthRemainingUsd: 45,
       activeRuns: 0,
       maxActiveRuns: 2,
+      maxRunCapUsd: 50,
     },
     blockers: [],
     assumptions: ['Each query returns about half its maximum places (no history yet)'],

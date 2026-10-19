@@ -49,6 +49,7 @@ const runner = new Orchestrator({
   emails: new EmailFinderVerifier(apify),
   config: {
     classifierRunCapUsd: env.CLASSIFIER_RUN_CAP_USD,
+    maxRunCapUsd: env.MAX_RUN_CAP_USD,
     webhook:
       env.APIFY_WEBHOOK_SECRET && env.PUBLIC_URL
         ? {
@@ -66,6 +67,7 @@ const app = await buildApp({
   paidRunsEnabled: env.PAID_RUNS_ENABLED,
   webhookSecret: env.APIFY_WEBHOOK_SECRET ?? null,
   noiseRetentionDays: env.NOISE_RETENTION_DAYS,
+  maxRunCapUsd: env.MAX_RUN_CAP_USD,
   secrets: SECRETS,
   logger: { level: 'info', redact: LOG_REDACT },
 });

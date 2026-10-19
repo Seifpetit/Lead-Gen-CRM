@@ -1,3 +1,5 @@
+import { NumberStepper } from '../../components/shared/NumberStepper.js';
+import { parseAmount } from '../../lib/parseAmount.js';
 import type { CostGroupBy, CostRow } from '@lead-gen-crm/shared';
 import { useId, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
@@ -119,8 +121,8 @@ function Budget({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const cap = Number(text);
-    if (text.trim() === '' || !Number.isFinite(cap) || cap <= 0) {
+    const cap = parseAmount(text);
+    if (cap === null || cap <= 0) {
       setInvalid(true);
       return;
     }
@@ -168,15 +170,15 @@ function Budget({
       ) : null}
       <form onSubmit={submit} className="inline-form" noValidate>
         <label htmlFor={inputId}>{t('costs.budget.label')}</label>
-        <input
+        <NumberStepper
           id={inputId}
-          type="number"
-          inputMode="decimal"
-          min="0.01"
-          step="0.01"
+          prefix="$"
           value={text}
-          onChange={(e) => setText(e.target.value)}
-          aria-invalid={invalid}
+          onChange={setText}
+          min={1}
+          step={1}
+          decimals={2}
+          invalid={invalid}
         />
         <button type="submit" className="button" disabled={busy}>
           {busy ? t('costs.budget.saving') : t('costs.budget.save')}

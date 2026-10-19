@@ -25,7 +25,7 @@ export function RegionChips({
         label: r.name,
         hint: r.hasBounds ? t(`start.region.${regionProgress(r)}`) : t('start.region.noArea'),
         disabled: !r.hasBounds,
-        ...(r.hasBounds ? {} : { title: t('start.region.noBounds', { name: r.name }) }),
+        ...(r.hasBounds ? {} : { title: `${r.name}, ${t('start.region.noBounds')}` }),
       }))}
       selected={selected}
       onChange={onChange}

@@ -14,6 +14,8 @@ export interface RouteDeps {
   webhookSecret: string | null;
   /** Days a removed CRM card stays in Noise; shown as "N days left" and used by the purge. */
   noiseRetentionDays: number;
+  /** The most a run's spend cap may be (USD). Checked on preview and on start. */
+  maxRunCapUsd: number;
   /** Values that must never be shown in a run's log (API tokens); patterns are hidden anyway. */
   secrets: readonly (string | null | undefined)[];
 }

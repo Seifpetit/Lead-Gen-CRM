@@ -66,7 +66,8 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
   // Preview: Create run opens the flow; region first, nothing is spent or started.
   await page.getByRole('button', { name: 'Create run' }).first().click();
   const start = page.getByRole('dialog', { name: 'Start a run' });
-  await start.getByLabel('Region').selectOption({ label: 'Sfax, 0 leads, not searched yet' });
+  await start.getByRole('combobox', { name: 'Region' }).click();
+  await page.getByRole('option', { name: 'Sfax, 0 leads, not searched yet' }).click();
   const estimate = start.getByRole('region', { name: 'Estimate' });
   // A new region has no suggested sector, so nothing is ticked and Start says why.
   const go = start.getByRole('button', { name: /^Start run/ });

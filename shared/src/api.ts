@@ -197,6 +197,8 @@ export interface RunPreview {
     monthRemainingUsd: number | null;
     activeRuns: number;
     maxActiveRuns: number;
+    /** The most a run's cap may be on this server (MAX_RUN_CAP_USD). */
+    maxRunCapUsd: number;
   };
   /** Reasons a start would be refused right now (empty when it can start). */
   blockers: StartBlocker[];
@@ -526,6 +528,11 @@ export interface CrmCard {
 
 /** Cards per request; each column loads this many, then the next page near its bottom. */
 export const BOARD_PAGE_SIZE = 50;
+
+/** The least a run's spend cap may be, in USD. */
+export const MIN_RUN_CAP_USD = 0.5;
+/** The most a run's spend cap may be unless the server is configured otherwise (MAX_RUN_CAP_USD). */
+export const DEFAULT_MAX_RUN_CAP_USD = 50;
 
 export type BoardSort = 'newest' | 'score' | 'days' | 'name' | 'sector' | 'stage';
 export type SortDirection = 'asc' | 'desc';

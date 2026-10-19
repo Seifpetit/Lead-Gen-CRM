@@ -6,6 +6,7 @@ import { fakeServer, type FakeRequest, type Handler } from '../../../test/fakeSe
 import { lastStream, useFakeEventSource } from '../../../test/fakeEventSource.js';
 import { company, lead, page, run, runDetail } from '../../../test/fixtures.js';
 import { renderWith } from '../../../test/render.js';
+import { chooseOption } from '../../../test/select.js';
 import { RunsPage } from './RunsPage.js';
 
 const going = (id: string, region: string, sentence: string, over = {}) =>
@@ -117,7 +118,7 @@ describe('Runs page', () => {
         .sort(),
     ).toEqual(['run-a', 'run-b']);
 
-    await user.selectOptions(within(results).getByLabelText('Show leads from'), 'run-b');
+    await chooseOption(user, within(results).getByLabelText('Show leads from'), /Tunis/);
     await waitFor(() => expect(within(results).queryByText('run-a company 0')).toBeNull());
     expect(within(results).getByText('run-b company 0')).toBeVisible();
   });

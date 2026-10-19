@@ -7,6 +7,7 @@ import {
   combinePreviews,
   confirmReason,
   leadsRange,
+  capProblem,
   parseCap,
   readCap,
   regionProgress,
@@ -67,6 +68,33 @@ describe('cap', () => {
     expect(readCap()).toBe(2);
     window.localStorage.setItem('leadgen.run.cap', '-1');
     expect(readCap()).toBe(2);
+  });
+
+  it('ignores a remembered cap that is out of range or ambiguous', () => {
+    for (const stored of ['5000000', '5,000,000', '0.1', '50.01', '0']) {
+      window.localStorage.setItem('leadgen.run.cap', stored);
+      expect(readCap()).toBe(2);
+    }
+    window.localStorage.setItem('leadgen.run.cap', '50');
+    expect(readCap()).toBe(50);
+    window.localStorage.setItem('leadgen.run.cap', '80');
+    expect(readCap(100)).toBe(80);
+  });
+
+  it('keeps a cap between $0.50 and the maximum, with a point or a comma', () => {
+    expect(parseCap('2.5')).toBe(2.5);
+    expect(parseCap('2,5')).toBe(2.5);
+    expect(parseCap('0.5')).toBe(0.5);
+    expect(parseCap('50')).toBe(50);
+    expect(parseCap('0.49')).toBeNull();
+    expect(parseCap('50.01')).toBeNull();
+    expect(parseCap('5000000')).toBeNull();
+    expect(parseCap('5,000,000')).toBeNull();
+    expect(parseCap('80', 100)).toBe(80);
+    expect(capProblem('0.49')).toBe('low');
+    expect(capProblem('51')).toBe('high');
+    expect(capProblem('abc')).toBe('invalid');
+    expect(capProblem('2,5')).toBeNull();
   });
 
   it('formats and parses', () => {

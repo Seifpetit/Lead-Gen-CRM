@@ -5735,3 +5735,318 @@ a.channel:hover .channel-text {
     margin-left: auto;
   }
 }
+
+/* ---- Select and NumberStepper: the app's own controls, same look as buttons ---- */
+.select-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  background: var(--surface);
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+}
+.select-button:active:not(:disabled),
+.select-button[aria-expanded='true'] {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-0);
+}
+.select-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.select-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.select-value.is-placeholder {
+  color: var(--muted);
+}
+.select-chevron {
+  flex: none;
+}
+/* Quiet variant for toolbars: no fill, no shadow, as the old quiet select. */
+.select-button.quiet-select {
+  width: auto;
+  min-height: 36px;
+  background: transparent;
+  box-shadow: none;
+}
+.select-button.quiet-select[aria-expanded='true'] {
+  transform: none;
+}
+.select-list {
+  z-index: 1000;
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+  overflow-y: auto;
+  max-width: min(32rem, calc(100vw - 16px));
+  color: var(--ink);
+  background: var(--surface);
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+}
+.select-option {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-1) var(--space-2);
+  border-radius: calc(var(--radius) - 4px);
+  cursor: pointer;
+}
+.select-option small {
+  color: var(--muted);
+  font-size: var(--fs-caption);
+}
+.select-option.is-active {
+  background: var(--accent-tint);
+}
+.select-option.is-selected {
+  background: var(--yellow);
+  font-weight: 700;
+}
+.select-option.is-selected small {
+  color: var(--ink);
+}
+.select-option[aria-disabled='true'] {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.stepper {
+  display: inline-flex;
+  align-items: stretch;
+  width: 9.5em;
+  min-height: 40px;
+  background: var(--surface);
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+.stepper:focus-within {
+  outline: 3px solid #111111;
+  outline-offset: 1px;
+}
+.stepper.is-invalid {
+  background: var(--danger-bg);
+}
+.stepper-prefix {
+  display: grid;
+  place-items: center;
+  padding-left: var(--space-3);
+  font-weight: 700;
+}
+.stepper input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  padding: 0 var(--space-2);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+}
+.stepper-prefix + input {
+  padding-left: var(--space-1);
+}
+.stepper-buttons {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  flex: none;
+  width: 28px;
+  border-left: var(--bw) solid var(--ink);
+}
+.stepper-buttons button {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--ink);
+  background: var(--yellow);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  cursor: pointer;
+}
+.stepper-buttons button + button {
+  border-top: 2px solid var(--ink);
+}
+.stepper-buttons button:active:not(:disabled) {
+  background: var(--accent);
+  box-shadow: inset 2px 2px 0 var(--ink);
+}
+.stepper-buttons button:disabled {
+  color: var(--muted);
+  background: var(--surface);
+  cursor: not-allowed;
+}
+.stepper-buttons button:focus-visible {
+  outline-offset: -3px;
+}
+
+/* ---- Estimate, drawn as a receipt ---- */
+.receipt {
+  position: relative;
+  margin: var(--space-2) 2px 0;
+  transform: rotate(1deg);
+  transform-origin: 50% 0;
+  /* One outline that follows the torn edges, then the hard shadow. */
+  filter: drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink))
+    drop-shadow(0 2px 0 var(--ink)) drop-shadow(0 -2px 0 var(--ink))
+    drop-shadow(5px 5px 0 var(--ink));
+}
+.receipt-paper {
+  --zig: 8px;
+  padding: calc(var(--zig) + var(--space-3)) var(--space-4);
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  color: var(--ink);
+  background: var(--white);
+  /* Zigzag top and bottom edges. */
+  mask:
+    conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom /
+      calc(var(--zig) * 2) 51% repeat-x,
+    conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) top /
+      calc(var(--zig) * 2) 51% repeat-x;
+}
+.receipt-tape {
+  position: absolute;
+  z-index: 1;
+  top: -9px;
+  left: 50%;
+  width: 84px;
+  height: 20px;
+  margin-left: -42px;
+  background: var(--blush);
+  border: 2px solid var(--ink);
+  transform: rotate(-3deg);
+}
+.receipt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 2px dashed var(--ink);
+}
+.receipt-head h3 {
+  margin: 0;
+  font-size: var(--fs-h3);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.receipt-lines,
+.receipt-sum,
+.receipt-small {
+  margin: 0;
+  padding: var(--space-2) 0;
+}
+.receipt-sum {
+  border-top: 2px dashed var(--ink);
+  border-bottom: 2px dashed var(--ink);
+}
+.receipt-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  min-height: 22px;
+}
+.receipt-row dt {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.receipt-row dd {
+  flex: none;
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.receipt-leader {
+  flex: 1 1 auto;
+  min-width: 12px;
+  border-bottom: 2px dotted var(--ink);
+  transform: translateY(-3px);
+}
+.receipt-total {
+  min-height: 36px;
+  align-items: center;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.receipt-total dd {
+  font-size: var(--fs-h2, 1.6rem);
+  line-height: 1;
+}
+.receipt-small {
+  font-size: var(--fs-caption);
+  color: var(--muted);
+}
+.receipt-small .receipt-leader {
+  border-bottom-width: 1px;
+}
+.receipt-body.is-stale {
+  opacity: 0.6;
+}
+.receipt-stamp {
+  display: inline-block;
+  margin: var(--space-1) 0 0;
+  padding: 2px var(--space-2);
+  color: var(--danger-text);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 3px solid var(--danger-text);
+  border-radius: 6px;
+  transform: rotate(-6deg);
+}
+.receipt-barcode {
+  display: block;
+  width: 70%;
+  height: 20px;
+  margin: var(--space-2) auto 0;
+  fill: var(--ink);
+}
+@media (prefers-reduced-motion: reduce), (max-width: 800px) {
+  .receipt {
+    transform: none;
+  }
+}
+
+/* Suggested next: one quiet line under the receipt */
+.sr-right .sr-suggest {
+  min-height: 0;
+  margin: var(--space-3) 0 0;
+  padding: var(--space-1) var(--space-2);
+  gap: var(--space-2);
+  background: transparent;
+  border: 2px dashed var(--ink);
+  font-size: var(--fs-caption);
+}
+.sr-right .sr-suggest .button {
+  min-height: 30px;
+  padding: 0 var(--space-2);
+}
+.sr-left .select-button {
+  max-width: 100%;
+}
+.sr-right .sr-suggest strong {
+  flex: none;
+  white-space: nowrap;
+}

@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { dashboardRoutes, page, preview, region, run } from '../../test/fixtures.js';
 import { fakeServer } from '../../test/fakeServer.js';
 import { renderWith } from '../../test/render.js';
+import { chooseOption } from '../../test/select.js';
 import { parseWordings, StartRunWidget } from './StartRunWidget.js';
 
 const entry = (sectorId: string, over = {}) => ({
@@ -59,11 +60,7 @@ function setup(extra = {}) {
 type User = ReturnType<typeof userEvent.setup>;
 
 async function pickRegion(user: User, name = 'Sfax') {
-  await screen.findByRole('option', { name: new RegExp(`^${name}`) });
-  await user.selectOptions(
-    screen.getByLabelText('Region'),
-    screen.getByRole('option', { name: new RegExp(`^${name}`) }),
-  );
+  await chooseOption(user, await screen.findByLabelText('Region'), new RegExp(`^${name}`));
 }
 
 const chip = (name: string) => screen.getByRole('button', { name });
@@ -74,21 +71,22 @@ beforeEach(() => window.localStorage.clear());
 
 describe('Start a run: region', () => {
   it('shows each region with its leads and how far it is covered, and disables one with no map area', async () => {
-    setup();
+    const { user } = setup();
+    await user.click(await screen.findByLabelText('Region'));
     expect(
       await screen.findByRole('option', { name: 'Sfax, 7 leads, partly covered' }),
     ).toBeEnabled();
     expect(screen.getByRole('option', { name: 'Tunis, 0 leads, not searched yet' })).toBeEnabled();
     expect(
       screen.getByRole('option', { name: 'Gabès, no map area set, cannot be searched' }),
-    ).toBeDisabled();
+    ).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('shows the suggested region with the scheduler’s reason, and can use it', async () => {
     const { user } = setup();
     expect(await screen.findByText(/Highest leads per dollar so far/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Use Sfax' }));
-    expect(screen.getByLabelText('Region')).toHaveValue('sfax');
+    expect(screen.getByLabelText('Region')).toHaveTextContent('Sfax');
     expect(screen.getByRole('button', { name: 'Use Sfax' })).toBeDisabled();
   });
 
@@ -169,7 +167,7 @@ describe('Start a run: sectors', () => {
 describe('Start a run: spend cap', () => {
   it('is filled in with $2.00 and the $2 quick choice is on', async () => {
     setup();
-    expect(await screen.findByLabelText('Spend cap (USD)')).toHaveValue(2);
+    expect(await screen.findByLabelText('Spend cap (USD)')).toHaveValue('2.00');
     expect(screen.getByRole('radio', { name: '$2' })).toBeChecked();
     expect(screen.getByText('The run stops before spending more than this.')).toBeInTheDocument();
   });
@@ -177,7 +175,7 @@ describe('Start a run: spend cap', () => {
   it('takes the quick choices and shows the cap on the Start button', async () => {
     const { user } = setup();
     await user.click(await screen.findByRole('radio', { name: '$5' }));
-    expect(cap()).toHaveValue(5);
+    expect(cap()).toHaveValue('5.00');
     expect(startButton()).toHaveTextContent('Start run, up to $5.00');
     await user.click(screen.getByRole('radio', { name: '$1' }));
     expect(startButton()).toHaveTextContent('Start run, up to $1.00');
@@ -186,7 +184,7 @@ describe('Start a run: spend cap', () => {
   it('starts on the cap used last time', async () => {
     window.localStorage.setItem('leadgen.run.cap', '3.5');
     setup();
-    expect(await screen.findByLabelText('Spend cap (USD)')).toHaveValue(3.5);
+    expect(await screen.findByLabelText('Spend cap (USD)')).toHaveValue('3.50');
     expect(startButton()).toHaveTextContent('Start run, up to $3.50');
   });
 
@@ -196,10 +194,118 @@ describe('Start a run: spend cap', () => {
     await user.clear(cap());
     expect(startButton()).toHaveAttribute('aria-disabled', 'true');
     expect(startButton()).toHaveTextContent('Start run');
-    expect(screen.getByText('Enter a spend cap above zero.')).toBeInTheDocument();
+    expect(screen.getByText('Enter an amount such as 2.50.')).toBeInTheDocument();
     await user.type(cap(), '0');
     await user.tab();
-    expect(screen.getAllByText('Enter a spend cap above zero.')).toHaveLength(2);
+    expect(screen.getAllByText('The cap must be at least $0.50.')).toHaveLength(2);
+  });
+});
+
+describe('Start a run: spend cap limits', () => {
+  it('ignores a remembered cap that is out of range and starts on $2.00', async () => {
+    window.localStorage.setItem('leadgen.run.cap', '5000000');
+    setup();
+    expect(await screen.findByLabelText('Spend cap (USD)')).toHaveValue('2.00');
+    expect(startButton()).toHaveTextContent('Start run, up to $2.00');
+  });
+
+  it('says the cap is too high instead of showing it, and sends nothing', async () => {
+    const { server, user } = setup();
+    await pickRegion(user);
+    await user.clear(cap());
+    await user.type(cap(), '5000000');
+    await user.tab();
+    expect(screen.getAllByText('The cap can be at most $50.00.').length).toBeGreaterThan(0);
+    expect(startButton()).toHaveAttribute('aria-disabled', 'true');
+    expect(startButton()).not.toHaveTextContent('5,000,000');
+    expect(server.to('POST /api/runs/preview').every((c) => c.body.budgetCapUsd !== 5000000)).toBe(
+      true,
+    );
+  });
+
+  it('says the cap is too low, and accepts a decimal comma', async () => {
+    const { user } = setup();
+    await pickRegion(user);
+    await user.clear(cap());
+    await user.type(cap(), '0,25');
+    await user.tab();
+    expect(screen.getAllByText('The cap must be at least $0.50.').length).toBeGreaterThan(0);
+    await user.clear(cap());
+    await user.type(cap(), '2,5');
+    await user.tab();
+    expect(cap()).toHaveValue('2.50');
+    expect(startButton()).toHaveTextContent('Start run, up to $2.50');
+  });
+
+  it('steps the cap by 50 cents and stops at the limits', async () => {
+    const { user } = setup();
+    await screen.findByLabelText('Region');
+    await user.click(screen.getByRole('button', { name: 'Increase' }));
+    expect(cap()).toHaveValue('2.50');
+    await user.clear(cap());
+    await user.type(cap(), '0.5');
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Decrease' })).toBeDisabled();
+  });
+});
+
+describe('Start a run: the estimate as a receipt', () => {
+  it('shows dotted placeholders and a "..." total until the estimate arrives', async () => {
+    const { user } = setup({ 'POST /api/runs/preview': { body: preview(), delayMs: 400 } });
+    await pickRegion(user);
+    const box = await screen.findByRole('region', { name: 'Estimate' });
+    expect(within(box).getByText('Estimated cost').closest('div')).toHaveTextContent('...');
+    expect(within(box).getAllByText('·····').length).toBeGreaterThan(3);
+    await within(box).findByText('$3.50');
+    expect(within(box).queryByText('·····')).toBeNull();
+  });
+
+  it('lists the planned work, the total and the room left', async () => {
+    const { user } = setup();
+    await pickRegion(user);
+    const box = await screen.findByRole('region', { name: 'Estimate' });
+    await within(box).findByText('$3.50');
+    for (const label of [
+      'Searches planned',
+      'Places searched',
+      'Qualified companies',
+      'Expected leads',
+      'Per lead',
+      'Estimated cost',
+      'Active runs',
+      'Left this month',
+    ]) {
+      expect(within(box).getByText(label)).toBeInTheDocument();
+    }
+    expect(box.querySelector('.receipt-barcode')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('stamps ABOVE CAP, with the full sentence for a screen reader, when the estimate is over the cap', async () => {
+    const { user } = setup();
+    await pickRegion(user);
+    const box = await screen.findByRole('region', { name: 'Estimate' });
+    const stamp = await within(box).findByRole('alert');
+    expect(stamp).toHaveTextContent('Above cap');
+    expect(stamp).toHaveTextContent('Estimate is above your cap');
+    await user.click(screen.getByRole('radio', { name: '$5' }));
+    await waitFor(() => expect(within(box).queryByRole('alert')).toBeNull());
+  });
+});
+
+describe('Start a run: Suggested next', () => {
+  it('is one line under the receipt, above the footer with Start', async () => {
+    setup();
+    const line = await screen.findByText(/Highest leads per dollar so far/);
+    const strip = line.closest('section')!;
+    const receipt = screen.getByRole('region', { name: 'Estimate' });
+    expect(strip).toHaveTextContent('Suggested next:');
+    expect(receipt.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(strip.parentElement).toBe(receipt.parentElement);
+    expect(
+      strip.compareDocumentPosition(startButton()) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // The old yellow card was the first thing in the body; nothing is above the columns now.
+    expect(document.querySelector('.sr > .sr-suggest')).toBeNull();
   });
 });
 
@@ -258,7 +364,7 @@ describe('Start a run: estimate and Start button', () => {
 
   it('keeps Start off until there is a region, and says so', async () => {
     setup();
-    await screen.findByRole('option', { name: /^Sfax/ });
+    await screen.findByLabelText('Region');
     expect(startButton()).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByText('Choose a region to start.')).toBeInTheDocument();
   });
@@ -436,7 +542,7 @@ describe('Start a run: prefill from Coverage', () => {
       />,
       server,
     );
-    await waitFor(() => expect(screen.getByLabelText('Region')).toHaveValue('sfax'));
+    await waitFor(() => expect(screen.getByLabelText('Region')).toHaveTextContent('Sfax'));
     await waitFor(() => expect(chip('Textile')).toHaveAttribute('aria-pressed', 'true'));
     expect(chip('Road freight')).toHaveAttribute('aria-pressed', 'false');
     await waitFor(() => expect(chip('Textile')).toHaveFocus());

@@ -3,6 +3,8 @@
 export interface RunnerConfig {
   /** Runs a user may have pending or running at once. */
   maxConcurrentRunsPerUser: number;
+  /** The most a single run's spend cap may be (USD): a typo guard. */
+  maxRunCapUsd: number;
   /** Cells a run claims and searches. */
   cellsPerRun: number;
   /** A claim lapses this long after the run's last heartbeat, freeing its cells. */
@@ -37,6 +39,7 @@ export interface RunnerConfig {
 
 export const DEFAULT_RUNNER_CONFIG: RunnerConfig = {
   maxConcurrentRunsPerUser: 2,
+  maxRunCapUsd: 50,
   cellsPerRun: 4,
   claimTtlMs: 15 * 60_000,
   maxPlacesPerQuery: 20,

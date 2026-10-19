@@ -1,3 +1,4 @@
+import { Select } from '../../../components/shared/Select.js';
 import { regionLabel } from '@lead-gen-crm/shared';
 import type { RunSummary } from '@lead-gen-crm/shared';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -156,21 +157,21 @@ export function RunsPage() {
             tab === 'leads' ? (
               <label className="runs-scope">
                 <span>{t('runs.leads.scope')}</span>
-                <select
+                <Select
                   className="quiet-select"
                   value={scope}
-                  onChange={(e) => setScope(e.target.value)}
-                >
-                  <option value={ALL}>{t('runs.leads.scope.all')}</option>
-                  {scopeOptions.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {t('runs.leads.scope.run', {
+                  onChange={setScope}
+                  options={[
+                    { value: ALL, label: t('runs.leads.scope.all') },
+                    ...scopeOptions.map((r) => ({
+                      value: r.id,
+                      label: t('runs.leads.scope.run', {
                         region: regionLabel(r.region),
                         time: formatDateTime(r.createdAt),
-                      })}
-                    </option>
-                  ))}
-                </select>
+                      }),
+                    })),
+                  ]}
+                />
               </label>
             ) : undefined
           }
