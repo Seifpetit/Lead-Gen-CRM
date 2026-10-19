@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   boundsIntersectOutline,
+  cellOverlap,
+  MIN_CELL_OVERLAP,
   outlineBounds,
   outlineFromBounds,
   placeInOutline,
@@ -141,5 +143,78 @@ describe('helpers', () => {
       [0, 4],
       [0, 0],
     ]);
+  });
+});
+
+describe('cellOverlap', () => {
+  const square = (s: number, w: number, n: number, e: number) => ({
+    south: s,
+    west: w,
+    north: n,
+    east: e,
+  });
+  const BOX: Outline = {
+    type: 'Polygon',
+    coordinates: [
+      [
+        [0, 0],
+        [4, 0],
+        [4, 4],
+        [0, 4],
+        [0, 0],
+      ],
+    ],
+  };
+
+  it('is 1 for a cell fully inside and 0 for one fully outside', () => {
+    expect(cellOverlap(square(1, 1, 2, 2), BOX)).toBeCloseTo(1, 9);
+    expect(cellOverlap(square(5, 5, 6, 6), BOX)).toBe(0);
+  });
+
+  it('is the share of the cell inside: half, and a cell larger than the outline', () => {
+    expect(cellOverlap(square(3, 1, 5, 2), BOX)).toBeCloseTo(0.5, 9);
+    expect(cellOverlap(square(-2, -2, 6, 6), BOX)).toBeCloseTo(16 / 64, 9);
+  });
+
+  it('cuts a cell along a slanted edge', () => {
+    // The hypotenuse is lng + lat = 46: cell 34..35 x 10..11 is whole, 35..36 x 10..11 is half,
+    // 35..36 x 11..12 is outside.
+    expect(cellOverlap({ south: 34, west: 10, north: 35, east: 11 }, TRIANGLE)).toBeCloseTo(1, 9);
+    expect(cellOverlap({ south: 35, west: 10, north: 36, east: 11 }, TRIANGLE)).toBeCloseTo(0.5, 9);
+    expect(cellOverlap({ south: 35, west: 11, north: 36, east: 12 }, TRIANGLE)).toBeCloseTo(0, 9);
+  });
+
+  it('subtracts a hole', () => {
+    const donut: Outline = {
+      type: 'Polygon',
+      coordinates: [
+        [
+          [0, 0],
+          [4, 0],
+          [4, 4],
+          [0, 4],
+          [0, 0],
+        ],
+        [
+          [1, 1],
+          [1, 3],
+          [3, 3],
+          [3, 1],
+          [1, 1],
+        ],
+      ],
+    };
+    expect(cellOverlap(square(0, 0, 4, 4), donut)).toBeCloseTo(12 / 16, 9);
+    expect(cellOverlap(square(1, 1, 3, 3), donut)).toBe(0);
+  });
+
+  it('adds up several islands', () => {
+    expect(cellOverlap(square(0, 0, 6, 6), ISLANDS)).toBeCloseTo(2 / 36, 9);
+    expect(cellOverlap(square(5, 5, 6, 6), ISLANDS)).toBeCloseTo(1, 9);
+  });
+
+  it('is 0 for a cell with no area, and the minimum is about a tenth', () => {
+    expect(cellOverlap(square(1, 1, 1, 2), BOX)).toBe(0);
+    expect(MIN_CELL_OVERLAP).toBeCloseTo(0.1, 9);
   });
 });

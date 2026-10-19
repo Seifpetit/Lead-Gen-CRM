@@ -877,7 +877,8 @@ describe('Runs section', () => {
     expect(row).toHaveAttribute('href', '/leadgen/runs/run-1');
     expect(within(row).getByText('sfax')).toBeVisible();
     expect(within(row).getByText('$3.21 of $10.00')).toBeVisible();
-    expect(within(row).getByText('40 found → 6 leads')).toBeVisible();
+    // 40 new places plus 4 found again from earlier runs: both were found by this run.
+    expect(within(row).getByText('44 found → 6 leads')).toBeVisible();
     expect(row.querySelector('progress')).not.toBeNull();
   });
 

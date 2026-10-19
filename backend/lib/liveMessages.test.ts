@@ -57,6 +57,12 @@ describe('liveMessages', () => {
     expect(liveMessages.failed({})).toBe('This run could not finish.');
   });
 
+  it('warns in plain words when searches miss the region', () => {
+    expect(liveMessages.outsideRegion({ outside: 97, total: 98, region: 'Bizerte' })).toBe(
+      'Stopped to protect your budget: 97 of the 98 places found so far were outside Bizerte. The searches are probably not covering the region, so no new searches were started.',
+    );
+  });
+
   it('never uses the internal step names', () => {
     const all = [
       liveMessages.searching(f),

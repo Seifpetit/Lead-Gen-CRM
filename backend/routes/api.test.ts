@@ -1513,13 +1513,23 @@ describe('POST /api/webhooks/apify', () => {
 
   it('ignores a repeated event: nothing is applied or paid for twice', async () => {
     const { run, step } = await outWithApify();
+    // Repeated events may still move the run on to its next stage; what must not change is what
+    // the searches themselves booked and stored.
+    const searchLedger = async () =>
+      (
+        await db.query<{ n: number; usd: string }>(
+          `SELECT count(*)::integer AS n, coalesce(sum(l.amount_usd), 0)::text AS usd
+             FROM cost_ledger l JOIN run_steps s ON s.id = l.run_step_id
+            WHERE l.run_id = $1 AND s.stage = 'discover'`,
+          [run.id],
+        )
+      ).rows[0]!;
     await hook(body(alice.id, step.id));
     const after1 = await rowCounts();
-    const ledger = (await call(alice, 'GET', `/api/runs/${run.id}/costs`)).json().ledgerUsd;
+    const ledger = await searchLedger();
     for (let i = 0; i < 3; i++) expect((await hook(body(alice.id, step.id))).statusCode).toBe(202);
-    expect((await rowCounts()).cost_ledger).toBe(after1.cost_ledger);
+    expect(await searchLedger()).toEqual(ledger);
     expect((await rowCounts()).companies).toBe(after1.companies);
-    expect((await call(alice, 'GET', `/api/runs/${run.id}/costs`)).json().ledgerUsd).toBe(ledger);
     expect(
       (
         await db.query('SELECT 1 FROM apify_events WHERE run_step_id = $1 AND state = $2', [

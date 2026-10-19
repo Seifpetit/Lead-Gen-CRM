@@ -11,13 +11,15 @@ import type { UserId } from '../data/ids.js';
 import { createRegionGrid, listCells } from '../data/regionCells.js';
 import { setRegionBounds } from '../data/regions.js';
 import { getRun, RunLimitError } from '../data/runs.js';
+import { listRunLog } from '../data/runLog.js';
 import { listEvidence } from '../data/evidence.js';
 import { listRunCompanies } from '../data/runCompanies.js';
 import { listSteps } from '../data/runSteps.js';
 import { listCellStats, listRegionStats } from '../data/saturation.js';
 import { makeUser, openTestDb, resetData } from '../data/testDb.js';
 import { setMonthlyCap } from '../data/userBudget.js';
-import type { Bounds } from '../lib/geo.js';
+import type { Bounds, Outline } from '../lib/geo.js';
+import { FREIGHT_SECTORS } from '../config/sectors.js';
 import { AnthropicClassifier } from '../providers/anthropicClassifier.js';
 import { GOOGLE_MAPS_ACTOR } from '../providers/googleMapsApify.js';
 import type { RequestOptions } from '../httpClient.js';
@@ -54,6 +56,8 @@ beforeEach(async () => {
   user = await makeUser(db);
   // Two cells: small enough to saturate in a test.
   await createRegionGrid(db, 'sfax', SFAX, 1, 2);
+  // These bounds are not the real Sfax shape; a seeded outline would cut the test cells.
+  await db.query("UPDATE regions SET outline = NULL WHERE id = 'sfax'");
 });
 
 function world(
@@ -769,26 +773,117 @@ describe('orchestrator: places outside the governorate', () => {
 
   it('drops places whose coordinates are outside the outline before they are stored, and counts them', async () => {
     const { run, companies } = await runWith((_cell, i) => (i === 0 ? INSIDE : OUTSIDE));
-    // 2 cells x 2 wordings x 2 places = 8 sightings; the second place of each is outside.
-    expect((await getRun(db, user, run.id))?.placesDroppedOutside).toBe(4);
-    expect(companies).toHaveLength(2);
+    // The east cell has no area inside the outline, so it is not searched: 1 cell x 2 wordings
+    // x 2 places = 4 sightings; the second place of each is outside.
+    expect((await getRun(db, user, run.id))?.placesDroppedOutside).toBe(2);
+    expect(companies).toHaveLength(1);
     expect(companies.every((c) => c.state === 'scored')).toBe(true);
     const names = await db.query<{ n: number }>(
       'SELECT count(*)::integer AS n FROM companies WHERE user_id = $1',
       [user],
     );
-    expect(names.rows[0]!.n).toBe(2);
+    expect(names.rows[0]!.n).toBe(1);
   });
 
   it('keeps places without coordinates, which cannot be judged', async () => {
     const { run, companies } = await runWith((_cell, i) => (i === 0 ? INSIDE : null));
     expect((await getRun(db, user, run.id))?.placesDroppedOutside).toBe(0);
-    expect(companies).toHaveLength(4);
+    expect(companies).toHaveLength(2);
   });
 
   it('forgives a place a few hundred metres outside the simplified edge', async () => {
     const { run } = await runWith(() => ({ lat: 34.7, lng: 10.7 + 0.002 }));
     expect((await getRun(db, user, run.id))?.placesDroppedOutside).toBe(0);
+  });
+});
+
+describe('orchestrator: searches that miss the region', () => {
+  const FULL: Outline = {
+    type: 'Polygon',
+    coordinates: [
+      [
+        [10.5, 34.6],
+        [10.9, 34.6],
+        [10.9, 34.9],
+        [10.5, 34.9],
+        [10.5, 34.6],
+      ],
+    ],
+  };
+  const WEST_ONLY: Outline = {
+    type: 'Polygon',
+    coordinates: [
+      [
+        [10.5, 34.6],
+        [10.7, 34.6],
+        [10.7, 34.9],
+        [10.5, 34.9],
+        [10.5, 34.6],
+      ],
+    ],
+  };
+  const SOME_SECTORS = FREIGHT_SECTORS.slice(0, 3).map((s) => s.id);
+
+  async function runAll(locationOf: NonNullable<FakeApifyOptions['locationOf']>) {
+    await db.query('UPDATE regions SET outline = $1 WHERE id = $2', [JSON.stringify(FULL), 'sfax']);
+    const w = world({ locationOf, placesPerCell: () => 10 });
+    const run = await w.orchestrator.startRun(user, {
+      regionId: 'sfax',
+      sectorIds: SOME_SECTORS,
+      budgetCapUsd: 10,
+    });
+    const settled = await drive(w.orchestrator, user, run.id);
+    const log = await listRunLog(db, user, run.id, { limit: 5000 });
+    return { w, run, settled, log: log.items };
+  }
+
+  it('stops a run whose first searches are nearly all outside the region, with a plain warning', async () => {
+    const { run, settled, log } = await runAll(() => ({ lat: 36.8, lng: 10.2 }));
+    expect(settled.status).toBe('cancelled');
+    const { rows: stored } = await db.query<{ error: string; live_message: string }>(
+      'SELECT error, live_message FROM runs WHERE id = $1',
+      [run.id],
+    );
+    const message = stored[0]!.error;
+    expect(message).toMatch(/Stopped to protect your budget: \d+ of the \d+ places found/);
+    expect(message).toContain('outside Sfax');
+    expect(stored[0]!.live_message).toBe(message);
+    expect(log.filter((l) => l.level === 'warn' && !l.technical).map((l) => l.message)).toContain(
+      message,
+    );
+    // It stopped early: far fewer searches finished than a full run would have made.
+    const { rows } = await db.query<{ n: number }>(
+      "SELECT count(*)::integer AS n FROM run_steps WHERE run_id = $1 AND stage = 'discover' AND status = 'finished'",
+      [run.id],
+    );
+    expect(rows[0]!.n).toBeGreaterThanOrEqual(5);
+  }, 30_000);
+
+  it('writes each dropped place to the run log with its name, coordinates and reason', async () => {
+    const { log } = await runAll((_cell, i) =>
+      i === 0 ? { lat: 34.7, lng: 10.7 } : { lat: 36.8, lng: 10.2 },
+    );
+    const dropped = log.filter((l) => l.message.startsWith('Dropped '));
+    expect(dropped.length).toBeGreaterThan(0);
+    expect(dropped[0]!.message).toMatch(/^Dropped ".+" \(36\.80000, 10\.20000\): outside sfax/);
+    expect(dropped.every((l) => l.technical)).toBe(true);
+  }, 30_000);
+
+  it('previews the same cells the run then claims', async () => {
+    await db.query('UPDATE regions SET outline = $1 WHERE id = $2', [
+      JSON.stringify(WEST_ONLY),
+      'sfax',
+    ]);
+    const w = world();
+    const input = { regionId: 'sfax', sectorIds: TEXTILE, budgetCapUsd: 10 };
+    const preview = await w.orchestrator.preview(user, input);
+    const run = await w.orchestrator.startRun(user, input);
+    const cells = await listCells(db, 'sfax', { leafOnly: true });
+    const claimed = (await listLiveClaims(db, user))
+      .filter((c) => c.runId === run.id)
+      .map((c) => cells.find((x) => x.id === c.regionCellId)!.cellKey);
+    expect(preview.cells.map((c) => c.cellKey)).toEqual(claimed);
+    expect(claimed).toEqual(['r0c0']);
   });
 });
 

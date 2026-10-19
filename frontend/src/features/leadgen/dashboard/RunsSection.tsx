@@ -63,7 +63,8 @@ export function RunsSection({
                   </span>
                   <span className="run-found small">
                     {t('runs.found', {
-                      found: formatNumber(run.funnel.discovered),
+                      // Places found again from an earlier run count too: a run of known places did find them.
+                      found: formatNumber(run.funnel.discovered + run.funnel.skipped),
                       leads: formatNumber(run.funnel.leads),
                     })}
                   </span>
