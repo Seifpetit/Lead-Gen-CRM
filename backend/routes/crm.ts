@@ -6,6 +6,7 @@ import {
   type CrmBoard,
   type CrmCard,
   type CrmCardPage,
+  type CrmFacets,
 } from '@lead-gen-crm/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -16,6 +17,7 @@ import {
   getCard,
   getCompanyDetail,
   listCards,
+  loadFacets,
   loadBoard,
   moveCard,
   removeCard,
@@ -65,6 +67,9 @@ const FilterQuery = z.object({
   q: z.string().trim().max(100).optional(),
   sector: z.string().trim().min(1).max(60).optional(),
   minScore: z.coerce.number().int().min(0).max(1000).optional(),
+  foundDays: z.coerce.number().int().min(1).max(3650).optional(),
+  runId: z.uuid().optional(),
+  regionId: z.string().trim().min(1).max(60).optional(),
   sort: z.enum(['newest', 'score', 'days', 'name', 'sector', 'stage']).optional(),
   dir: z.enum(['asc', 'desc']).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(BOARD_PAGE_SIZE),
@@ -77,6 +82,7 @@ const CardsQuery = FilterQuery.extend({
     .transform((v) => v === 'true')
     .optional(),
 });
+const FacetsQuery = FilterQuery.pick({ q: true, minScore: true, foundDays: true, regionId: true });
 const PipelineParam = z.object({ pipeline: z.enum(['companies', 'people']) });
 
 const BOARD_STATUS: Record<BoardError['code'], number> = {
@@ -120,6 +126,13 @@ export async function crmRoutes(app: FastifyInstance, deps: RouteDeps): Promise<
     const { pipeline } = parse(PipelineParam, request.params);
     const options = parse(CardsQuery, request.query);
     return guard(() => listCards(db, currentUser(request).id, pipeline, days, options));
+  });
+
+  // How many cards each stage, sector and run holds, for the folder list of the leads view.
+  app.get('/api/crm/:pipeline/facets', async (request): Promise<CrmFacets> => {
+    const { pipeline } = parse(PipelineParam, request.params);
+    const filters = parse(FacetsQuery, request.query);
+    return guard(() => loadFacets(db, currentUser(request).id, pipeline, filters));
   });
 
   // A company's page: its card, notes, history and decision-maker, found by company ID.

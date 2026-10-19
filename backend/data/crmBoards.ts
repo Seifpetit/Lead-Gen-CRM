@@ -11,6 +11,7 @@ import {
   type CrmBoard,
   type CrmCard,
   type CrmCardPage,
+  type CrmFacets,
   type CrmPipeline,
   type RoleClass,
   type SortDirection,
@@ -86,6 +87,9 @@ interface CardRow {
   image_url: string | null;
   image_source: 'og' | 'maps' | null;
   created_at: Date;
+  found_at: Date;
+  run_id: string | null;
+  lead_id: string | null;
   stage_position: number;
   score: number | null;
 }
@@ -96,15 +100,22 @@ const CARD_SELECT = `
          c.name AS company_name, c.sector, c.website, c.phone AS company_phone, c.email AS company_email,
          c.image_url, c.image_source,
          p.full_name, p.title, p.email AS person_email, p.phone AS person_phone, p.linkedin_url,
-         p.photo_url, k.created_at,
+         p.photo_url, k.created_at, c.governorate,
+         coalesce(p.created_at, c.created_at) AS found_at,
+         coalesce(bl.run_id, p.run_id, c.run_id) AS run_id, bl.id AS lead_id,
          (SELECT s.position FROM pipeline_stages s
            WHERE s.pipeline = k.pipeline AND s.key = k.stage) AS stage_position,
-         (SELECT max(l.score_total)::integer FROM crm_leads l
-           WHERE l.user_id = k.user_id AND l.company_id = k.company_id
-             AND (k.contact_id IS NULL OR l.contact_id = k.contact_id)) AS score
+         bl.score_total::integer AS score
     FROM crm_cards k
     JOIN companies c ON c.id = k.company_id
-    LEFT JOIN contacts p ON p.id = k.contact_id`;
+    LEFT JOIN contacts p ON p.id = k.contact_id
+    LEFT JOIN LATERAL (
+      -- The card's best lead: the company's, or this person's.
+      SELECT l.id, l.run_id, l.score_total FROM crm_leads l
+       WHERE l.user_id = k.user_id AND l.company_id = k.company_id
+         AND (k.contact_id IS NULL OR l.contact_id = k.contact_id)
+       ORDER BY l.score_total DESC, l.created_at, l.id LIMIT 1
+    ) bl ON true`;
 
 const DAY_MS = 86_400_000;
 
@@ -141,6 +152,9 @@ function toCard(r: CardRow, retentionDays: number): CrmCard {
         }
       : null,
     score: r.score,
+    foundAt: r.found_at.toISOString(),
+    runId: r.run_id,
+    leadId: r.lead_id,
   };
 }
 
@@ -226,6 +240,11 @@ function whereOf(
   }
   if (o.sector) add((n) => `t.sector = $${n}`, o.sector);
   if (o.minScore && o.minScore > 0) add((n) => `coalesce(t.score, -1) >= $${n}`, o.minScore);
+  if (o.foundDays && o.foundDays > 0) {
+    add((n) => `t.found_at >= now() - ($${n}::integer * interval '1 day')`, o.foundDays);
+  }
+  if (o.runId) add((n) => `t.run_id = $${n}::uuid`, o.runId);
+  if (o.regionId) add((n) => `t.governorate = $${n}`, o.regionId);
   return { clauses, params };
 }
 
@@ -321,6 +340,46 @@ export async function loadBoard(
       id: r.sector,
       name: FREIGHT_SECTORS.find((s) => s.id === r.sector)?.name ?? r.sector,
     })),
+  };
+}
+
+/** What each stage, sector and run would hold under the other filters; see `CrmFacets`. */
+export async function loadFacets(
+  db: Queryable,
+  userId: UserId,
+  pipeline: CrmPipeline,
+  filters: Pick<BoardFilters, 'q' | 'minScore' | 'foundDays' | 'regionId'> = {},
+): Promise<CrmFacets> {
+  const { clauses, params } = whereOf(userId, pipeline, { ...filters, excludeNoise: true });
+  const from = `FROM (${CARD_SELECT}) t WHERE ${clauses.join(' AND ')}`;
+  const group = async <K extends string>(column: string) =>
+    (
+      await db.query<{ k: K | null; n: string }>(
+        `SELECT t.${column} AS k, count(*) AS n ${from} GROUP BY t.${column}`,
+        params,
+      )
+    ).rows;
+  const [stageRows, sectorRows, runRows, stages] = await Promise.all([
+    group<BoardStageKey>('stage'),
+    group('sector'),
+    group('run_id'),
+    listStages(db, pipeline),
+  ]);
+  const count = (rows: { k: string | null; n: string }[], key: string | null) =>
+    Number(rows.find((r) => r.k === key)?.n ?? 0);
+  const live = stages.filter((s) => s.key !== 'noise');
+  return {
+    total: live.reduce((n, s) => n + count(stageRows, s.key), 0),
+    stages: live.map((s) => ({ key: s.key, count: count(stageRows, s.key) })),
+    sectors: sectorRows
+      .filter((r): r is { k: string; n: string } => r.k !== null)
+      .map((r) => ({
+        id: r.k,
+        name: FREIGHT_SECTORS.find((s) => s.id === r.k)?.name ?? r.k,
+        count: Number(r.n),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    runs: runRows.map((r) => ({ id: r.k, count: Number(r.n) })).sort((a, b) => b.count - a.count),
   };
 }
 

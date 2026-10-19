@@ -81,9 +81,11 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
   await expect(page.getByText('Run started in sfax.')).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
-  // The dashboard shows it as active, with its progress bar.
-  await expect(page.getByRole('progressbar')).toBeVisible();
-  await expect(runs.getByRole('row', { name: /sfax/ }).getByText('Running')).toBeVisible();
+  // The dashboard shows it as active: a link under the header and a row in Runs.
+  await expect(page.getByRole('link', { name: 'Run active: sfax' })).toBeVisible();
+  await expect(
+    runs.getByRole('link', { name: 'Open run for sfax' }).getByText('Running'),
+  ).toBeVisible();
 
   // Watch it on the Logs page while it runs.
   await side.getByRole('link', { name: 'Logs' }).click();
@@ -93,7 +95,9 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
 
   // It finishes on its own.
   await side.getByRole('link', { name: 'Dashboard' }).click();
-  await expect(runs.getByRole('row', { name: /sfax/ }).getByText('Finished')).toBeVisible({
+  await expect(
+    runs.getByRole('link', { name: 'Open run for sfax' }).getByText('Finished'),
+  ).toBeVisible({
     timeout: 100_000,
   });
   await side.getByRole('link', { name: 'Logs' }).click();
@@ -110,9 +114,9 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
 
   // The leads it found are listed on the dashboard; one opens on its own page, and Back returns.
   await side.getByRole('link', { name: 'Dashboard' }).click();
-  const leads = page.getByRole('table', { name: 'Recent leads' });
+  const leads = page.getByRole('list', { name: 'Companies found' });
   await expect(leads).toBeVisible();
-  await leads.getByRole('row').nth(1).getByRole('link').first().click();
+  await leads.getByRole('listitem').first().getByRole('link').first().click();
   await expect(page.getByRole('tab', { name: 'Overview' })).toBeVisible();
   await expect(page.getByText('Decision-maker', { exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Back' }).click();

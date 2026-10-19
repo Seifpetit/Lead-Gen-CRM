@@ -14,6 +14,7 @@ import type {
   CrmBoard,
   CrmCard,
   CrmCardPage,
+  CrmFacets,
   CrmPipeline,
   CrmStage,
   DecisionMakerInput,
@@ -143,6 +144,11 @@ export function createApi(client: ApiClient) {
         client.request<AddDecisionMakerResult>('POST', `/api/crm/cards/${id}/decision-maker`, {
           body: input,
         }),
+      facets: (
+        pipeline: CrmPipeline,
+        filters: Pick<BoardFilters, 'q' | 'minScore' | 'foundDays' | 'regionId'> = {},
+        signal?: AbortSignal,
+      ) => client.get<CrmFacets>(`/api/crm/${pipeline}/facets`, defined(filters), signal),
       companyDetail: (companyId: string, signal?: AbortSignal) =>
         client.get<CompanyCardDetail>(`/api/crm/cards/by-company/${companyId}`, undefined, signal),
       saveNotes: (companyId: string, notes: string) =>

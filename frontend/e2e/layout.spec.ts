@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 
 // Every page is as tall as the window and never scrolls; only content areas inside cards do.
-// The backend is real (sign-in), but the leads list is replaced with 100 leads so the Recent
-// leads card has far more rows than fit.
+// The backend is real (sign-in), but the lead list and the CRM cards are replaced with 100 leads
+// so the Recent leads grid has far more cards than fit.
 
 const EMAIL = 'e2e@example.test';
 const PASSWORD = 'e2e-password-123';
@@ -28,8 +28,60 @@ const leads = Array.from({ length: 100 }, (_, i) => ({
   crmStage: 'system_suggested',
 }));
 
+const cards = leads.map((lead, i) => ({
+  id: `layout-card-${i}`,
+  pipeline: 'companies',
+  stage: 'found',
+  stageEnteredAt: '2026-10-18T09:30:00.000Z',
+  noiseAt: null,
+  purgeAt: null,
+  removedFrom: null,
+  company: {
+    id: lead.company.id,
+    name: lead.company.name,
+    sector: 'textile',
+    website: lead.company.website,
+    phone: lead.company.phone,
+    email: null,
+    imageUrl: null,
+    imageSource: null,
+  },
+  person: null,
+  score: lead.score.total,
+  foundAt: '2026-10-18T09:30:00.000Z',
+  runId: 'layout-run',
+  leadId: lead.id,
+}));
+
 async function signIn(page: Page) {
-  // Answer the lead list from here; every other request goes to the real backend.
+  // Answer the lead list and the cards from here; every other request goes to the real backend.
+  await page.route(
+    (url) => url.pathname === '/api/crm/companies/cards',
+    async (route) => {
+      const query = new URL(route.request().url()).searchParams;
+      const limit = Number(query.get('limit') ?? 50);
+      const from = Number(query.get('cursor') ?? 0);
+      await route.fulfill({
+        json: {
+          cards: cards.slice(from, from + limit),
+          total: cards.length,
+          nextCursor: from + limit < cards.length ? String(from + limit) : null,
+        },
+      });
+    },
+  );
+  await page.route(
+    (url) => url.pathname === '/api/crm/companies/facets',
+    (route) =>
+      route.fulfill({
+        json: {
+          total: cards.length,
+          stages: [{ key: 'found', count: cards.length }],
+          sectors: [{ id: 'textile', name: 'Textile', count: cards.length }],
+          runs: [{ id: 'layout-run', count: cards.length }],
+        },
+      }),
+  );
   await page.route(
     (url) => url.pathname === '/api/leads',
     async (route) => {
@@ -96,13 +148,16 @@ const SIZES = [
   { width: 390, height: 844 },
 ] as const;
 
-test('with 100 leads the page never scrolls, only the lists inside cards do', async ({ page }) => {
+test('with 100 leads the page never scrolls, only the card grid inside the panel does', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await signIn(page);
   await page.goto('/leadgen');
 
-  const table = page.getByRole('table', { name: 'Recent leads' });
-  await expect(table.getByRole('row')).toHaveCount(101);
+  const tiles = page.locator('.tile-grid > .tile');
+  await expect(tiles.first()).toBeVisible();
+  await expect.poll(() => tiles.count()).toBeGreaterThanOrEqual(50);
 
   // The document does not scroll, and trying to scroll it moves nothing.
   const before = await page.evaluate(measure);
@@ -113,38 +168,68 @@ test('with 100 leads the page never scrolls, only the lists inside cards do', as
   await page.mouse.wheel(0, 2000);
   expect(await page.evaluate(() => window.scrollY + document.documentElement.scrollTop)).toBe(0);
 
-  // The list is the card's scroll area: more rows than fit, a header that stays, and the top
-  // bar, sidebar and charts row do not move when it scrolls.
-  const list = page.locator('.leads-card .table-scroll');
-  const fits = await list.evaluate((el) => el.scrollHeight > el.clientHeight);
-  expect(fits).toBe(true);
-  const visibleRows = await table.getByRole('row').evaluateAll((rows) => {
-    const box = rows[0]!.closest('.table-scroll')!.getBoundingClientRect();
-    return rows.filter((r) => {
-      const b = r.getBoundingClientRect();
+  // One panel: the leads take about 55% of it, the bottom row about 35%, the header is slim.
+  const panel = (await page.locator('.dash-panel').boundingBox())!;
+  const header = (await page.locator('.dp-header').boundingBox())!;
+  const top = (await page.locator('.dp-leads').boundingBox())!;
+  const charts = (await page.locator('.dp-bottom').boundingBox())!;
+  expect(header.height).toBeLessThanOrEqual(60);
+  expect(top.height / panel.height).toBeGreaterThan(0.45);
+  expect(top.height / panel.height).toBeLessThan(0.65);
+  expect(charts.height / panel.height).toBeGreaterThan(0.28);
+  expect(charts.height / panel.height).toBeLessThan(0.42);
+
+  // Four to five cards per row on a wide screen, and a few rows visible.
+  const grid = page.locator('.tile-scroll');
+  const columns = await tiles.evaluateAll(
+    (els) => new Set(els.map((el) => Math.round(el.getBoundingClientRect().left))).size,
+  );
+  expect(columns).toBeGreaterThanOrEqual(4);
+  expect(columns).toBeLessThanOrEqual(5);
+  const visible = await tiles.evaluateAll((els) => {
+    const box = els[0]!.closest('.tile-scroll')!.getBoundingClientRect();
+    return els.filter((el) => {
+      const b = el.getBoundingClientRect();
       return b.top >= box.top && b.bottom <= box.bottom;
     }).length;
   });
-  expect(visibleRows).toBeGreaterThanOrEqual(5);
+  expect(visible).toBeGreaterThanOrEqual(2 * columns);
+
+  // The grid is the scroll area: the top bar, sidebar and the bottom row do not move with it.
+  expect(await grid.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
   const bar = await page.locator('.topbar').boundingBox();
   const side = await page.locator('.sidebar').boundingBox();
-  const charts = await page.locator('.dash-bottom').boundingBox();
-  await list.hover();
+  await grid.hover();
   await page.mouse.wheel(0, 1500);
-  await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(500);
-  const header = await table.locator('thead th').first().boundingBox();
-  const frame = await list.boundingBox();
-  expect(Math.abs(header!.y - frame!.y)).toBeLessThan(3);
+  await expect.poll(() => grid.evaluate((el) => el.scrollTop)).toBeGreaterThan(300);
   expect(await page.locator('.topbar').boundingBox()).toEqual(bar);
   expect(await page.locator('.sidebar').boundingBox()).toEqual(side);
-  expect(await page.locator('.dash-bottom').boundingBox()).toEqual(charts);
-  // The charts row is about 240px tall.
-  expect(charts!.height).toBeGreaterThan(220);
-  expect(charts!.height).toBeLessThanOrEqual(241);
+  expect(await page.locator('.dp-bottom').boundingBox()).toEqual(charts);
   const after = await page.evaluate(measure);
   expect(after.docHeight).toBeLessThanOrEqual(after.height);
   // No scroll area sits inside another one.
   expect(after.nested).toEqual([]);
+});
+
+test('Expand opens a window over about 95% of the screen, with the same cards, and Escape closes it', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await signIn(page);
+  await page.goto('/leadgen');
+  await expect(page.locator('.tile-grid > .tile').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Expand' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Recent leads' });
+  await expect(dialog).toBeVisible();
+  const box = (await dialog.boundingBox())!;
+  expect(box.width / 1440).toBeGreaterThan(0.9);
+  expect(box.height / 900).toBeGreaterThan(0.9);
+  await expect(dialog.getByRole('navigation', { name: 'Folders' })).toBeVisible();
+  await expect(dialog.locator('.tile-grid > .tile').first()).toBeVisible();
+  const m = await page.evaluate(measure);
+  expect(m.docHeight).toBeLessThanOrEqual(m.height);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
 });
 
 for (const size of SIZES) {

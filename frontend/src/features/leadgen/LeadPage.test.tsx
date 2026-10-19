@@ -37,6 +37,9 @@ const card = (over: Partial<CrmCard> = {}): CrmCard => ({
   },
   person: null,
   score: 77,
+  foundAt: NOW,
+  runId: 'run-1',
+  leadId: 'lead-1',
   ...over,
 });
 

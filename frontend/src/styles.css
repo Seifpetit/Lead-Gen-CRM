@@ -889,13 +889,6 @@ progress {
 .dashboard.single .widget {
   grid-column: 1 / -1;
 }
-.dash-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
-  gap: var(--gap);
-  margin-top: var(--gap);
-  align-items: start;
-}
 .active-list {
   list-style: none;
   margin: 0 0 12px;
@@ -927,10 +920,6 @@ progress {
   display: flex;
   justify-content: flex-end;
   margin-bottom: 8px;
-}
-.active-run {
-  margin-top: var(--gap);
-  min-width: 0;
 }
 .progress-scale {
   display: flex;
@@ -1371,23 +1360,6 @@ input[type='radio'] {
 .topbar-user .profile {
   flex: none;
 }
-
-/* Dashboard */
-.dash-top {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.dash-top .section-title h1 {
-  margin: 0;
-}
-.dash-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
 .active-banner {
   display: flex;
   flex-wrap: wrap;
@@ -1405,27 +1377,13 @@ input[type='radio'] {
   gap: var(--gap);
   margin-top: var(--gap);
 }
-.dash-wide {
-  min-width: 0;
-}
 .range-row {
   display: flex;
   justify-content: flex-end;
   margin: 0 0 8px;
 }
-.range-row fieldset.segmented,
-.chart-card fieldset.segmented {
+.range-row fieldset.segmented {
   margin: 0;
-}
-.chart-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--gap);
-}
-@media (max-width: 900px) {
-  .chart-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 fieldset.segmented legend {
   color: var(--muted);
@@ -1524,82 +1482,15 @@ fieldset.segmented legend {
   padding: 0;
   cursor: pointer;
 }
-/* A table scrolls sideways when it is wider than its card; where a list scrolls up and down
-   (the dashboard's leads) it is set at the end of this file. */
-.table-scroll {
-  overflow-x: auto;
-  overflow-y: visible;
-}
-.lead-table thead th {
-  background: var(--surface);
-}
-.lead-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.95rem;
-}
-.lead-table th,
-.lead-table td {
-  padding: 12px 10px;
-  text-align: left;
-  vertical-align: middle;
-  border-bottom: 1px solid var(--grid);
-}
-.lead-table.density-compact th,
-.lead-table.density-compact td {
-  padding: 5px 10px;
-}
-.lead-table thead th {
-  color: var(--muted);
-  font-size: 0.8rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  border-bottom-color: var(--border);
-}
-.lead-table tbody tr {
-  cursor: pointer;
-}
-.lead-table tbody tr:hover {
-  background: var(--bg);
-}
-.lead-table tbody tr.is-selected {
-  background: var(--accent-tint);
-}
-.lead-table tbody tr:last-child td,
-.lead-table tbody tr:last-child th {
-  border-bottom: 0;
-}
-.lead-table .num {
-  text-align: right;
-}
 .cell-check {
   width: 32px;
 }
-.cell-company {
-  font-weight: 700;
-}
-.cell-company a {
-  color: var(--text);
-  text-decoration: none;
-}
-.cell-company a:hover {
-  color: var(--accent-ink);
-  text-decoration: underline;
-}
-.cell-site,
-.lead-table td a {
+.cell-site {
   overflow-wrap: anywhere;
 }
 .cell-desc {
   color: var(--muted);
   max-width: 34ch;
-}
-.lead-table a {
-  color: var(--accent-ink);
-}
-.cell-company a {
-  color: var(--text);
 }
 
 /* Popover and menus */
@@ -2184,20 +2075,15 @@ fieldset.segmented legend {
 }
 
 /* Tables and lists: square, a plain header with a heavier bottom border, thin dividers */
-.table,
-.lead-table,
-.table-scroll {
+.table {
   border-radius: 0;
 }
 .table th,
-.table td,
-.lead-table th,
-.lead-table td {
+.table td {
   border-bottom: 1px solid var(--border-soft);
   background: transparent;
 }
-.table thead th,
-.lead-table thead th {
+.table thead th {
   background: var(--surface);
   color: var(--text);
   font-size: var(--fs-caption);
@@ -2205,30 +2091,6 @@ fieldset.segmented legend {
   text-transform: none;
   letter-spacing: 0;
   border-bottom: 2px solid var(--ink);
-}
-.lead-table tbody tr:hover {
-  background: transparent;
-}
-.lead-table tbody tr:hover .cell-company a {
-  text-decoration: underline;
-}
-.lead-table tbody tr.is-selected {
-  background: transparent;
-}
-.lead-table tbody tr.is-selected td:first-child {
-  box-shadow: inset 4px 0 0 var(--accent);
-}
-.lead-table tbody tr {
-  height: var(--hit);
-}
-.cell-company a {
-  color: var(--text);
-}
-.lead-table a {
-  color: var(--accent-ink);
-}
-.lead-table .cell-company a {
-  color: var(--text);
 }
 .cell-desc {
   color: var(--muted);
@@ -2532,18 +2394,9 @@ fieldset.segmented legend {
 .widget-body {
   padding: var(--space-4) var(--space-5);
 }
-.chart-row .chart-card:nth-child(1) .widget-header {
-  background: var(--lavender);
-}
-.chart-row .chart-card:nth-child(2) .widget-header {
-  background: var(--mint);
-}
 .widget-medium .widget-header,
 .dashboard .widget .widget-header {
   background: var(--lime);
-}
-.leads-card .widget-header {
-  background: var(--yellow-soft);
 }
 .info-card .widget-header,
 .run-card .widget-header {
@@ -3227,12 +3080,10 @@ body.is-dragging-card * {
 .widget[data-tone='yellow'] .widget-header {
   background: var(--yellow);
 }
-.widget[data-tone='purple'] .widget-header,
-.chart-row .chart-card:nth-child(1) .widget-header {
+.widget[data-tone='purple'] .widget-header {
   background: var(--purple);
 }
-.widget[data-tone='teal'] .widget-header,
-.chart-row .chart-card:nth-child(2) .widget-header {
+.widget[data-tone='teal'] .widget-header {
   background: var(--teal);
 }
 .widget[data-tone='coral'] .widget-header,
@@ -3252,9 +3103,6 @@ body.is-dragging-card * {
 .widget[data-tone='blush'] .widget-header,
 .info-card .widget-header {
   background: var(--blush);
-}
-.leads-card .widget-header {
-  background: var(--yellow);
 }
 .modal-wide .widget-header {
   background: var(--yellow);
@@ -3615,271 +3463,6 @@ body:has(.topbar) {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-}
-
-/* Dashboard: header, recent leads taking what is left, then a fixed row of charts and runs.
-   On a short window the cards keep their height and the dashboard scrolls inside the frame. */
-.dash.fit {
-  overflow-x: hidden;
-  overflow-y: auto;
-}
-.dash.fit > * {
-  flex: none;
-}
-.dash.fit > .dash-main {
-  flex: 1 1 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-  gap: var(--space-3);
-  min-height: 240px;
-}
-.dash.fit > .dash-main.has-active {
-  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
-}
-.dash-leads {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-.dash-leads > .widget,
-.dash-leads > .state {
-  flex: 1 1 auto;
-}
-.dash-active {
-  display: grid;
-  align-content: start;
-  gap: var(--space-3);
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding: 0 4px 6px 0;
-}
-.dash-active .active-run {
-  margin-top: 0;
-}
-@media (max-width: 1100px) {
-  .dash.fit > .dash-main.has-active {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) auto;
-    min-height: 560px;
-  }
-  .dash-active {
-    max-height: 200px;
-  }
-}
-.dash-bottom {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-  gap: var(--space-3);
-  height: 250px;
-}
-.dash-charts,
-.dash-runs {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-}
-.dash-charts > .chart-row {
-  flex: 1 1 auto;
-  min-height: 0;
-}
-.dash-charts .chart-card,
-.dash-runs > .widget {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  margin: 0;
-}
-.dash-runs > .widget {
-  flex: 1 1 auto;
-}
-.dash-charts .widget-header,
-.dash-runs .widget-header,
-.leads-card .widget-header {
-  flex: none;
-}
-.dash-charts .widget-body,
-.dash-runs .widget-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  padding: var(--space-3) var(--space-4);
-  overflow-x: hidden;
-  overflow-y: auto;
-}
-.dash-charts .widget-header,
-.dash-runs .widget-header {
-  flex-wrap: nowrap;
-  padding-top: var(--space-2);
-  padding-bottom: var(--space-2);
-}
-.dash-charts .widget-header h2 {
-  white-space: nowrap;
-  max-width: none;
-}
-/* The toggle's name is spoken, not drawn, so the header stays one line tall. */
-.dash-charts .widget-actions legend {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
-.dash-charts .chart {
-  height: 100%;
-}
-.dash-charts .chart svg {
-  max-height: 100%;
-}
-.dash-runs .table-scroll {
-  overflow: visible;
-}
-.dash-runs .table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--surface);
-}
-@media (max-width: 900px) {
-  .dash-bottom {
-    grid-template-columns: minmax(0, 1fr);
-    height: auto;
-  }
-  .dash-charts,
-  .dash-runs {
-    height: 250px;
-  }
-  .dash-charts > .chart-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .dash-charts .chart-card {
-    height: 250px;
-  }
-  .dash-charts > .chart-row {
-    gap: var(--space-3);
-  }
-}
-
-/* Recent leads: the card's body is the list's frame; the list scrolls and its header stays. */
-.leads-card {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-.leads-card > .widget-body {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  min-height: 0;
-  padding: var(--space-3) var(--space-4);
-}
-.leads-card .list-tools,
-.leads-card .bulk-bar {
-  flex: none;
-}
-.leads-card .tabs {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-.leads-card .tablist {
-  flex: none;
-}
-.leads-card [role='tabpanel'] {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  min-height: 0;
-}
-.leads-card .table-scroll {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-}
-.leads-card .empty-state {
-  flex: 1 1 auto;
-}
-.lead-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: var(--surface);
-  box-shadow: 0 2px 0 var(--ink);
-}
-
-/* Room for rows: tight card chrome, one line per row (long text is cut with an ellipsis). */
-.leads-card > .widget-header {
-  padding: var(--space-2) var(--space-4);
-}
-.leads-card .tab {
-  padding-top: 3px;
-  padding-bottom: 3px;
-}
-.leads-card .lead-table.density-comfortable th,
-.leads-card .lead-table.density-comfortable td {
-  padding-top: 8px;
-  padding-bottom: 8px;
-}
-.leads-card .lead-table th,
-.leads-card .lead-table td {
-  white-space: nowrap;
-}
-.leads-card .lead-table tbody th,
-.leads-card .lead-table tbody td {
-  max-width: 24ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.dash .active-banner {
-  margin: 0;
-  padding: var(--space-1) var(--space-3);
-}
-.dash-bottom {
-  /* 240px on a normal window, a little less on a short one. */
-  height: clamp(180px, 27dvh, 240px);
-}
-.leads-card .list-tools input[type='search'],
-.leads-card .list-tools select {
-  min-height: 34px;
-  padding-top: 2px;
-  padding-bottom: 2px;
-}
-.leads-card .tablist {
-  min-height: 0;
-}
-.leads-card .tab {
-  min-height: 32px;
-}
-.leads-card .lead-table thead th {
-  padding-top: 6px;
-  padding-bottom: 6px;
-}
-.leads-card .lead-table input[type='checkbox'] {
-  width: 18px;
-  height: 18px;
-  margin: 0;
-}
-.shell-main > .page.dash.fit,
-.page.dash.fit {
-  overflow-x: hidden;
-  overflow-y: auto;
-}
-.dash-charts .widget-actions {
-  flex: none;
-}
-.dash-charts fieldset.segmented {
-  flex-wrap: nowrap;
-}
-.dash-charts fieldset.segmented button,
-.dash-charts fieldset.segmented label {
-  min-height: 30px;
-  padding-top: 2px;
-  padding-bottom: 2px;
 }
 @media (max-width: 720px) {
   .shell {
@@ -4257,4 +3840,653 @@ body:has(.topbar) {
 }
 .history time {
   margin-left: var(--space-2);
+}
+
+/* ==========================================================================================
+   Dashboard: one bordered panel with one hard shadow. Sections share it edge to edge and are
+   divided by 2px lines. Only the lists and charts inside the sections scroll.
+   ========================================================================================== */
+.shell-main > .page.dash-page {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  margin: 0;
+  /* Room for the panel's shadow; the panel itself touches the sidebar and the top bar. */
+  padding: 0 6px 6px 0;
+  overflow: hidden;
+}
+.dash-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  container: dashpanel / inline-size;
+  overflow: hidden auto;
+  border: var(--bw) solid var(--ink);
+  border-top: 0;
+  border-left: 0;
+  border-radius: 0 0 var(--radius) 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+.dp-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 56px;
+  padding: 0 var(--space-4);
+  border-bottom: var(--bw) solid var(--ink);
+}
+.dp-header h1 {
+  margin: 0;
+  font-size: var(--fs-h3);
+}
+.dp-header-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+/* Outlined and quiet: no fill, no shadow. */
+select.quiet-select {
+  min-height: 36px;
+  background: transparent;
+  box-shadow: none;
+}
+.dp-banner {
+  flex: none;
+  margin: 0;
+  padding: var(--space-1) var(--space-4);
+  border-bottom: var(--bw) solid var(--ink);
+  background: var(--teal);
+}
+.panel-section {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.panel-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  min-height: 32px;
+  padding: 2px var(--space-3);
+  border-bottom: var(--bw) solid var(--ink);
+}
+.panel-head h2,
+.panel-head h3 {
+  margin: 0;
+  font-size: var(--fs-body);
+  line-height: 1.2;
+}
+.panel-tag {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+  background: var(--yellow);
+}
+.panel-tag[data-tone='purple'] {
+  background: var(--purple);
+}
+.panel-tag[data-tone='teal'] {
+  background: var(--teal);
+}
+.panel-tag[data-tone='coral'] {
+  background: var(--coral);
+}
+.panel-tag[data-tone='orange'] {
+  background: var(--orange);
+}
+.panel-tag[data-tone='sky'] {
+  background: var(--sky);
+}
+.panel-tag[data-tone='blush'] {
+  background: var(--blush);
+}
+.panel-controls {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+}
+.panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden auto;
+  padding: var(--space-2) var(--space-3);
+}
+.panel-head fieldset.segmented {
+  margin: 0;
+  flex-wrap: nowrap;
+  gap: 2px;
+}
+.panel-head fieldset.segmented legend {
+  margin-right: 4px;
+  font-size: var(--fs-caption);
+}
+.panel-head .segmented span {
+  padding: 1px 8px;
+  border-width: 2px;
+  font-size: var(--fs-caption);
+  white-space: nowrap;
+}
+.panel-head .button-icon {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 2px;
+  box-shadow: none;
+}
+.panel-head .popover > .button {
+  min-width: 28px;
+  min-height: 28px;
+  box-shadow: none;
+}
+
+/* Recent leads (about 55%) above the bottom row (about 35%) */
+.dp-leads {
+  flex: 55 1 0;
+  min-height: 280px;
+}
+.dp-leads > .panel-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+.dp-bottom {
+  flex: 35 1 0;
+  min-height: 200px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.1fr);
+  border-top: var(--bw) solid var(--ink);
+}
+.dp-bottom > .panel-section + .panel-section {
+  border-left: var(--bw) solid var(--ink);
+}
+.dp-bottom > .panel-section {
+  min-height: 0;
+}
+@container dashpanel (max-width: 760px) {
+  .dp-bottom {
+    flex: none;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dp-bottom > .panel-section {
+    height: 240px;
+  }
+  .dp-bottom > .panel-section + .panel-section {
+    border-left: 0;
+    border-top: var(--bw) solid var(--ink);
+  }
+}
+@media (max-height: 699px) {
+  .dp-bottom {
+    flex: none;
+    min-height: 220px;
+  }
+}
+
+/* The toolbar: one line; the chips scroll sideways when there is no room */
+.leads-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--border-soft);
+}
+.leads-search {
+  flex: 1 1 160px;
+  min-width: 110px;
+}
+.leads-toolbar input[type='search'],
+.leads-toolbar select {
+  min-height: 32px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+.leads-toolbar .inline-field {
+  flex: none;
+  color: var(--text);
+  white-space: nowrap;
+}
+.chip-row {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  gap: var(--space-1);
+  overflow-x: auto;
+  padding: 2px 0 4px;
+  scrollbar-width: thin;
+}
+.chip-button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 2px solid var(--ink);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-caption);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.chip-button[aria-pressed='true'] {
+  background: var(--yellow);
+  font-weight: 700;
+}
+.chip-count {
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--bg);
+  font-size: 12px;
+}
+.chip-button:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* The cards: 2 columns when narrow, 3 on a laptop, 4 to 5 on a wide screen */
+.tile-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-3);
+}
+.tile-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: repeat(var(--tile-cols, 2), minmax(0, 1fr));
+}
+@container dashpanel (min-width: 800px) {
+  .tile-grid {
+    --tile-cols: 3;
+  }
+}
+@container dashpanel (min-width: 1120px) {
+  .tile-grid {
+    --tile-cols: 4;
+  }
+}
+@container dashpanel (min-width: 1400px) {
+  .tile-grid {
+    --tile-cols: 5;
+  }
+}
+.tile {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2);
+  border: 2px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.tile.is-link {
+  cursor: pointer;
+}
+.tile.is-link:hover {
+  box-shadow: 3px 3px 0 var(--shadow-color);
+}
+.tile.is-selected {
+  background: var(--accent-tint);
+}
+.tile-check {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+}
+.tile-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tile-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+  color: var(--text);
+  text-decoration: none;
+}
+a.tile-name:hover {
+  text-decoration: underline;
+}
+.tile-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-caption);
+}
+.tile-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+.tile-badges .badge {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tile-found {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.tile-icons {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: auto;
+}
+.tile-icons a,
+.tile-icons .is-missing {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: var(--text);
+}
+.tile-icons .is-missing {
+  opacity: 0.3;
+}
+.tile-more {
+  margin: var(--space-2) 0 0;
+  text-align: center;
+}
+.dp-leads .bulk-bar,
+.explorer .bulk-bar {
+  flex: none;
+  margin: var(--space-2) var(--space-3) 0;
+}
+.dp-leads .state,
+.explorer .state {
+  margin: var(--space-4) auto;
+}
+.leads-table {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2) var(--space-3);
+}
+
+/* Bottom row sections */
+.dp-chart > .panel-body {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-1) var(--space-3) var(--space-2);
+}
+.dp-chart .chart {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+.dp-chart .chart figcaption {
+  flex: none;
+  display: block;
+}
+.dp-chart .chart figcaption .small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dp-chart .chart-frame {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+.dp-chart .chart svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.chart-bar {
+  fill: var(--purple);
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+.chart-bar.is-active {
+  fill: var(--coral);
+}
+/* Sector labels get the room they need and wrap instead of being cut */
+.dp-chart .bars {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+}
+.dp-chart .bar-row {
+  grid-template-columns: minmax(84px, 38%) minmax(0, 1fr) auto;
+}
+.dp-chart .bar-label {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  line-height: 1.25;
+}
+.dp-chart .bar-track {
+  height: 14px;
+}
+.dp-runs > .panel-body {
+  padding: 0;
+}
+.run-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.run-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'region status'
+    'spend found';
+  align-items: center;
+  gap: 2px var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--text);
+  text-decoration: none;
+}
+.run-row:hover {
+  background: var(--accent-tint);
+}
+.run-region {
+  grid-area: region;
+}
+.run-status {
+  grid-area: status;
+}
+.run-spend {
+  grid-area: spend;
+}
+.run-found {
+  grid-area: found;
+}
+.run-region {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+.run-spend {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.run-spend progress {
+  width: 100%;
+  height: 8px;
+}
+.run-found {
+  white-space: nowrap;
+}
+
+/* The expanded window */
+.modal.modal-full {
+  display: flex;
+  flex-direction: column;
+  width: 95vw;
+  max-width: none;
+  height: 95vh;
+  max-height: 95vh;
+  padding: 0;
+  overflow: hidden;
+}
+.modal-full .modal-header {
+  flex: none;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: var(--bw) solid var(--ink);
+}
+.explorer {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+}
+.folders {
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-3);
+  border-right: var(--bw) solid var(--ink);
+}
+.folders ul {
+  list-style: none;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+}
+.folders h3 {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: var(--fs-caption);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.folder {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 4px var(--space-2);
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.folder:hover {
+  background: var(--accent-tint);
+}
+.folder[aria-current='true'] {
+  border-color: var(--ink);
+  background: var(--yellow);
+  font-weight: 700;
+}
+.folder-count {
+  font-variant-numeric: tabular-nums;
+}
+.explorer-main {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  container: dashpanel / inline-size;
+}
+.explorer-controls {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+}
+.explorer-controls fieldset.segmented {
+  margin: 0;
+}
+.explorer-count {
+  flex: none;
+  margin: 0;
+  padding: var(--space-1) var(--space-3) 0;
+}
+@media (max-width: 720px) {
+  .explorer {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .folders {
+    max-height: 30vh;
+    border-right: 0;
+    border-bottom: var(--bw) solid var(--ink);
+  }
+}
+
+/* Quiet controls inside the slim headers and the toolbar: no shadows, a smaller hit area */
+.panel-head .segmented span,
+.panel-head .segmented input:checked + span,
+.explorer-controls .segmented span,
+.explorer-controls .segmented input:checked + span {
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: 8px;
+  box-shadow: none;
+}
+.panel-head .segmented input:checked + span,
+.explorer-controls .segmented input:checked + span {
+  box-shadow: none;
+}
+.panel-head .button,
+.explorer-controls .button,
+.leads-toolbar select,
+.leads-toolbar input[type='search'],
+.dp-header select.quiet-select {
+  box-shadow: none;
+}
+.dp-header-controls {
+  flex-wrap: nowrap;
+}
+.dp-header .button {
+  white-space: nowrap;
+}
+.dp-header h1 {
+  min-width: 0;
+}
+.run-spend {
+  flex-direction: row;
+  align-items: center;
+}
+.run-spend progress {
+  flex: 0 0 56px;
+  width: 56px;
 }

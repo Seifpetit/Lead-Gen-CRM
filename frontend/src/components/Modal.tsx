@@ -15,12 +15,15 @@ export function Modal({
   title,
   onClose,
   wide = false,
+  full = false,
   children,
 }: {
   title: string;
   onClose: () => void;
   /** Room for a form instead of a question. */
   wide?: boolean;
+  /** Almost the whole screen, for a view that needs the room. */
+  full?: boolean;
   children: ReactNode;
 }) {
   const t = useT();
@@ -74,7 +77,7 @@ export function Modal({
     <div className="modal-backdrop">
       <div
         ref={panel}
-        className={wide ? 'modal modal-wide' : 'modal'}
+        className={full ? 'modal modal-full' : wide ? 'modal modal-wide' : 'modal'}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

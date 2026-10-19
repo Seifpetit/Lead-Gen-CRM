@@ -1,7 +1,9 @@
+import type { CrmCard, CrmFacets } from '@lead-gen-crm/shared';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useLocation } from 'react-router';
 import { describe, expect, it } from 'vitest';
-import { fakeServer } from '../../test/fakeServer.js';
+import { fakeServer, type FakeRequest } from '../../test/fakeServer.js';
 import {
   company,
   contact,
@@ -12,43 +14,123 @@ import {
   run,
 } from '../../test/fixtures.js';
 import { renderWith } from '../../test/render.js';
+import { ago, companyCard, personCard } from '../crm/boardTestKit.js';
 import { DashboardPage } from './DashboardPage.js';
 
+const DAY = 86_400_000;
 const now = new Date().toISOString();
-const fresh = (field: string, value: string) => ({
+const fresh = (field: string, at = now) => ({
   field,
-  value,
+  value: 'x',
   kind: 'fact' as const,
   sourceUrl: 'https://maps.example.test/place/1',
-  fetchedAt: now,
+  fetchedAt: at,
 });
 
-const first = lead({
-  id: 'lead-1',
-  company: company({
-    id: 'co-1',
-    name: 'Fixture Transport SARL',
-    evidence: [fresh('placeId', 'p1')],
-  }),
-  contact: contact({ id: 'ct-1', evidence: [fresh('title', 'Responsable logistique')] }),
+/** The facets the server would count for these cards. */
+function facetsOf(cards: CrmCard[]): CrmFacets {
+  const count = <K,>(key: (c: CrmCard) => K) => {
+    const m = new Map<K, number>();
+    for (const c of cards) m.set(key(c), (m.get(key(c)) ?? 0) + 1);
+    return m;
+  };
+  return {
+    total: cards.length,
+    stages: [...count((c) => c.stage)].map(([key, n]) => ({ key, count: n })),
+    sectors: [...count((c) => c.company.sector ?? '')].map(([id, n]) => ({
+      id,
+      name: id === 'textile' ? 'Textile' : 'Food',
+      count: n,
+    })),
+    runs: [...count((c) => c.runId)].map(([id, n]) => ({ id, count: n })),
+  };
+}
+
+/** A small stand-in for the card and folder routes of the CRM, with the filters the view sends. */
+function crmRoutes(cards: CrmCard[], people: CrmCard[] = []) {
+  const pick = (all: CrmCard[], q: URLSearchParams) => {
+    const text = q.get('q')?.toLowerCase();
+    const stage = q.get('stage');
+    const run = q.get('runId');
+    const sector = q.get('sector');
+    const min = Number(q.get('minScore') ?? 0);
+    const days = q.get('foundDays');
+    return all.filter(
+      (c) =>
+        c.stage !== 'noise' &&
+        (!stage || c.stage === stage) &&
+        (!run || c.runId === run) &&
+        (!sector || c.company.sector === sector) &&
+        (!text || c.company.name.toLowerCase().includes(text)) &&
+        (c.score ?? 0) >= min &&
+        (!days || Date.parse(c.foundAt) >= Date.now() - Number(days) * DAY),
+    );
+  };
+  const cardsOf = (all: CrmCard[]) => (req: FakeRequest) => {
+    const from = Number(req.query.get('cursor') ?? 0);
+    const limit = Number(req.query.get('limit') ?? 50);
+    const found = pick(all, req.query);
+    return {
+      cards: found.slice(from, from + limit),
+      total: found.length,
+      nextCursor: from + limit < found.length ? String(from + limit) : null,
+    };
+  };
+  const facetsFor = (all: CrmCard[]) => (req: FakeRequest) => {
+    req.query.delete('stage');
+    return facetsOf(pick(all, req.query));
+  };
+  return {
+    'GET /api/crm/companies/cards': cardsOf(cards),
+    'GET /api/crm/companies/facets': facetsFor(cards),
+    'GET /api/crm/people/cards': cardsOf(people),
+    'GET /api/crm/people/facets': facetsFor(people),
+  };
+}
+
+const alpha = companyCard({
+  id: 'a',
+  name: 'Fixture Transport SARL',
+  leadId: 'lead-a',
+  foundAt: ago(2),
 });
-const second = lead({
-  id: 'lead-2',
-  company: company({
-    id: 'co-2',
+const beta = companyCard({
+  id: 'b',
+  name: 'Second Freight',
+  stage: 'investigating',
+  score: 40,
+  leadId: 'lead-b',
+  foundAt: ago(20),
+  company: {
+    id: 'co-b',
     name: 'Second Freight',
     sector: 'food',
-    phone: '+216 71 111 111',
-    evidence: [fresh('placeId', 'p2')],
-  }),
-  contact: null,
-  crmStage: 'confirmed',
-  score: { companyFit: 20, contactFit: 0, reachability: 5, total: 25 },
+    website: null,
+    phone: null,
+    email: null,
+    imageUrl: null,
+    imageSource: null,
+  },
 });
+const amel = personCard({ id: 'm' });
 
-const routes = (extra = {}) => ({
+const chartLead = (i: number, daysAgo: number) =>
+  lead({
+    id: `chart-${i}`,
+    company: company({
+      id: `cc-${i}`,
+      name: `Chart ${i}`,
+      sector: i % 2 ? 'food' : 'textile',
+      evidence: [fresh('placeId', new Date(Date.now() - daysAgo * DAY).toISOString())],
+    }),
+    contact: contact({ id: `ct-${i}` }),
+  });
+
+const routes = (cards: CrmCard[] = [alpha, beta], extra = {}) => ({
   ...dashboardRoutes(),
-  'GET /api/leads': page([first, second]),
+  ...crmRoutes(cards, [amel]),
+  'GET /api/leads': page([chartLead(0, 0), chartLead(1, 1)]),
+  'GET /api/runs': page([run({ createdAt: now })]),
   'GET /api/coverage': {
     regions: [{ regionId: 'sfax', name: 'Sfax' }],
     sectors: [
@@ -72,176 +154,318 @@ const routes = (extra = {}) => ({
   ...extra,
 });
 
-async function setup(extra = {}) {
-  const server = fakeServer(routes(extra));
-  renderWith(<DashboardPage />, server, '/leadgen');
-  const user = userEvent.setup();
-  await screen.findByText('Fixture Transport SARL');
-  return { server, user };
+function Where() {
+  return <output aria-label="Location">{useLocation().pathname}</output>;
 }
-const table = () => screen.getByRole('table', { name: 'Recent leads' });
 
-describe('Dashboard leads list', () => {
-  it('lists one row per lead with company, website, contact, date, score and a description', async () => {
-    await setup();
-    const row = within(table()).getByRole('row', { name: /Fixture Transport SARL/ });
-    expect(within(row).getByRole('link', { name: 'Fixture Transport SARL' })).toHaveAttribute(
-      'href',
-      '/leadgen/runs/run-1/leads/lead-1',
+async function setup(cards?: CrmCard[], extra = {}) {
+  const server = fakeServer(routes(cards, extra));
+  const view = renderWith(
+    <>
+      <DashboardPage />
+      <Where />
+    </>,
+    server,
+    '/leadgen',
+  );
+  const user = userEvent.setup();
+  await screen.findByText(cards?.[0]?.company.name ?? 'Fixture Transport SARL');
+  return { server, user, ...view };
+}
+const panel = () => screen.getByRole('region', { name: 'Recent leads' });
+const grid = () => within(panel()).getByRole('list', { name: 'Companies found' });
+const names = (list: HTMLElement) =>
+  within(list)
+    .getAllByRole('listitem')
+    .map((li) => li.querySelector('.tile-name')?.textContent);
+
+describe('Dashboard panel', () => {
+  it('is one panel: a slim header with a single primary button, then the sections', async () => {
+    const { container } = await setup();
+    const main = container.querySelector('main.page.dash-page');
+    expect(main).not.toBeNull();
+    expect(main?.querySelectorAll(':scope > .dash-panel')).toHaveLength(1);
+    const header = main!.querySelector('.dp-header')!;
+    expect(within(header as HTMLElement).getByRole('heading', { level: 1 })).toHaveTextContent(
+      'Dashboard',
     );
-    expect(within(row).getByText('fixture-transport.example.test')).toBeVisible();
-    expect(
-      within(row).getByRole('link', { name: 'amel@fixture-transport.example.test' }),
-    ).toBeVisible();
-    expect(within(row).getByText(/\d{1,2} \w{3} \d{4}/)).toBeVisible();
-    expect(within(row).getByText('77')).toBeVisible();
-    expect(within(row).getByText(/Responsable logistique/)).toBeVisible();
-    // No person: the company's own number is the fallback.
-    const other = within(table()).getByRole('row', { name: /Second Freight/ });
-    expect(within(other).getByRole('link', { name: '+216 71 111 111' })).toBeVisible();
-    expect(within(other).getByText('Food company in Sfax')).toBeVisible();
+    // "Create run" is the only primary (coral) button on the page, and there are no date buttons.
+    const primary = [...main!.querySelectorAll('.button-primary')];
+    expect(primary).toHaveLength(1);
+    expect(primary[0]).toHaveTextContent('Create run');
+    expect(screen.queryByRole('radio', { name: 'Last 7 days' })).toBeNull();
+    // The leads on top, then the bottom row of three sections.
+    expect(main!.querySelectorAll('.dp-bottom > .panel-section')).toHaveLength(3);
+  });
+});
+
+describe('Recent leads cards', () => {
+  it('shows one small card per lead with name, badges and contact icons', async () => {
+    await setup();
+    const tile = within(grid()).getByText('Fixture Transport SARL').closest('li')!;
+    expect(within(tile).getByRole('link', { name: 'Fixture Transport SARL' })).toHaveAttribute(
+      'href',
+      '/leadgen/runs/run-1/leads/lead-a',
+    );
+    expect(within(tile).getByText('Found')).toBeVisible();
+    expect(within(tile).getByLabelText('Score 72')).toBeVisible();
+    expect(within(tile).getByText('found 2d ago')).toBeVisible();
+    expect(within(tile).getByRole('link', { name: /Phone/ })).toBeVisible();
+    // No phone or website: the icons are there but dimmed and named.
+    const bare = within(grid()).getByText('Second Freight').closest('li')!;
+    expect(within(bare).getByRole('img', { name: 'No phone number' })).toHaveClass('is-missing');
+    expect(within(bare).getByRole('img', { name: 'No website' })).toHaveClass('is-missing');
   });
 
-  it('shows Bulk actions only once a row is selected', async () => {
+  it('opens the company page when a card is clicked', async () => {
     const { user } = await setup();
-    expect(screen.queryByRole('button', { name: 'Bulk actions' })).toBeNull();
-    await user.click(screen.getByRole('checkbox', { name: 'Select Fixture Transport SARL' }));
-    expect(screen.getByText('1 selected')).toBeVisible();
-    await user.click(screen.getByRole('button', { name: 'Bulk actions' }));
-    const menu = screen.getByRole('dialog', { name: 'Bulk actions' });
-    expect(within(menu).getByRole('button', { name: 'Confirm' })).toBeVisible();
-    expect(within(menu).getByRole('button', { name: 'Dismiss' })).toBeVisible();
-    expect(within(menu).getByRole('combobox', { name: 'Move to stage…' })).toBeVisible();
-    await user.keyboard('{Escape}');
-    await user.click(screen.getByRole('button', { name: 'Clear selection' }));
-    expect(screen.queryByRole('button', { name: 'Bulk actions' })).toBeNull();
+    const tile = within(grid()).getByText('Fixture Transport SARL').closest('li')!;
+    await user.click(within(tile).getByText('found 2d ago'));
+    expect(screen.getByLabelText('Location')).toHaveTextContent('/leadgen/runs/run-1/leads/lead-a');
   });
 
-  it('selects every row shown with the header checkbox', async () => {
-    const { user } = await setup();
-    await user.click(screen.getByRole('checkbox', { name: 'Select all leads shown' }));
-    expect(screen.getByText('2 selected')).toBeVisible();
-  });
-
-  it('confirms the selected leads: the stage changes at once and the server is told', async () => {
-    const { server, user } = await setup({
-      'PATCH /api/leads/lead-1/stage': { body: { ...first, crmStage: 'confirmed' } },
+  it('shows the sector icon when the picture fails to load', async () => {
+    const withImage = companyCard({
+      id: 'img',
+      name: 'Pictured Co',
+      leadId: 'lead-i',
+      company: {
+        id: 'co-img',
+        name: 'Pictured Co',
+        sector: 'textile',
+        website: null,
+        phone: null,
+        email: null,
+        imageUrl: 'https://img.example.test/og.jpg',
+        imageSource: 'og',
+      },
     });
-    await user.click(screen.getByRole('checkbox', { name: 'Select Fixture Transport SARL' }));
-    await user.click(screen.getByRole('button', { name: 'Bulk actions' }));
-    await user.click(screen.getByRole('button', { name: 'Confirm' }));
-    const row = within(table()).getByRole('row', { name: /Fixture Transport SARL/ });
-    await waitFor(() => expect(within(row).getByText('Confirmed')).toBeVisible());
-    await waitFor(() => expect(server.to('PATCH /api/leads/lead-1/stage')).toHaveLength(1));
-    expect(server.to('PATCH /api/leads/lead-1/stage')[0]!.body).toEqual({ stage: 'confirmed' });
-    expect(await screen.findByText('Moved 1 to Confirmed.')).toBeVisible();
-    expect(screen.queryByRole('button', { name: 'Bulk actions' })).toBeNull();
+    await setup([withImage]);
+    const tile = within(grid()).getByText('Pictured Co').closest('li')!;
+    const img = tile.querySelector('img')!;
+    expect(img).toHaveAttribute('src', 'https://img.example.test/og.jpg');
+    expect(tile.querySelector('.thumb-tile')).toBeNull();
+    // The picture breaks: the sector's icon tile takes its place.
+    img.dispatchEvent(new Event('error'));
+    await waitFor(() => expect(tile.querySelector('img')).toBeNull());
+    const icon = tile.querySelector('.thumb-tile')!;
+    expect(icon).toHaveAttribute('data-sector', 'textile');
+    expect(icon.querySelector('svg')).not.toBeNull();
   });
 
-  it('rolls an optimistic move back and says so in a toast when the server fails', async () => {
-    const { user } = await setup({
-      'PATCH /api/leads/lead-1/stage': { status: 500, body: { error: 'internal' } },
-    });
-    const row = () => within(table()).getByRole('row', { name: /Fixture Transport SARL/ });
-    expect(within(row()).getByText('System suggested')).toBeVisible();
-    await user.click(screen.getByRole('checkbox', { name: 'Select Fixture Transport SARL' }));
-    await user.click(screen.getByRole('button', { name: 'Bulk actions' }));
-    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
-    const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent('1 of 1 could not be moved to Dismissed and were put back.');
-    expect(within(row()).getByText('System suggested')).toBeVisible();
+  it('switches between Companies and People', async () => {
+    const { user, server } = await setup();
+    await user.click(within(panel()).getByRole('radio', { name: 'People' }));
+    expect(await within(panel()).findByText('Amel Ben Salah')).toBeVisible();
+    expect(server.to('GET /api/crm/people/cards').length).toBeGreaterThan(0);
   });
 
-  it('shows All, Confirmed and Dismissed as tabs with counts', async () => {
+  it('switches from the card grid to the CRM table', async () => {
     const { user } = await setup();
-    expect(screen.getByRole('tab', { name: /^All\s*2$/ })).toHaveAttribute('aria-selected', 'true');
-    await user.click(screen.getByRole('tab', { name: /^Confirmed\s*1$/ }));
-    expect(within(table()).queryByText('Fixture Transport SARL')).toBeNull();
-    expect(within(table()).getByText('Second Freight')).toBeVisible();
-    await user.click(screen.getByRole('tab', { name: /^Dismissed\s*0$/ }));
-    expect(screen.getByText('No leads in this view yet.')).toBeVisible();
+    await user.click(within(panel()).getByRole('radio', { name: 'Table' }));
+    expect(await within(panel()).findByRole('table')).toBeVisible();
+    await user.click(within(panel()).getByRole('radio', { name: 'Grid' }));
+    expect(within(panel()).queryByRole('table')).toBeNull();
   });
 
-  it('searches, filters by score and sorts', async () => {
+  it('hides parts of the cards from the display settings', async () => {
     const { user } = await setup();
-    await user.type(screen.getByRole('searchbox', { name: 'Search leads' }), 'second');
-    expect(within(table()).queryByText('Fixture Transport SARL')).toBeNull();
-    await user.clear(screen.getByRole('searchbox', { name: 'Search leads' }));
-    await user.selectOptions(screen.getByLabelText('Score'), '50 or more');
-    expect(within(table()).queryByText('Second Freight')).toBeNull();
-    await user.type(screen.getByRole('searchbox', { name: 'Search leads' }), 'zzz');
-    expect(screen.getByText('No leads match your search.')).toBeVisible();
-    await user.click(screen.getByRole('button', { name: 'Clear search and filters' }));
-    await user.selectOptions(screen.getByLabelText('Sort by'), 'Company A to Z');
-    const names = within(table())
-      .getAllByRole('row')
-      .slice(1)
-      .map((r) => within(r).getAllByRole('link')[0]!.textContent);
-    expect(names[0]).toBe('Fixture Transport SARL');
+    await user.click(within(panel()).getByRole('button', { name: 'Display settings' }));
+    await user.click(await screen.findByRole('checkbox', { name: 'Found date' }));
+    expect(within(grid()).queryByText('found 2d ago')).toBeNull();
   });
 
-  it('hides columns and tightens rows from the display settings popover', async () => {
-    const { user } = await setup();
-    await user.click(screen.getByRole('button', { name: 'Display settings' }));
-    await user.click(screen.getByRole('checkbox', { name: 'Score' }));
-    expect(within(table()).queryByRole('columnheader', { name: 'Score' })).toBeNull();
-    await user.click(screen.getByRole('radio', { name: 'Compact' }));
-    expect(table()).toHaveClass('density-compact');
+  it('searches, filters by score and by the Found window through the server', async () => {
+    const { user, server } = await setup();
+    await user.type(within(panel()).getByRole('searchbox', { name: 'Search leads' }), 'second');
+    await waitFor(() => expect(names(grid())).toEqual(['Second Freight']));
+    expect(server.to('GET /api/crm/companies/cards').at(-1)!.query.get('q')).toBe('second');
+    await user.clear(within(panel()).getByRole('searchbox', { name: 'Search leads' }));
+    await user.click(within(panel()).getByRole('radio', { name: '7 days' }));
+    await waitFor(() => expect(names(grid())).toEqual(['Fixture Transport SARL']));
+    expect(server.to('GET /api/crm/companies/cards').at(-1)!.query.get('foundDays')).toBe('7');
   });
 
   it('narrows to the chosen region', async () => {
-    const { server, user } = await setup();
+    const { user, server } = await setup();
     await screen.findByRole('option', { name: 'Sfax' });
-    await user.selectOptions(screen.getAllByLabelText('Region')[0]!, 'Sfax');
+    await user.selectOptions(screen.getByLabelText('Region'), 'Sfax');
     await waitFor(() =>
-      expect(server.to('GET /api/leads').some((c) => c.query.get('regionId') === 'sfax')).toBe(
-        true,
-      ),
+      expect(server.to('GET /api/crm/companies/cards').at(-1)!.query.get('regionId')).toBe('sfax'),
     );
   });
 });
 
+describe('Stage chips', () => {
+  it('filter the cards by stage and All brings them back', async () => {
+    const { user, server } = await setup();
+    const chips = within(panel()).getByRole('group', { name: 'Stage' });
+    expect(within(chips).getByRole('button', { name: /^All/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(names(grid())).toEqual(['Fixture Transport SARL', 'Second Freight']);
+
+    await user.click(within(chips).getByRole('button', { name: /^Investigating/ }));
+    await waitFor(() => expect(names(grid())).toEqual(['Second Freight']));
+    expect(within(chips).getByRole('button', { name: /^Investigating/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(server.to('GET /api/crm/companies/cards').at(-1)!.query.get('stage')).toBe(
+      'investigating',
+    );
+
+    await user.click(within(chips).getByRole('button', { name: /^All/ }));
+    await waitFor(() => expect(names(grid())).toHaveLength(2));
+  });
+
+  it('never asks for Noise, so removed leads do not show', async () => {
+    const { server } = await setup();
+    expect(server.to('GET /api/crm/companies/cards')[0]!.query.get('excludeNoise')).toBe('true');
+    expect(within(panel()).queryByRole('button', { name: /^Noise/ })).toBeNull();
+  });
+});
+
+describe('Expand', () => {
+  it('opens a large window with the same cards, and closes with Escape or the X', async () => {
+    const { user } = await setup();
+    const before = names(grid());
+    await user.click(within(panel()).getByRole('button', { name: 'Expand' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Recent leads' });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(dialog.className).toContain('modal-full');
+    await waitFor(() =>
+      expect(names(within(dialog).getByRole('list', { name: 'Companies found' }))).toEqual(before),
+    );
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // The focus is back on the control that opened it.
+    expect(within(panel()).getByRole('button', { name: 'Expand' })).toHaveFocus();
+
+    await user.click(within(panel()).getByRole('button', { name: 'Expand' }));
+    const again = await screen.findByRole('dialog', { name: 'Recent leads' });
+    await user.click(within(again).getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('keeps Tab inside the window', async () => {
+    const { user } = await setup();
+    await user.click(within(panel()).getByRole('button', { name: 'Expand' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Recent leads' });
+    await within(dialog).findByText('Second Freight');
+    for (let i = 0; i < 40; i++) {
+      await user.tab();
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    }
+    await user.tab({ shift: true });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+  });
+
+  it('lists folders by stage, run and sector with counts, and a folder filters the cards', async () => {
+    const { user, server } = await setup();
+    await user.click(within(panel()).getByRole('button', { name: 'Expand' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Recent leads' });
+    const folders = await within(dialog).findByRole('navigation', { name: 'Folders' });
+    expect(within(folders).getByRole('button', { name: /^All\s*2$/ })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+    expect(within(folders).getByRole('heading', { name: 'By stage' })).toBeVisible();
+    expect(within(folders).getByRole('heading', { name: 'By run' })).toBeVisible();
+    expect(within(folders).getByRole('heading', { name: 'By sector' })).toBeVisible();
+    await user.click(within(folders).getByRole('button', { name: /^Food\s*1$/ }));
+    const list = () => within(dialog).getByRole('list', { name: 'Companies found' });
+    await waitFor(() => expect(names(list())).toEqual(['Second Freight']));
+    expect(server.to('GET /api/crm/companies/cards').at(-1)!.query.get('sector')).toBe('food');
+    await user.click(within(folders).getByRole('button', { name: /^All\s*2$/ }));
+    await waitFor(() => expect(names(list())).toHaveLength(2));
+  });
+
+  it('ticks cards for bulk Move to and Remove', async () => {
+    const { user, server } = await setup(undefined, {
+      'POST /api/crm/cards/a/move': alpha,
+      'POST /api/crm/cards/b/move': beta,
+      'POST /api/crm/cards/a/remove': { ...alpha, stage: 'noise' },
+      'POST /api/crm/cards/b/remove': { ...beta, stage: 'noise' },
+    });
+    await user.click(within(panel()).getByRole('button', { name: 'Expand' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Recent leads' });
+    await within(dialog).findByText('Second Freight');
+    expect(within(dialog).queryByText('1 selected')).toBeNull();
+    await user.click(
+      within(dialog).getByRole('checkbox', { name: 'Select Fixture Transport SARL' }),
+    );
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Select Second Freight' }));
+    expect(within(dialog).getByText('2 selected')).toBeVisible();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Move to' }));
+    // Stages that need a form are not offered for a bulk move.
+    expect(screen.queryByRole('button', { name: 'Noise' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Decision-maker identified' })).toBeNull();
+    await user.click(await screen.findByRole('button', { name: 'Investigating' }));
+    await waitFor(() => expect(server.to('POST /api/crm/cards/a/move')).toHaveLength(1));
+    expect(server.to('POST /api/crm/cards/a/move')[0]!.body).toEqual({ stage: 'investigating' });
+    expect(server.to('POST /api/crm/cards/b/move')).toHaveLength(1);
+    await waitFor(() => expect(within(dialog).queryByText('2 selected')).toBeNull());
+
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Select Second Freight' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(server.to('POST /api/crm/cards/b/remove')).toHaveLength(1));
+  });
+
+  it('has no tick boxes in the small panel', async () => {
+    await setup();
+    expect(within(panel()).queryByRole('checkbox')).toBeNull();
+  });
+});
+
 describe('Dashboard fills the window', () => {
-  it('keeps 100 rows inside the one list that scrolls, under a header that stays', async () => {
+  it('keeps 100 leads inside the one grid that scrolls; the page itself holds only the panel', async () => {
     const many = Array.from({ length: 100 }, (_, i) =>
-      lead({
-        id: `lead-${i}`,
-        company: company({
-          id: `co-${i}`,
-          name: `Company ${i}`,
-          evidence: [fresh('placeId', 'p')],
-        }),
-      }),
+      companyCard({ id: `c${i}`, name: `Company ${i}`, leadId: `l${i}` }),
     );
-    const server = fakeServer(routes({ 'GET /api/leads': page(many) }));
-    const { container } = renderWith(<DashboardPage />, server, '/leadgen');
-    await screen.findByText('Company 0');
-    // Header row plus the 100 leads.
-    expect(within(table()).getAllByRole('row')).toHaveLength(101);
-    // The list is the card's own scroll area, and nothing around it grows with the rows.
-    const scroller = table().closest('.table-scroll');
+    const { container } = await setup(many);
+    await waitFor(() => expect(within(grid()).getAllByRole('listitem')).toHaveLength(50));
+
+    const main = container.querySelector('main.page.dash-page')!;
+    // Nothing around the grid grows with the cards: the page holds the panel, the panel holds the
+    // sections, and the grid is the one scroll area of the leads section.
+    expect([...main.children].map((c) => c.className)).toEqual(['dash-panel']);
+    expect(
+      [...main.querySelector('.dash-panel')!.children].map((c) => c.className.split(' ')[0]),
+    ).toEqual(expect.arrayContaining(['dp-header', 'panel-section', 'dp-bottom']));
+    const scroller = grid().closest('.tile-scroll');
     expect(scroller).not.toBeNull();
-    expect(scroller?.closest('.leads-card')).not.toBeNull();
-    expect(scroller?.querySelector('thead')).not.toBeNull();
-    const page_ = container.querySelector('main.page.dash.fit');
-    expect(page_).not.toBeNull();
-    // The page's pieces: header, the leads card, then one fixed row of charts and runs.
-    expect([...(page_?.children ?? [])].map((c) => c.className)).toEqual(
-      expect.arrayContaining(['dash-top', 'dash-main', 'dash-bottom']),
+    expect(scroller?.closest('.dp-leads')).not.toBeNull();
+    // Only the panel is allowed to scroll (on very short windows); the page never does.
+    expect(main.classList.contains('page')).toBe(true);
+    expect(document.body.scrollHeight).toBeLessThanOrEqual(document.body.clientHeight);
+  });
+
+  it('loads the next page of the grid when it is scrolled near the end', async () => {
+    const many = Array.from({ length: 70 }, (_, i) =>
+      companyCard({ id: `c${i}`, name: `Company ${i}`, leadId: `l${i}` }),
     );
+    const { server } = await setup(many);
+    await waitFor(() => expect(within(grid()).getAllByRole('listitem')).toHaveLength(50));
+    // jsdom has no layout, so every page looks "near the end": the rest arrives at once.
+    await waitFor(() => expect(within(grid()).getAllByRole('listitem')).toHaveLength(70));
+    expect(server.to('GET /api/crm/companies/cards').length).toBeGreaterThanOrEqual(2);
   });
 });
 
 describe('Dashboard empty state', () => {
   it('invites the first run when there are no leads yet', async () => {
-    const server = fakeServer(routes({ 'GET /api/leads': page([]) }));
+    const server = fakeServer(routes([]));
     renderWith(<DashboardPage />, server, '/leadgen');
-    const card = await screen.findByRole('region', { name: 'Recent leads' });
+    const section = await screen.findByRole('region', { name: 'Recent leads' });
     expect(
-      await within(card).findByText('No leads yet. Create a run to find your first ones.'),
+      await within(section).findByText('No leads yet. Create a run to find your first ones.'),
     ).toBeVisible();
     const user = userEvent.setup();
-    await user.click(within(card).getByRole('button', { name: 'Create run' }));
+    await user.click(within(section).getByRole('button', { name: 'Create run' }));
     expect(await screen.findByRole('dialog', { name: 'Create run' })).toBeVisible();
   });
 });
@@ -258,8 +482,8 @@ describe('Create run', () => {
     expect(server.to('POST /api/runs')).toHaveLength(0);
   });
 
-  it('starts on the region picked in the top bar, and confirms the new run with a toast', async () => {
-    const { server, user } = await setup({
+  it('starts on the region picked in the header, and confirms the new run with a toast', async () => {
+    const { server, user } = await setup(undefined, {
       'POST /api/runs': { status: 201, body: run({ id: 'run-9', status: 'running' }) },
     });
     await screen.findByRole('option', { name: 'Sfax' });
@@ -284,26 +508,89 @@ describe('Create run', () => {
 });
 
 describe('Dashboard charts', () => {
-  it('labels both charts and shares one date range', async () => {
+  const perDay = () => screen.getByRole('region', { name: 'Leads per day' });
+  const sector = () => screen.getByRole('region', { name: /by sector$/ });
+
+  it('gives each chart a slim header with its own 7 / 30 / 90 day range', async () => {
     const { user } = await setup();
-    const perDay = screen.getByRole('region', { name: 'Leads per day' });
     expect(
-      within(perDay).getByRole('img', {
-        name: /Leads per day\. 2 leads found in the last 30 days/,
-      }),
+      within(perDay()).getByRole('img', { name: /2 leads found in the last 30 days/ }),
     ).toBeVisible();
-    const sector = screen.getByRole('region', { name: 'Leads by sector' });
-    expect(within(sector).getByText('2 leads in the last 30 days.')).toBeVisible();
-    await user.click(screen.getByRole('radio', { name: 'Last 7 days' }));
-    expect(within(perDay).getByRole('img', { name: /in the last 7 days/ })).toBeVisible();
-    expect(within(sector).getByText('2 leads in the last 7 days.')).toBeVisible();
+    expect(within(sector()).getByText('2 leads in the last 30 days.')).toBeVisible();
+
+    // The two ranges are independent.
+    await user.click(within(perDay()).getByRole('radio', { name: '7d' }));
+    expect(
+      within(perDay()).getByRole('img', { name: /2 leads found in the last 7 days/ }),
+    ).toBeVisible();
+    expect(within(sector()).getByText('2 leads in the last 30 days.')).toBeVisible();
+
+    await user.click(within(sector()).getByRole('radio', { name: '90d' }));
+    expect(within(sector()).getByText('2 leads in the last 90 days.')).toBeVisible();
+    expect(within(perDay()).getByRole('img', { name: /in the last 7 days/ })).toBeVisible();
+
+    await user.click(within(perDay()).getByRole('radio', { name: '90d' }));
+    expect(within(perDay()).getByRole('img', { name: /in the last 90 days/ })).toBeVisible();
+  });
+
+  it('draws bars for 7 days or when most days are empty, and a line otherwise', async () => {
+    const spread = Array.from({ length: 24 }, (_, i) => chartLead(i, i));
+    const { user } = await setup(undefined, { 'GET /api/leads': page(spread) });
+    // 24 of the last 30 days have leads: a line.
+    expect(perDay().querySelector('.chart-line')).not.toBeNull();
+    expect(perDay().querySelectorAll('.chart-bar')).toHaveLength(0);
+    // The last 7 days: bars.
+    await user.click(within(perDay()).getByRole('radio', { name: '7d' }));
+    expect(perDay().querySelector('.chart-line')).toBeNull();
+    expect(perDay().querySelectorAll('.chart-bar')).toHaveLength(7);
+    // 24 of 90 days is mostly empty: bars again.
+    await user.click(within(perDay()).getByRole('radio', { name: '90d' }));
+    expect(perDay().querySelector('.chart-line')).toBeNull();
+    expect(perDay().querySelectorAll('.chart-bar')).toHaveLength(90);
+  });
+
+  it('keeps grid lines, axis numbers and a one-line summary', async () => {
+    await setup();
+    expect(perDay().querySelectorAll('.chart-grid').length).toBeGreaterThan(1);
+    expect(perDay().querySelectorAll('.chart-axis').length).toBeGreaterThan(1);
+    expect(within(perDay()).getByText(/2 leads found in the last 30 days/)).toBeVisible();
   });
 
   it('switches the sector chart between Leads and Cost', async () => {
     const { user } = await setup();
-    await user.click(screen.getByRole('radio', { name: 'Cost' }));
-    const sector = screen.getByRole('region', { name: 'Cost by sector' });
-    expect(within(sector).getByText(/\$1\.50 spent in total/)).toBeVisible();
-    expect(within(sector).getAllByText('$1.50').length).toBeGreaterThan(0);
+    await user.click(within(sector()).getByRole('radio', { name: 'Cost' }));
+    const cost = screen.getByRole('region', { name: 'Cost by sector' });
+    expect(within(cost).getByText(/\$1\.50 spent in total/)).toBeVisible();
+    expect(within(cost).getAllByText('$1.50').length).toBeGreaterThan(0);
+  });
+});
+
+describe('Runs section', () => {
+  it('lists compact rows with region, status, spend against the cap and found to leads', async () => {
+    await setup();
+    const section = screen.getByRole('region', { name: 'Runs' });
+    const row = within(section).getByRole('link', { name: 'Open run for sfax' });
+    expect(row).toHaveAttribute('href', '/leadgen/runs/run-1');
+    expect(within(row).getByText('sfax')).toBeVisible();
+    expect(within(row).getByText('$3.21 of $10.00')).toBeVisible();
+    expect(within(row).getByText('40 found → 6 leads')).toBeVisible();
+    expect(row.querySelector('progress')).not.toBeNull();
+  });
+
+  it('links an active run in the banner under the header', async () => {
+    const live = run({
+      id: 'run-live',
+      status: 'running',
+      currentStage: 'discover',
+      budgetCapUsd: 2,
+      spentUsd: 0.5,
+      finishedAt: null,
+    });
+    await setup(undefined, {
+      'GET /api/runs': (req: FakeRequest) =>
+        req.query.has('status') ? page([live]) : page([live, run()]),
+    });
+    const link = await screen.findByRole('link', { name: 'Run active: sfax' });
+    expect(link).toHaveAttribute('href', '/leadgen/runs/run-live');
   });
 });

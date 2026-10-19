@@ -198,10 +198,26 @@ describe('fixed to the window', () => {
   });
 
   it('scrolls long lists inside their card, under a header that stays', () => {
-    expect(rule('.leads-card .table-scroll')).toMatch(/overflow:\s*auto/);
-    expect(rule('.lead-table thead th')).toMatch(/position:\s*sticky/);
+    expect(rule('.tile-scroll')).toMatch(/overflow(-y)?:\s*auto/);
+    expect(rule('.shell-main > .page.dash-page')).toMatch(/overflow:\s*hidden/);
     expect(rule('.fit-body > .widget > .widget-body')).toMatch(/overflow-y:\s*auto/);
     expect(rule('.page-scroll')).toMatch(/overflow-y:\s*auto/);
+  });
+});
+
+describe('dashboard panel layout', () => {
+  it('is one bordered panel with one hard shadow whose sections are split by 2px lines', () => {
+    expect(rule('.dash-panel')).toMatch(/box-shadow:/);
+    expect(rule('.dash-panel')).toMatch(/container:\s*dashpanel/);
+    expect(rule('.panel-section')).toMatch(/min-height:\s*0/);
+    expect(rule('.dp-leads')).toMatch(/flex:\s*55/);
+    expect(rule('.dp-bottom')).toMatch(/flex:\s*35/);
+    expect(rule('.panel-head')).toMatch(/height:\s*32px/);
+  });
+
+  it('scrolls the card grid and the runs inside their sections', () => {
+    expect(rule('.panel-body')).toMatch(/overflow:\s*hidden auto/);
+    expect(rule('.panel-body')).toMatch(/min-height:\s*0/);
   });
 });
 

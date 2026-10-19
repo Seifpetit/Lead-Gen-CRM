@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { company, contact, evidence, lead } from '../../test/fixtures.js';
-import { applyView, foundAt, leadsBySector, leadsPerDay, type LeadFilters } from './leadsView.js';
+import { foundAt, leadsBySector, leadsPerDay, showAsBars } from './leadsView.js';
 
 const NOW = Date.parse('2026-10-18T12:00:00Z');
 const noRuns = new Map<string, string>();
@@ -38,36 +38,11 @@ const c = lead({
   score: { companyFit: 50, contactFit: 0, reachability: 0, total: 50 },
 });
 const runs = new Map([['run-old', '2026-10-10T09:00:00Z']]);
-const view = (over: Partial<LeadFilters> = {}): string[] =>
-  applyView([a, b, c], { tab: 'all', query: '', score: 'any', sort: 'newest', ...over }, runs).map(
-    (l) => l.id,
-  );
-
 describe('foundAt', () => {
   it('is the earliest time any fact was read, then the run’s start', () => {
     expect(foundAt(b, noRuns)).toBe('2026-10-15T08:00:00.000Z');
     expect(foundAt(c, runs)).toBe('2026-10-10T09:00:00Z');
     expect(foundAt(c, noRuns)).toBeNull();
-  });
-});
-
-describe('applyView', () => {
-  it('sorts newest first, by score, or by company', () => {
-    expect(view()).toEqual(['a', 'b', 'c']);
-    expect(view({ sort: 'score' })).toEqual(['b', 'c', 'a']);
-    expect(view({ sort: 'company' })).toEqual(['a', 'b', 'c']);
-  });
-  it('filters by tab and minimum score', () => {
-    expect(view({ tab: 'confirmed' })).toEqual(['b']);
-    expect(view({ tab: 'dismissed' })).toEqual(['c']);
-    expect(view({ score: '50' })).toEqual(['b', 'c']);
-    expect(view({ score: '70' })).toEqual(['b']);
-  });
-  it('searches company, person, title and website, ignoring case', () => {
-    expect(view({ query: 'GAMMA' })).toEqual(['c']);
-    expect(view({ query: 'sami' })).toEqual(['b']);
-    expect(view({ query: 'logistique' })).toEqual(['b']);
-    expect(view({ query: 'nothing like this' })).toEqual([]);
   });
 });
 
@@ -91,5 +66,18 @@ describe('charts data', () => {
       { sectorId: 'textile', count: 1 },
       { sectorId: 'food', count: 1 },
     ]);
+  });
+});
+
+describe('bars or a line', () => {
+  const days = (counts: number[]) => counts.map((count, i) => ({ day: `d${i}`, count }));
+  it('draws bars for a week or less, whatever the values', () => {
+    expect(showAsBars(days([3, 4, 5, 6, 2, 3, 9]))).toBe(true);
+  });
+  it('draws bars when most days are empty, and a line when most days have leads', () => {
+    expect(showAsBars(days([...Array(20).fill(0), 3, 0, 0, 5, 0, 0, 0, 0, 1, 0]))).toBe(true);
+    expect(showAsBars(days(Array.from({ length: 30 }, (_, i) => (i % 5 === 0 ? 0 : 2))))).toBe(
+      false,
+    );
   });
 });
