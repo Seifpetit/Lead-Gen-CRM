@@ -100,6 +100,8 @@ npm run db:migrate           # loads the new outlines and bounds into the databa
   `SESSION_MAX_DAYS`), and logout deletes it server-side.
 - **Removed CRM cards** wait in Noise for `NOISE_RETENTION_DAYS` (default 30); a daily job in the
   backend then deletes them and keeps a minimal marker (see `backend/routes/README.md`).
+- **A run's spend cap** is at least $0.50 and at most `MAX_RUN_CAP_USD` (default $50); the server
+  refuses anything else and the Start a run window shows the same limits.
 - **Every route requires a session** unless it is explicitly marked public (only login, sign-up
   and logout are). Unknown routes return 401 too. Handlers pass `currentUser(request).id` to the
   data layer, whose functions only accept that branded `UserId`. Another user's record and a

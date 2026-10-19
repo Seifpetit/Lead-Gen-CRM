@@ -1,3 +1,4 @@
+import { Select } from '../../components/shared/Select.js';
 import type { Coverage, Lead, RunSummary } from '@lead-gen-crm/shared';
 import { Plus } from 'lucide-react';
 import { useCallback, useId, useMemo, useState, type CSSProperties } from 'react';
@@ -122,19 +123,16 @@ export function DashboardPage() {
             <label htmlFor={regionSelect} className="visually-hidden">
               {t('dash.region')}
             </label>
-            <select
+            <Select
               id={regionSelect}
               className="quiet-select"
               value={regionId}
-              onChange={(e) => setRegionId(e.target.value)}
-            >
-              <option value="">{t('dash.region.all')}</option>
-              {(regions.data?.items ?? []).map((r) => (
-                <option key={r.regionId} value={r.regionId}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
+              onChange={setRegionId}
+              options={[
+                { value: '', label: t('dash.region.all') },
+                ...(regions.data?.items ?? []).map((r) => ({ value: r.regionId, label: r.name })),
+              ]}
+            />
             <button
               type="button"
               className="button button-primary button-icon-text"

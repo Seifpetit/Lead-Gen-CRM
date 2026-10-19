@@ -1,3 +1,4 @@
+import { Select } from '../../../components/shared/Select.js';
 import { regionLabel } from '@lead-gen-crm/shared';
 import type { Coverage, RegionSummary, RunSummary } from '@lead-gen-crm/shared';
 import { useId, useMemo, useState } from 'react';
@@ -46,19 +47,16 @@ export function RunHistory({
     <div className="cov-history">
       <div className="cov-history-bar">
         <label htmlFor={filterId}>{t('cov.region')}</label>
-        <select
+        <Select
           id={filterId}
           className="quiet-select"
           value={regionId}
-          onChange={(e) => setRegionId(e.target.value)}
-        >
-          <option value="">{t('cov.history.all')}</option>
-          {regions.map((r) => (
-            <option key={r.regionId} value={r.regionId}>
-              {r.name}
-            </option>
-          ))}
-        </select>
+          onChange={setRegionId}
+          options={[
+            { value: '', label: t('cov.history.all') },
+            ...regions.map((r) => ({ value: r.regionId, label: r.name })),
+          ]}
+        />
       </div>
       {runs.error !== null && !runs.data ? (
         <ErrorState error={runs.error} onRetry={runs.reload} />

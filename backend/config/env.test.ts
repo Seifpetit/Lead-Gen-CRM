@@ -17,6 +17,7 @@ describe('loadEnv', () => {
       SESSION_IDLE_HOURS: 12,
       SESSION_MAX_DAYS: 7,
       NOISE_RETENTION_DAYS: 30,
+      MAX_RUN_CAP_USD: 50,
       HOST: '127.0.0.1',
       DEV_ADMIN_LOGIN: false,
       CLASSIFIER_MODEL: 'claude-haiku-5-5',
@@ -50,6 +51,14 @@ describe('loadEnv API settings', () => {
     const env = loadEnv(valid);
     expect(env.PAID_RUNS_ENABLED).toBe(false);
     expect(env.APIFY_WEBHOOK_SECRET).toBeUndefined();
+  });
+
+  it('caps one run at $50 unless told otherwise, and never below $0.50', () => {
+    expect(loadEnv(valid).MAX_RUN_CAP_USD).toBe(50);
+    expect(loadEnv({ ...valid, MAX_RUN_CAP_USD: '120' }).MAX_RUN_CAP_USD).toBe(120);
+    for (const bad of ['0.1', '-5', 'lots']) {
+      expect(() => loadEnv({ ...valid, MAX_RUN_CAP_USD: bad })).toThrow('MAX_RUN_CAP_USD');
+    }
   });
 
   it('keeps removed CRM cards 30 days unless told otherwise', () => {

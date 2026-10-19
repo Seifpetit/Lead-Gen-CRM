@@ -1,5 +1,5 @@
 import type { Page, RunDetail, RunPreview, RunSummary, StartBlocker } from '@lead-gen-crm/shared';
-import { RUN_MODES, RUN_STATUSES } from '@lead-gen-crm/shared';
+import { MIN_RUN_CAP_USD, RUN_MODES, RUN_STATUSES } from '@lead-gen-crm/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { currentUser } from '../auth/plugin.js';
@@ -17,9 +17,6 @@ import { RunStartError } from '../runner/orchestrator.js';
 import { cleanWordings, MAX_CUSTOM_WORDINGS, MAX_WORDING_CHARS } from '../stages/queryGrid.js';
 import type { RouteDeps } from './deps.js';
 import { ApiError, body, csvList, notFound, PageQuery, query, toPage, uuidParam } from './http.js';
-
-/** The most a single run may be allowed to spend; a typo guard, not a budget. */
-export const MAX_RUN_CAP_USD = 10_000;
 
 /** Most cells a run can be restricted to. */
 const MAX_CELL_KEYS = 100;
@@ -54,19 +51,23 @@ function nonEmptyPlan(v: {
 }
 const EMPTY_PLAN = { message: 'Pick a sector or add a wording', path: ['sectorIds'] };
 
-const PreviewBody = z
-  .object({ ...PlanFields, budgetCapUsd: z.number().positive().max(MAX_RUN_CAP_USD).optional() })
-  .strict()
-  .refine(nonEmptyPlan, EMPTY_PLAN);
+// The cap is a typo guard: a preview accepts anything up to the maximum (so a form can show an
+// estimate while a cap is being typed), a start needs at least MIN_RUN_CAP_USD.
+const previewBody = (maxCap: number) =>
+  z
+    .object({ ...PlanFields, budgetCapUsd: z.number().positive().max(maxCap).optional() })
+    .strict()
+    .refine(nonEmptyPlan, EMPTY_PLAN);
 
-const StartBody = z
-  .object({
-    ...PlanFields,
-    budgetCapUsd: z.number().positive().max(MAX_RUN_CAP_USD),
-    confirm: z.literal(true),
-  })
-  .strict()
-  .refine(nonEmptyPlan, EMPTY_PLAN);
+const startBody = (maxCap: number) =>
+  z
+    .object({
+      ...PlanFields,
+      budgetCapUsd: z.number().min(MIN_RUN_CAP_USD).max(maxCap),
+      confirm: z.literal(true),
+    })
+    .strict()
+    .refine(nonEmptyPlan, EMPTY_PLAN);
 
 const ListQuery = PageQuery.extend({ status: csvList(z.enum(RUN_STATUSES)) });
 
@@ -99,6 +100,8 @@ function blocked(blockers: StartBlocker[]): ApiError {
 
 export async function runRoutes(app: FastifyInstance, deps: RouteDeps): Promise<void> {
   const { db, runner } = deps;
+  const PreviewBody = previewBody(deps.maxRunCapUsd);
+  const StartBody = startBody(deps.maxRunCapUsd);
 
   // Estimated volume and cost. Reads history and price tables only: nothing is started,
   // written or spent, so it is safe to call as often as the form changes.

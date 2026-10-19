@@ -1,4 +1,6 @@
 import {
+  DEFAULT_MAX_RUN_CAP_USD,
+  MIN_RUN_CAP_USD,
   regionLabel,
   type Coverage,
   type RegionSummary,
@@ -7,6 +9,7 @@ import {
 } from '@lead-gen-crm/shared';
 import type { Translate } from '../../../i18n/index.js';
 import { yieldOf } from '../../../lib/coverageView.js';
+import { parseAmount } from '../../../lib/parseAmount.js';
 
 // What Start a run fills in and decides before the person touches anything. Pure, no React.
 
@@ -17,11 +20,30 @@ export const QUICK_CAPS_USD = [1, 2, 5] as const;
 export const CONFIRM_ABOVE_USD = 5;
 const CAP_KEY = 'leadgen.run.cap';
 
-/** The cap used for the last run started, else $2. */
-export function readCap(): number {
+/** The least and the most a run's cap may be; the server's own maximum arrives with the estimate. */
+export const MIN_CAP_USD = MIN_RUN_CAP_USD;
+export const MAX_CAP_USD = DEFAULT_MAX_RUN_CAP_USD;
+
+/** Why a typed cap cannot be used, or null when it can. */
+export type CapProblem = 'invalid' | 'low' | 'high';
+
+export function capProblem(text: string, max = MAX_CAP_USD): CapProblem | null {
+  const n = parseAmount(text);
+  if (n === null) return 'invalid';
+  if (n < MIN_CAP_USD) return 'low';
+  if (n > max) return 'high';
+  return null;
+}
+
+/**
+ * The cap used for the last run started, else $2. A remembered cap outside the allowed range
+ * (an old or damaged value) is ignored rather than shown as a fresh choice.
+ */
+export function readCap(max = MAX_CAP_USD): number {
   try {
-    const n = Number(window.localStorage.getItem(CAP_KEY));
-    return Number.isFinite(n) && n > 0 ? n : DEFAULT_CAP_USD;
+    const raw = window.localStorage.getItem(CAP_KEY);
+    const n = raw === null ? null : parseAmount(raw);
+    return n !== null && n >= MIN_CAP_USD && n <= max ? n : DEFAULT_CAP_USD;
   } catch {
     return DEFAULT_CAP_USD;
   }
@@ -38,10 +60,9 @@ export function saveCap(cap: number): void {
 /** The text of a cap field that holds a number of dollars. */
 export const capText = (cap: number): string => cap.toFixed(2);
 
-/** A number from the cap field, or null when it is empty, not a number or not above zero. */
-export function parseCap(text: string): number | null {
-  const n = Number(text);
-  return text.trim() !== '' && Number.isFinite(n) && n > 0 ? n : null;
+/** The cap in a field, or null when it is empty, not a number, or outside the allowed range. */
+export function parseCap(text: string, max = MAX_CAP_USD): number | null {
+  return capProblem(text, max) === null ? parseAmount(text) : null;
 }
 
 /**

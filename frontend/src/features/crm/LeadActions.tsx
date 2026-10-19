@@ -1,3 +1,4 @@
+import { Select } from '../../components/shared/Select.js';
 import { CRM_STAGES, type CrmStage, type Lead } from '@lead-gen-crm/shared';
 import { useId, useState } from 'react';
 import { useApi } from '../../api/context.js';
@@ -93,24 +94,21 @@ export function LeadActions({
         <label htmlFor={selectId} className="visually-hidden">
           {t('lead.moveTo.label', { name })}
         </label>
-        <select
+        <Select
           id={selectId}
           value=""
           disabled={busy}
-          onChange={(e) => {
-            const to = e.target.value as CrmStage;
-            if (!to) return;
+          placeholder={busy ? t('lead.moving') : t('lead.moveTo')}
+          onChange={(v) => {
+            const to = v as CrmStage;
             if (to === 'opted_out') setOptOut(true);
             else void move(to);
           }}
-        >
-          <option value="">{busy ? t('lead.moving') : t('lead.moveTo')}</option>
-          {CRM_STAGES.filter((s) => s !== stage).map((s) => (
-            <option key={s} value={s}>
-              {t(`crmStage.${s}` as StringKey)}
-            </option>
-          ))}
-        </select>
+          options={CRM_STAGES.filter((s) => s !== stage).map((s) => ({
+            value: s,
+            label: t(`crmStage.${s}` as StringKey),
+          }))}
+        />
       </div>
       {failure && !optOut && (
         <p className="form-error" role="alert">

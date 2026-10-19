@@ -14,6 +14,7 @@ import {
   run,
 } from '../../test/fixtures.js';
 import { renderWith } from '../../test/render.js';
+import { chooseOption } from '../../test/select.js';
 import { ago, companyCard, personCard } from '../crm/boardTestKit.js';
 import { DashboardPage } from './DashboardPage.js';
 
@@ -325,8 +326,7 @@ describe('Recent leads cards', () => {
 
   it('narrows to the chosen region', async () => {
     const { user, server } = await setup();
-    await screen.findByRole('option', { name: 'Sfax' });
-    await user.selectOptions(screen.getByLabelText('Region'), 'Sfax');
+    await chooseOption(user, await screen.findByLabelText('Region'), 'Sfax');
     await waitFor(() =>
       expect(server.to('GET /api/crm/companies/cards').at(-1)!.query.get('regionId')).toBe('sfax'),
     );
@@ -805,11 +805,10 @@ describe('Create run', () => {
     const { server, user } = await setup(undefined, {
       'POST /api/runs': { status: 201, body: run({ id: 'run-9', status: 'running' }) },
     });
-    await screen.findByRole('option', { name: 'Sfax' });
-    await user.selectOptions(screen.getAllByLabelText('Region')[0]!, 'Sfax');
+    await chooseOption(user, screen.getAllByLabelText('Region')[0]!, 'Sfax');
     await user.click(screen.getByRole('button', { name: 'Create run' }));
     const dialog = await screen.findByRole('dialog', { name: 'Start a run' });
-    await waitFor(() => expect(within(dialog).getByLabelText('Region')).toHaveValue('sfax'));
+    await waitFor(() => expect(within(dialog).getByLabelText('Region')).toHaveTextContent('Sfax'));
     const start = within(dialog).getByRole('button', { name: 'Start run, up to $2.00' });
     await waitFor(() => expect(start).toHaveAttribute('aria-disabled', 'false'));
     await user.click(start);

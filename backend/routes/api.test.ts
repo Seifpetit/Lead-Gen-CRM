@@ -53,7 +53,7 @@ afterAll(async () => {
   await db.end();
 });
 
-async function mkApp(opts: { paid?: boolean; secret?: string | null } = {}) {
+async function mkApp(opts: { paid?: boolean; secret?: string | null; maxRunCapUsd?: number } = {}) {
   auth = new AuthService(db, { ...DEFAULT_POLICY });
   const a = await buildApp({
     db,
@@ -61,6 +61,7 @@ async function mkApp(opts: { paid?: boolean; secret?: string | null } = {}) {
     runner: world.runner,
     paidRunsEnabled: opts.paid ?? true,
     webhookSecret: opts.secret === undefined ? SECRET : opts.secret,
+    ...(opts.maxRunCapUsd === undefined ? {} : { maxRunCapUsd: opts.maxRunCapUsd }),
   });
   extraApps.push(a);
   return a;
@@ -448,7 +449,13 @@ describe('POST /api/runs/preview', () => {
       mode: 'normal',
       volume: { kind: 'estimate' },
       cost: { kind: 'estimate' },
-      limits: { budgetCapUsd: 10, maxActiveRuns: 2, activeRuns: 0, monthCapUsd: null },
+      limits: {
+        budgetCapUsd: 10,
+        maxActiveRuns: 2,
+        maxRunCapUsd: 50,
+        activeRuns: 0,
+        monthCapUsd: null,
+      },
       blockers: [],
     });
     expect(p.queriesTotal).toBeGreaterThan(0);
@@ -659,6 +666,40 @@ describe('POST /api/runs', () => {
     }
     expect((await start(alice, { surprise: 1 })).statusCode).toBe(400);
     expect(await rowCounts()).toEqual(before);
+  });
+
+  it('keeps a run cap between $0.50 and the configured maximum (default $50)', async () => {
+    const before = await rowCounts();
+    for (const cap of [0.4, 0.49, 50.01, 5_000_000]) {
+      const res = await start(alice, { budgetCapUsd: cap });
+      expect(res.statusCode, String(cap)).toBe(400);
+      expect(res.json().issues.some((i: { path: string }) => i.path === 'budgetCapUsd')).toBe(true);
+    }
+    expect(await rowCounts()).toEqual(before);
+    expect((await start(alice, { budgetCapUsd: 0.5 })).statusCode).toBe(201);
+    const wide = await mkApp({ maxRunCapUsd: 100 });
+    const ok = await call(
+      alice,
+      'POST',
+      '/api/runs/preview',
+      { regionId: 'tunis', budgetCapUsd: 80 },
+      { on: wide },
+    );
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().limits.maxRunCapUsd).toBe(50);
+    const tooMuch = await call(
+      alice,
+      'POST',
+      '/api/runs/preview',
+      { regionId: 'tunis', budgetCapUsd: 101 },
+      { on: wide },
+    );
+    expect(tooMuch.statusCode).toBe(400);
+    const preview51 = await call(alice, 'POST', '/api/runs/preview', {
+      regionId: 'tunis',
+      budgetCapUsd: 51,
+    });
+    expect(preview51.statusCode).toBe(400);
   });
 
   it('is closed while paid runs are switched off, after validating the request', async () => {

@@ -38,6 +38,8 @@ const EnvSchema = z.object({
   CLASSIFIER_MODEL: z.string().min(1).default('claude-haiku-5-5'),
   /** Most the classifier may spend on one run, in USD. */
   CLASSIFIER_RUN_CAP_USD: z.coerce.number().positive().default(0.5),
+  /** The most one run's spend cap may be, in USD. Typed caps above it are refused. */
+  MAX_RUN_CAP_USD: z.coerce.number().min(0.5).default(50),
   /** A session ends after this many hours without a request. */
   // Days a removed CRM card waits in Noise before the daily job deletes it (a marker stays).
   NOISE_RETENTION_DAYS: z.coerce.number().int().positive().default(30),

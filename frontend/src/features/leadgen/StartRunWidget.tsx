@@ -1,6 +1,8 @@
 import type { RegionSummary, RunPreview, RunSummary } from '@lead-gen-crm/shared';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useApi } from '../../api/context.js';
+import { NumberStepper } from '../../components/shared/NumberStepper.js';
+import { Select } from '../../components/shared/Select.js';
 import { ToggleGroup } from '../../components/shared/ToggleGroup.js';
 import { ErrorState } from '../../components/states.js';
 import { useT } from '../../i18n/index.js';
@@ -20,7 +22,11 @@ import { RegionChips } from './startrun/RegionChips.js';
 import { SectorChips } from './startrun/SectorChips.js';
 import {
   QUICK_CAPS_USD,
+  capProblem,
   capText as formatCap,
+  MAX_CAP_USD,
+  MIN_CAP_USD,
+  type CapProblem,
   combinePreviews,
   confirmReason,
   parseCap,
@@ -70,6 +76,15 @@ export function StartRunWidget({
   const [cellKeys, setCellKeys] = useState<string[]>([]);
   const [capText, setCapText] = useState(() => formatCap(readCap()));
   const [capTouched, setCapTouched] = useState(false);
+  // The server's own maximum arrives with the first estimate; until then the default holds.
+  const [serverMax, setServerMax] = useState<number | null>(null);
+  const maxCap = serverMax ?? MAX_CAP_USD;
+  const capMessage = (issue: CapProblem) =>
+    issue === 'low'
+      ? t('start.cap.low', { min: formatUsd(MIN_CAP_USD) })
+      : issue === 'high'
+        ? t('start.cap.high', { max: formatUsd(maxCap) })
+        : t('start.cap.invalid');
   const [wordingsText, setWordingsText] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -110,7 +125,8 @@ export function StartRunWidget({
   );
   const selected = picked ?? prefilledSectors ?? suggested;
 
-  const cap = parseCap(capText);
+  const capIssue = capProblem(capText, maxCap);
+  const cap = parseCap(capText, maxCap);
   const wordings = useMemo(() => parseWordings(wordingsText), [wordingsText]);
   const problem = wordingsProblem(wordings);
   const planned = selected.length > 0 || wordings.length > 0;
@@ -154,6 +170,10 @@ export function StartRunWidget({
   const estimating = previews.loading || !settled;
   const list = canPreview ? previews.data : null;
   const data = list ? combinePreviews(list) : null;
+  const dataMax = data?.limits.maxRunCapUsd ?? null;
+  useEffect(() => {
+    if (dataMax !== null) setServerMax(dataMax);
+  }, [dataMax]);
   const toStart = runsToStart(targets.length, list?.[0]?.limits ?? null);
   const names = (ids: string[]) =>
     ids.map((id) => regions.data?.items.find((r) => r.regionId === id)?.name ?? id);
@@ -165,7 +185,7 @@ export function StartRunWidget({
   else if (!many && selectedRegion && !selectedRegion.hasBounds) reason = t('start.noBounds');
   else if (!planned) reason = t('start.reason.sector');
   else if (problem !== null) reason = t('start.reason.wordings');
-  else if (cap === null) reason = t('start.cap.invalid');
+  else if (cap === null) reason = capMessage(capIssue ?? 'invalid');
   else if (estimating) reason = t('start.reason.estimating');
   else if (previews.error !== null && !previews.data) reason = t('start.reason.estimateFailed');
   else if (blocker) reason = blocker;
@@ -242,9 +262,8 @@ export function StartRunWidget({
     ? regions.data?.items.find((r) => r.regionId === sugg.regionId)
     : undefined;
   const regionOption = (r: RegionSummary) => {
-    if (!r.hasBounds) return t('start.region.noBounds', { name: r.name });
+    if (!r.hasBounds) return t('start.region.noBounds');
     return t('start.region.option', {
-      name: r.name,
       leads: t(r.leads === 1 ? 'start.region.lead' : 'start.region.leads', { n: r.leads }),
       progress: t(`start.region.${regionProgress(r)}`),
     });
@@ -253,39 +272,6 @@ export function StartRunWidget({
   return (
     <>
       <div className="modal-body sr" ref={root}>
-        <section className="sr-suggest" aria-live="polite" aria-label={t('start.suggestion.title')}>
-          <strong>{t('start.suggestion.title')}</strong>
-          {suggestion.loading && !sugg ? (
-            <span className="muted">{t('start.suggestion.loading')}</span>
-          ) : suggestion.error && !sugg ? (
-            <span className="muted">{t('start.suggestion.none')}</span>
-          ) : sugg?.regionId ? (
-            <>
-              <span className="sr-suggest-text" title={sugg.reason}>
-                {suggestedRegion?.name ?? sugg.regionId}: {sugg.reason}
-              </span>
-              <button
-                type="button"
-                className="button"
-                onClick={() => {
-                  setMany(false);
-                  setRegion(sugg.regionId!);
-                  setPicked(null);
-                  setPrefilledSectors(null);
-                  setCellKeys([]);
-                }}
-                disabled={!many && region === sugg.regionId}
-              >
-                {t('start.suggestion.use', { region: suggestedRegion?.name ?? sugg.regionId })}
-              </button>
-            </>
-          ) : (
-            <span className="muted sr-suggest-text">
-              {sugg?.reason || t('start.suggestion.none')}
-            </span>
-          )}
-        </section>
-
         <div className="sr-cols">
           <div className="sr-left">
             {many ? (
@@ -306,29 +292,38 @@ export function StartRunWidget({
             ) : (
               <div className="form-field">
                 <label htmlFor={regionId}>{t('start.region')}</label>
-                <select
+                <Select
                   id={regionId}
                   value={region}
-                  data-autofocus
-                  onChange={(e) => {
-                    setRegion(e.target.value);
+                  autoFocus
+                  placeholder={
+                    regions.loading && !regions.data
+                      ? t('start.region.loading')
+                      : t('start.region.placeholder')
+                  }
+                  options={[
+                    {
+                      value: '',
+                      label:
+                        regions.loading && !regions.data
+                          ? t('start.region.loading')
+                          : t('start.region.placeholder'),
+                    },
+                    ...(regions.data?.items ?? []).map((r) => ({
+                      value: r.regionId,
+                      label: r.name,
+                      secondary: regionOption(r),
+                      disabled: !r.hasBounds,
+                    })),
+                  ]}
+                  onChange={(v) => {
+                    setRegion(v);
                     setPicked(null);
                     setPrefilledSectors(null);
                     setCellKeys([]);
                     setConfirming(false);
                   }}
-                >
-                  <option value="">
-                    {regions.loading && !regions.data
-                      ? t('start.region.loading')
-                      : t('start.region.placeholder')}
-                  </option>
-                  {regions.data?.items.map((r) => (
-                    <option key={r.regionId} value={r.regionId} disabled={!r.hasBounds}>
-                      {regionOption(r)}
-                    </option>
-                  ))}
-                </select>
+                />
                 {regions.error !== null && !regions.data && (
                   <ErrorState error={regions.error} onRetry={regions.reload} />
                 )}
@@ -353,21 +348,21 @@ export function StartRunWidget({
             <div className="form-field sr-cap">
               <label htmlFor={capId}>{t(toStart > 1 ? 'start.cap.each' : 'start.cap')}</label>
               <div className="sr-cap-row">
-                <input
+                <NumberStepper
                   id={capId}
-                  type="number"
-                  inputMode="decimal"
-                  min="0.01"
-                  step="0.01"
-                  required
+                  prefix="$"
                   value={capText}
-                  onChange={(e) => {
-                    setCapText(e.target.value);
+                  min={MIN_CAP_USD}
+                  max={maxCap}
+                  step={0.5}
+                  decimals={2}
+                  invalid={capTouched && capIssue !== null}
+                  aria-describedby={capHelpId}
+                  onChange={(text) => {
+                    setCapText(text);
                     setConfirming(false);
                   }}
                   onBlur={() => setCapTouched(true)}
-                  aria-describedby={capHelpId}
-                  aria-invalid={capTouched && cap === null}
                 />
                 <ToggleGroup
                   label={t('start.cap.quick')}
@@ -380,8 +375,8 @@ export function StartRunWidget({
                   options={QUICK_CAPS_USD.map((n) => ({ value: String(n), label: `$${n}` }))}
                 />
               </div>
-              <small id={capHelpId} className={capTouched && cap === null ? 'form-error' : 'muted'}>
-                {capTouched && cap === null ? t('start.cap.invalid') : t('start.cap.help')}
+              <small id={capHelpId} className={capTouched && capIssue ? 'form-error' : 'muted'}>
+                {capTouched && capIssue ? capMessage(capIssue) : t('start.cap.help')}
               </small>
             </div>
           </div>
@@ -395,6 +390,38 @@ export function StartRunWidget({
               onRetry={previews.reload}
               cap={cap}
             />
+            <section className="sr-suggest" aria-live="polite">
+              <strong>{t('start.suggestion.title')}</strong>
+              {suggestion.loading && !sugg ? (
+                <span className="muted">{t('start.suggestion.loading')}</span>
+              ) : suggestion.error && !sugg ? (
+                <span className="muted">{t('start.suggestion.none')}</span>
+              ) : sugg?.regionId ? (
+                <>
+                  <span className="sr-suggest-text" title={sugg.reason}>
+                    {suggestedRegion?.name ?? sugg.regionId}: {sugg.reason}
+                  </span>
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => {
+                      setMany(false);
+                      setRegion(sugg.regionId!);
+                      setPicked(null);
+                      setPrefilledSectors(null);
+                      setCellKeys([]);
+                    }}
+                    disabled={!many && region === sugg.regionId}
+                  >
+                    {t('start.suggestion.use', { region: suggestedRegion?.name ?? sugg.regionId })}
+                  </button>
+                </>
+              ) : (
+                <span className="muted sr-suggest-text">
+                  {sugg?.reason || t('start.suggestion.none')}
+                </span>
+              )}
+            </section>
           </div>
         </div>
 

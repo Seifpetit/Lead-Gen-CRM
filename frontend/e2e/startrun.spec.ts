@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 // The Start a run window with 15 sectors and a live estimate: it never scrolls at desktop sizes,
 // stacks its two columns below 800px, and starts nothing until Start is pressed. Sign-in is real;
@@ -84,6 +84,7 @@ const PREVIEW = {
     monthRemainingUsd: 45,
     activeRuns: 0,
     maxActiveRuns: 2,
+    maxRunCapUsd: 50,
   },
   blockers: [],
   assumptions: ['Each query returns about half its maximum places (no history yet)'],
@@ -144,6 +145,12 @@ async function signIn(page: Page) {
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
 }
 
+/** Opens the Region list and clicks one option (the list is the app's own, not a native select). */
+async function pickRegion(dialog: Locator, option: string) {
+  await dialog.getByRole('combobox', { name: 'Region' }).click();
+  await dialog.page().getByRole('option', { name: option }).click();
+}
+
 /** True when nothing inside the window needs scrolling. */
 const fits = (page: Page) =>
   page.evaluate(() => {
@@ -166,7 +173,7 @@ for (const size of [
     await page.goto('/leadgen');
     await page.getByRole('button', { name: 'Create run' }).first().click();
     const dialog = page.getByRole('dialog', { name: 'Start a run' });
-    await dialog.getByLabel('Region').selectOption({ label: 'Sfax, 32 leads, partly covered' });
+    await pickRegion(dialog, 'Sfax, 32 leads, partly covered');
     await expect(dialog.getByRole('button', { name: 'Textile' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -176,6 +183,16 @@ for (const size of [
     expect(await fits(page)).toEqual({ body: true, dialog: true, inWindow: true });
     if (process.env.STARTRUN_SHOTS)
       await page.screenshot({ path: `${process.env.STARTRUN_SHOTS}/wide-${size.width}.png` });
+
+    // The open Region list is a card drawn over the window; Escape closes it and not the window.
+    await dialog.getByRole('combobox', { name: 'Region' }).click();
+    await expect(page.getByRole('listbox')).toBeVisible();
+    if (process.env.STARTRUN_SHOTS)
+      await page.screenshot({ path: `${process.env.STARTRUN_SHOTS}/list-${size.width}.png` });
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('listbox')).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('combobox', { name: 'Region' })).toBeFocused();
 
     // The advanced part opens without the window growing past the screen.
     await dialog.getByText('Advanced').click();
@@ -197,7 +214,7 @@ test('below 800px the columns stack, the estimate under the choices', async ({ p
   await page.goto('/leadgen');
   await page.getByRole('button', { name: 'Create run' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Start a run' });
-  await dialog.getByLabel('Region').selectOption({ label: 'Sfax, 32 leads, partly covered' });
+  await pickRegion(dialog, 'Sfax, 32 leads, partly covered');
   const left = (await dialog.locator('.sr-left').boundingBox())!;
   const right = (await dialog.locator('.sr-right').boundingBox())!;
   expect(right.y).toBeGreaterThanOrEqual(left.y + left.height - 3);
@@ -227,7 +244,7 @@ test('Start stays off until a region and a sector are picked, and previewing sta
   const start = dialog.getByRole('button', { name: /^Start run/ });
   await expect(start).toHaveAttribute('aria-disabled', 'true');
   await expect(dialog.getByText('Choose a region to start.')).toBeVisible();
-  await dialog.getByLabel('Region').selectOption({ label: 'Tunis, 0 leads, not searched yet' });
+  await pickRegion(dialog, 'Tunis, 0 leads, not searched yet');
   await expect(dialog.getByText('Pick at least one sector')).toBeVisible();
   await dialog.getByRole('button', { name: 'Textile' }).click();
   await expect(start).toHaveAttribute('aria-disabled', 'false');
