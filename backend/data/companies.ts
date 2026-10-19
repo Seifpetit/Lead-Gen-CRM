@@ -1,4 +1,5 @@
 import { withTransaction, type Queryable } from './db.js';
+import { haversineKm } from '../lib/geo.js';
 import { insertEvidence } from './evidence.js';
 import type { UserId } from './ids.js';
 import {
@@ -70,7 +71,8 @@ export interface CompanyInput {
   regionCellId?: string;
 }
 
-export type MatchedBy = 'google_place_id' | 'phone' | 'domain' | 'name_governorate' | null;
+export type MatchedBy =
+  'google_place_id' | 'phone' | 'domain' | 'name_governorate' | 'name_nearby' | null;
 
 export interface UpsertCompanyResult {
   company: CompanyRecord;
@@ -131,6 +133,8 @@ const toCompany = (r: Row): CompanyRecord => ({
   updatedAt: r.updated_at,
 });
 
+const SAME_PLACE_KM = 0.1;
+
 /**
  * Finds the existing company in priority order: Google place ID, then normalized phone, then
  * normalized website domain, then normalized name plus governorate. A name match is skipped
@@ -147,6 +151,7 @@ async function findMatch(
     domain: string | null;
     normalizedName: string;
     governorate: string;
+    location: { lat: number; lng: number } | null;
   },
 ): Promise<{ row: Row; matchedBy: Exclude<MatchedBy, null> } | null> {
   if (key.placeId) {
@@ -179,7 +184,23 @@ async function findMatch(
       ORDER BY created_at LIMIT 1 FOR UPDATE`,
     [userId, key.normalizedName, key.governorate, key.placeId, key.domain],
   );
-  return rows[0] ? { row: rows[0], matchedBy: 'name_governorate' } : null;
+  if (rows[0]) return { row: rows[0], matchedBy: 'name_governorate' };
+  // The same name within SAME_PLACE_KM is one business that Google lists twice (two place IDs
+  // for one shop). Branches with the same name are further apart than this.
+  if (key.location) {
+    const near = await db.query<Row>(
+      `SELECT * FROM companies
+        WHERE user_id = $1 AND normalized_name = $2 AND governorate = $3
+          AND lat IS NOT NULL AND lng IS NOT NULL
+        ORDER BY created_at FOR UPDATE`,
+      [userId, key.normalizedName, key.governorate],
+    );
+    const hit = near.rows.find(
+      (r) => haversineKm(key.location!, { lat: r.lat!, lng: r.lng! }) <= SAME_PLACE_KM,
+    );
+    if (hit) return { row: hit, matchedBy: 'name_nearby' };
+  }
+  return null;
 }
 
 /**
@@ -205,6 +226,7 @@ export async function upsertCompany(
       domain,
       normalizedName,
       governorate: input.governorate.value,
+      location: input.location ?? null,
     });
 
     const values = {
@@ -244,6 +266,7 @@ export async function upsertCompany(
           domain,
           normalizedName,
           governorate: input.governorate.value,
+          location: input.location ?? null,
         });
         if (!match) throw err;
       }
