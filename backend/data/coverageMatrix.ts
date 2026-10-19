@@ -9,6 +9,8 @@ export interface QueryTotals {
   sectorId: string | null;
   queries: number;
   newPlaces: number;
+  /** When the last of these searches ran. */
+  lastAt: Date | null;
 }
 
 export async function queryTotalsByRegionSector(
@@ -20,9 +22,11 @@ export async function queryTotalsByRegionSector(
     sector_id: string | null;
     queries: number;
     new_places: number;
+    last_at: Date | null;
   }>(
     `SELECT rc.region_id, q.sector_id, count(*)::integer AS queries,
-            COALESCE(sum(q.new_places_found), 0)::integer AS new_places
+            COALESCE(sum(q.new_places_found), 0)::integer AS new_places,
+            max(q.created_at) AS last_at
        FROM search_queries q JOIN region_cells rc ON rc.id = q.region_cell_id
       WHERE q.user_id = $1 GROUP BY 1, 2`,
     [userId],
@@ -32,6 +36,7 @@ export async function queryTotalsByRegionSector(
     sectorId: r.sector_id,
     queries: r.queries,
     newPlaces: r.new_places,
+    lastAt: r.last_at,
   }));
 }
 

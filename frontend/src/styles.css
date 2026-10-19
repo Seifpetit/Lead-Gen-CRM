@@ -807,37 +807,12 @@ progress {
   vertical-align: middle;
   border: 1px solid rgba(0, 0, 0, 0.25);
 }
-.grid-scroll {
-  overflow-x: auto;
-}
-.coverage-grid {
-  border-collapse: collapse;
-  width: 100%;
-}
-.coverage-grid th,
-.coverage-grid td {
-  padding: 4px;
-  text-align: left;
-}
-.grid-cell {
-  width: 100%;
-  min-width: 56px;
-  min-height: 32px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  cursor: pointer;
-  color: inherit;
-  font: inherit;
-}
-.grid-not_searched,
 .cell-never {
   background: #d9dbe0;
 }
-.grid-yielding,
 .cell-leads {
   background: #7ccf8e;
 }
-.grid-saturated,
 .cell-saturated {
   background: #6a9bd8;
 }
@@ -916,14 +891,6 @@ progress {
   gap: 8px;
   margin: 0 0 12px;
 }
-.start-panel {
-  margin-top: var(--gap);
-}
-.start-panel-bar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 8px;
-}
 .progress-scale {
   display: flex;
   justify-content: space-between;
@@ -964,30 +931,6 @@ progress {
 .log-box-head h3 {
   margin: 0;
 }
-.coverage-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: var(--gap);
-  margin-top: var(--gap);
-  align-items: start;
-}
-.coverage-left {
-  display: grid;
-  gap: var(--gap);
-  min-width: 0;
-}
-.history-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 12px;
-}
-@media (max-width: 900px) {
-  .coverage-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
 @media (max-width: 720px) {
   .shell {
     grid-template-columns: minmax(0, 1fr);
@@ -1019,14 +962,6 @@ progress {
 }
 .state-action {
   margin-top: 8px;
-}
-.matrix-view.is-fullscreen {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  overflow: auto;
-  padding: 16px;
-  background: var(--surface);
 }
 
 .spinner {
@@ -3108,8 +3043,7 @@ body.is-dragging-card * {
   background: var(--orange);
 }
 .widget[data-tone='sky'] .widget-header,
-.widget-wide .widget-header,
-.coverage-layout .widget-header {
+.widget-wide .widget-header {
   background: var(--sky);
 }
 .widget[data-tone='blush'] .widget-header,
@@ -4718,4 +4652,492 @@ a.tile-name:hover {
 .tile-compact {
   gap: 6px;
   padding: 6px;
+}
+
+/* ==========================================================================================
+   Coverage: one panel, the matrix on the left (about 60%) and the map fixed on the right.
+   ========================================================================================== */
+.cov-panel {
+  overflow: hidden;
+}
+.cov-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 60fr) minmax(0, 40fr);
+}
+.cov-right {
+  border-left: var(--bw) solid var(--ink);
+}
+.cov-left > .panel-body,
+.cov-right > .panel-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+.cov-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  /* No padding on top: the sticky header would let rows slide through the gap above it. */
+  padding: 0 var(--space-3);
+}
+.cov-left > .panel-body > .legend,
+.cov-left > .panel-body > .cov-scale {
+  flex: none;
+  margin: 0;
+  padding: var(--space-1) var(--space-3);
+  border-top: 2px solid var(--ink);
+}
+.cov-left > .panel-body > .state {
+  margin: var(--space-3);
+}
+@container dashpanel (max-width: 900px) {
+  .cov-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+  }
+  .cov-right {
+    border-left: 0;
+    border-top: var(--bw) solid var(--ink);
+  }
+}
+.dp-header fieldset.segmented {
+  margin: 0;
+  flex-wrap: nowrap;
+  gap: 2px;
+}
+.dp-header .segmented span {
+  min-height: 28px;
+  padding: 0 8px;
+  border-width: 2px;
+  border-radius: 8px;
+  box-shadow: none;
+  font-size: var(--fs-caption);
+  white-space: nowrap;
+}
+.dp-header .button-icon {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 2px;
+  box-shadow: none;
+}
+
+/* The matrix: icons across the top, a thin coverage bar and a total at the end */
+.cov-matrix-wrap {
+  position: relative;
+  --cell: 24px;
+}
+.cov-matrix-wrap.is-large {
+  --cell: 34px;
+}
+.cov-matrix {
+  border-collapse: separate;
+  border-spacing: 2px;
+  width: max-content;
+  min-width: 100%;
+}
+.cov-matrix thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 2px 0;
+  background: var(--surface);
+}
+.cov-matrix tbody th,
+.cov-matrix tfoot th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  padding-right: var(--space-2);
+  background: var(--surface);
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.cov-matrix .cov-corner {
+  left: 0;
+  z-index: 3;
+}
+.cov-matrix tfoot th,
+.cov-matrix tfoot td {
+  position: sticky;
+  bottom: 0;
+  background: var(--surface);
+  border-top: 2px solid var(--ink);
+}
+.cov-region {
+  padding: 0 4px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cov-region:hover {
+  background: var(--yellow);
+}
+.cov-region[aria-pressed='true'] {
+  background: var(--yellow);
+  box-shadow: inset 0 0 0 2px var(--ink);
+}
+.cov-matrix tr.is-grey th,
+.cov-region[aria-disabled='true'] {
+  color: #595959;
+  cursor: not-allowed;
+}
+.cov-region[aria-disabled='true']:hover {
+  background: none;
+}
+.cov-matrix tr.is-selected th {
+  font-weight: 700;
+}
+.cov-sector {
+  display: inline-grid;
+  place-items: center;
+  width: calc(var(--cell, 24px) - 2px);
+  height: calc(var(--cell, 24px) - 2px);
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  color: var(--ink);
+}
+.cov-sector.is-inline {
+  --cell: 22px;
+}
+.cov-matrix th.is-selected .cov-sector {
+  box-shadow: 0 0 0 3px var(--yellow);
+}
+.cov-cell {
+  display: grid;
+  place-items: center;
+  width: var(--cell);
+  height: var(--cell);
+  padding: 0;
+  border: 2px solid var(--ink);
+  border-radius: 6px;
+  background: #d9dbe0;
+  color: var(--ink);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.cov-matrix-wrap.is-large .cov-cell {
+  font-size: 12px;
+}
+.cov-cell:hover {
+  transform: translateY(-1px);
+}
+.cov-cell[aria-pressed='true'] {
+  outline: 3px solid var(--ink);
+  outline-offset: 1px;
+}
+.cov-cell[data-grey] {
+  border: 2px dashed #8a8a8a;
+  background: #eceae6;
+  cursor: not-allowed;
+}
+.cov-cell[data-grey]:hover {
+  transform: none;
+}
+.cov-cell[data-metric='status'][data-state='not_searched'],
+.cov-swatch[data-state='not_searched'] {
+  background: #d9dbe0;
+}
+.cov-cell[data-metric='status'][data-state='yielding'],
+.cov-swatch[data-state='yielding'],
+.cov-state[data-state='yielding'] {
+  background: #7ccf8e;
+}
+.cov-cell[data-metric='status'][data-state='saturated'],
+.cov-swatch[data-state='saturated'],
+.cov-state[data-state='saturated'] {
+  background: #6a9bd8;
+}
+.cov-cell[data-metric='status'][data-state='maintenance'],
+.cov-swatch[data-state='maintenance'],
+.cov-state[data-state='maintenance'] {
+  background: var(--orange);
+}
+.cov-cell:not([data-metric='status'])[data-level='1'] {
+  background: #d9f4f2;
+}
+.cov-cell:not([data-metric='status'])[data-level='2'] {
+  background: #9fe3de;
+}
+.cov-cell:not([data-metric='status'])[data-level='3'] {
+  background: #5fd1ca;
+}
+.cov-cell:not([data-metric='status'])[data-level='4'] {
+  background: #2aaaa3;
+}
+.cov-cell[data-grey] {
+  background: #eceae6;
+}
+.cov-swatch {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--ink);
+  border-radius: 5px;
+  vertical-align: middle;
+}
+.cov-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border: 2px solid var(--ink);
+  border-radius: var(--radius-pill);
+  background: #d9dbe0;
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.cov-bar {
+  min-width: 72px;
+}
+.progress.is-thin .progress-track {
+  height: 8px;
+  border-width: 2px;
+  border-radius: var(--radius-pill);
+}
+.cov-total {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.cov-tip {
+  position: fixed;
+  z-index: 200;
+  width: max-content;
+  max-width: 260px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--white);
+  font-size: 12px;
+  pointer-events: none;
+}
+.cov-tip dl {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 2px 10px;
+  margin: 4px 0 0;
+}
+.cov-tip dl > div {
+  display: contents;
+}
+.cov-tip dt {
+  opacity: 0.8;
+}
+.cov-tip dd {
+  margin: 0;
+  font-weight: 700;
+}
+.cov-tip p {
+  margin: 2px 0 0;
+}
+.cov-legend {
+  margin: 0;
+}
+.cov-scale {
+  font-size: var(--fs-caption);
+}
+
+/* One region as a table, and the history table */
+.cov-table-wrap {
+  min-width: 0;
+}
+.cov-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.cov-table th,
+.cov-table td {
+  padding: 6px var(--space-1);
+  border-bottom: 1px solid var(--border-soft);
+  text-align: left;
+  vertical-align: middle;
+}
+.cov-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  border-bottom: 2px solid var(--ink);
+  font-size: var(--fs-caption);
+  white-space: nowrap;
+}
+.cov-table tbody th {
+  font-weight: 600;
+}
+.cov-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.cov-detail {
+  flex: none;
+  padding: var(--space-2) var(--space-3);
+  border-top: var(--bw) solid var(--ink);
+  background: var(--yellow);
+}
+.cov-detail header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.cov-detail h3 {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-body);
+}
+.cov-detail .stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: var(--space-1) 0 var(--space-2);
+}
+.cov-detail .stats dt {
+  color: var(--ink);
+}
+
+/* The map, fixed on the right: it never scrolls with the matrix */
+.cov-map {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+}
+.cov-map .coverage-map {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  border: 0;
+}
+.cov-map-legend {
+  flex: none;
+  margin: 0;
+  font-size: var(--fs-caption);
+}
+.cov-map-notes {
+  flex: none;
+  max-height: 40%;
+  overflow: auto;
+}
+.cov-map-notes p {
+  margin: 0;
+  font-size: var(--fs-caption);
+}
+.cov-map .cell-stats {
+  margin: 0;
+}
+.cov-map .cell-stats h3 {
+  margin: 0 0 var(--space-1);
+  font-size: var(--fs-caption);
+}
+.cov-map .cell-stats .stats {
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  margin: var(--space-1) 0;
+}
+.region-shape {
+  transition: opacity 0.25s ease;
+}
+.region-shape:not(.is-grey):hover,
+.region-shape:not(.is-grey):focus {
+  fill: var(--blush);
+}
+.region-shape.is-dimmed {
+  opacity: 0.35;
+}
+.region-shape.is-selected,
+.region-shape.is-selected:hover,
+.region-shape.is-selected:focus {
+  fill: var(--yellow);
+  stroke: var(--ink);
+  stroke-width: 3;
+}
+.region-shape.is-grey {
+  fill: #e4e2de;
+  stroke: #9a9a9a;
+  cursor: not-allowed;
+}
+
+/* The Expand window */
+.cov-explorer {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+.cov-explorer .tablist {
+  flex: none;
+}
+.cov-explorer > .tabs {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cov-explorer [role='tabpanel'] {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.cov-explorer-matrix,
+.cov-history {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cov-explorer-bar,
+.cov-history-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-3);
+}
+.cov-explorer-bar fieldset.segmented {
+  margin: 0;
+}
+.cov-matrix-scroll,
+.cov-history .cov-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 var(--space-3);
+}
+.cov-body .panel-head .button:not(.button-icon),
+.cov-table .button {
+  min-height: 28px;
+  padding: 0 10px;
+  box-shadow: none;
+  white-space: nowrap;
+}
+.cov-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.cov-name .cov-sector {
+  flex: none;
+}
+.cov-table td .cov-state {
+  white-space: nowrap;
 }

@@ -388,7 +388,7 @@ export interface ApifyLog {
 // ---------------------------------------------------------------------------------------
 // Coverage by region and sector, and map geometry
 
-export type CoverageState = 'not_searched' | 'yielding' | 'saturated';
+export type CoverageState = 'not_searched' | 'yielding' | 'saturated' | 'maintenance';
 
 /** One region x sector. Numbers come from the user's own search history and the cost ledger. */
 export interface CoverageEntry {
@@ -403,7 +403,13 @@ export interface CoverageEntry {
   spendUsd: number;
   /** Null when there are no leads. */
   costPerLeadUsd: number | null;
-  /** not_searched: no query yet; saturated: every cell of the region exhausted for the sector. */
+  /** When the sector was last searched in the region; null if never. */
+  lastRunAt: string | null;
+  /**
+   * not_searched: no query yet; yielding: partly covered; saturated: every cell of the region
+   * exhausted for the sector; maintenance: saturated, and its last search is older than the
+   * maintenance interval, so a slow re-check is due.
+   */
   state: CoverageState;
 }
 

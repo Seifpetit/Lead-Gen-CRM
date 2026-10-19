@@ -1,7 +1,6 @@
 import type { CellSummary, RegionGeometry } from '@lead-gen-crm/shared';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../../i18n/index.js';
 import { CoverageMap } from './CoverageMap.js';
@@ -33,6 +32,13 @@ const regions: RegionGeometry[] = [
     outline: square(10.0, 36.7, 10.3, 36.9),
     outlineSource: 'osm',
   },
+  {
+    regionId: 'gabes',
+    name: 'Gabès',
+    bounds: { south: 33.0, west: 9.5, north: 33.9, east: 10.5 },
+    outline: square(9.5, 33.0, 10.5, 33.9),
+    outlineSource: 'bounds',
+  },
   { regionId: 'manouba', name: 'Manouba', bounds: null, outline: null, outlineSource: null },
 ];
 const cell = {
@@ -49,38 +55,100 @@ const cell = {
   claimedByRunId: null,
 } satisfies CellSummary;
 
-function Harness({ onPick }: { onPick: (p: unknown) => void }) {
-  const [regionId, setRegionId] = useState<string | null>(null);
-  return (
+const explored = new Set(['sfax', 'tunis']);
+
+function setup(regionId: string | null = null) {
+  const onRegionChange = vi.fn();
+  const onPlanCell = vi.fn();
+  const view = (id: string | null) => (
     <I18nProvider>
       <CoverageMap
         regions={regions}
-        regionId={regionId}
-        onRegionChange={setRegionId}
-        cells={regionId ? [cell] : null}
-        onPick={onPick}
+        exploredIds={explored}
+        regionId={id}
+        onRegionChange={onRegionChange}
+        cells={id ? [cell] : null}
+        onPlanCell={onPlanCell}
       />
     </I18nProvider>
   );
+  const utils = render(view(regionId));
+  return {
+    onRegionChange,
+    onPlanCell,
+    user: userEvent.setup(),
+    rerender: (id: string | null) => utils.rerender(view(id)),
+  };
 }
 
 describe('CoverageMap', () => {
   it('draws a shape per outlined region and names the ones it cannot draw', () => {
-    render(<Harness onPick={vi.fn()} />);
-    expect(screen.getByRole('button', { name: /Sfax/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Tunis/ })).toBeInTheDocument();
+    setup();
+    expect(screen.getByRole('button', { name: 'Region Sfax' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Region Tunis' })).toBeInTheDocument();
     expect(screen.getByText(/Manouba/)).toBeInTheDocument();
-    expect(screen.getByRole('list', { name: 'Colour key' })).toBeInTheDocument();
   });
 
-  it('zooms to a region and hands a clicked cell to onPick', async () => {
-    const onPick = vi.fn();
-    const user = userEvent.setup();
-    render(<Harness onPick={onPick} />);
-    await user.click(screen.getByRole('button', { name: /Sfax/ }));
-    await user.click(await screen.findByRole('button', { name: /r0c0/ }));
-    expect(onPick).toHaveBeenCalledWith({ regionId: 'sfax', cellKeys: ['r0c0'] });
-    expect(screen.getByRole('region', { name: /r0c0/ })).toBeVisible();
+  it('hands a clicked region to the caller', async () => {
+    const { onRegionChange, user } = setup();
+    await user.click(screen.getByRole('button', { name: 'Region Sfax' }));
+    expect(onRegionChange).toHaveBeenCalledWith('sfax');
+  });
+
+  it('greys out a region with nothing to show: not clickable, with a reason', async () => {
+    const { onRegionChange, user } = setup();
+    const grey = screen.getByRole('button', { name: 'Region Gabès' });
+    expect(grey).toHaveAttribute('aria-disabled', 'true');
+    expect(grey).toHaveClass('is-grey');
+    expect(grey).toHaveAttribute('tabindex', '-1');
+    expect(grey.querySelector('title')).toHaveTextContent('Gabès: Not explored yet');
+    await user.click(grey);
+    grey.focus();
+    await user.keyboard('{Enter}');
+    expect(onRegionChange).not.toHaveBeenCalled();
+  });
+
+  it('selects with Enter and Space from the keyboard', async () => {
+    const { onRegionChange, user } = setup();
+    screen.getByRole('button', { name: 'Region Tunis' }).focus();
+    await user.keyboard('{Enter}');
+    await user.keyboard(' ');
+    expect(onRegionChange).toHaveBeenCalledTimes(2);
+  });
+
+  it('focuses a picked region: it is outlined, the others are dimmed, and its cells appear', () => {
+    setup('sfax');
+    const svg = screen.getByRole('group', { name: 'Coverage map' });
+    expect(svg).toHaveAttribute('data-focus', 'sfax');
+    expect(screen.getByRole('button', { name: 'Region Sfax' })).toHaveClass('is-selected');
+    expect(screen.getByRole('button', { name: 'Region Tunis' })).toHaveClass('is-dimmed');
+    expect(screen.getByRole('button', { name: 'Region Sfax' })).not.toHaveClass('is-dimmed');
+    expect(screen.getByRole('button', { name: /r0c0/ })).toBeInTheDocument();
+  });
+
+  it('zooms to the picked region and back out to the country', () => {
+    // Motion is reduced in this test, so the view jumps to where it is going.
+    const mm = vi.fn().mockReturnValue({ matches: true });
+    vi.stubGlobal('matchMedia', mm);
+    const { rerender } = setup();
+    const svg = screen.getByRole('group', { name: 'Coverage map' });
+    const whole = svg.getAttribute('viewBox');
+    rerender('sfax');
+    const zoomed = svg.getAttribute('viewBox');
+    expect(zoomed).not.toBe(whole);
+    const width = (box: string | null) => Number(box!.split(' ')[2]);
+    expect(width(zoomed)).toBeLessThan(width(whole));
+    rerender(null);
+    expect(svg.getAttribute('viewBox')).toBe(whole);
+    vi.unstubAllGlobals();
+  });
+
+  it('shows a cell’s numbers and plans a run for it', async () => {
+    const { onPlanCell, user } = setup('sfax');
+    await user.click(screen.getByRole('button', { name: /r0c0/ }));
+    expect(screen.getByRole('region', { name: 'Cell r0c0' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Plan a run in this cell' }));
+    expect(onPlanCell).toHaveBeenCalledWith('sfax', 'r0c0');
   });
 
   it('shows a message when there is nothing to draw', () => {
@@ -88,10 +156,11 @@ describe('CoverageMap', () => {
       <I18nProvider>
         <CoverageMap
           regions={[]}
+          exploredIds={new Set()}
           regionId={null}
           onRegionChange={vi.fn()}
           cells={null}
-          onPick={vi.fn()}
+          onPlanCell={vi.fn()}
         />
       </I18nProvider>,
     );

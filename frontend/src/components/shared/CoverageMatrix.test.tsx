@@ -3,10 +3,13 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../../i18n/index.js';
+import { coverageRows, type Metric } from '../../lib/coverageView.js';
+import { region } from '../../test/fixtures.js';
 import { CoverageMatrix } from './CoverageMatrix.js';
 
 const data: Coverage = {
   regions: [
+    { regionId: 'gabes', name: 'Gabès' },
     { regionId: 'sfax', name: 'Sfax' },
     { regionId: 'tunis', name: 'Tunis' },
   ],
@@ -23,47 +26,160 @@ const data: Coverage = {
       leads: 5,
       spendUsd: 2.5,
       costPerLeadUsd: 0.5,
+      lastRunAt: '2026-10-17T10:00:00.000Z',
       state: 'yielding',
+    },
+    {
+      regionId: 'sfax',
+      sectorId: 'textile',
+      queriesRun: 20,
+      newPlaces: 3,
+      leads: 9,
+      spendUsd: 6,
+      costPerLeadUsd: 0.67,
+      lastRunAt: '2026-08-01T10:00:00.000Z',
+      state: 'maintenance',
     },
   ],
 };
+const rows = coverageRows(data, [
+  region({ regionId: 'sfax', name: 'Sfax', coverage: 0.5 }),
+  region({ regionId: 'tunis', name: 'Tunis', coverage: 0.1 }),
+  region({ regionId: 'gabes', name: 'Gabès', hasBounds: false, runs: 0, leads: 0, coverage: null }),
+]);
 
-function setup() {
-  const onPick = vi.fn();
-  const { container } = render(
+function setup(metric: Metric = 'status', extra = {}) {
+  const onSelectRegion = vi.fn();
+  const onSelectCell = vi.fn();
+  render(
     <I18nProvider>
-      <CoverageMatrix data={data} onPick={onPick} />
+      <CoverageMatrix
+        data={data}
+        rows={rows}
+        metric={metric}
+        selected={{ regionId: null, sectorId: null }}
+        onSelectRegion={onSelectRegion}
+        onSelectCell={onSelectCell}
+        {...extra}
+      />
     </I18nProvider>,
   );
-  return { onPick, container, user: userEvent.setup() };
+  return { onSelectRegion, onSelectCell, user: userEvent.setup() };
 }
 
 describe('CoverageMatrix', () => {
-  it('draws a square per region and sector, coloured by state', () => {
+  it('lists every region, explored ones first, with the greyed one last', () => {
     setup();
-    const squares = within(screen.getByRole('table')).getAllByRole('button');
-    expect(squares).toHaveLength(4);
-    expect(screen.getByRole('button', { name: /Sfax, Agri-food.*Still yielding/ })).toHaveClass(
-      'grid-yielding',
+    const names = screen
+      .getAllByRole('rowheader')
+      .map((h) => h.textContent)
+      .filter((n) => n !== 'Total');
+    expect(names).toEqual(['Sfax', 'Tunis', 'Gabès']);
+  });
+
+  it('names each sector column by an icon with an accessible name', () => {
+    setup();
+    expect(screen.getByRole('img', { name: 'Agri-food' })).toHaveAttribute('title', 'Agri-food');
+    expect(screen.getByRole('img', { name: 'Textile' })).toBeInTheDocument();
+  });
+
+  it('greys out a region with no data: disabled squares that cannot be selected', async () => {
+    const { onSelectCell, onSelectRegion, user } = setup();
+    const grey = screen.getByRole('button', { name: 'Gabès, Textile, Not explored yet' });
+    expect(grey).toHaveAttribute('aria-disabled', 'true');
+    await user.click(grey);
+    await user.click(screen.getByRole('button', { name: 'Gabès' }));
+    expect(onSelectCell).not.toHaveBeenCalled();
+    expect(onSelectRegion).not.toHaveBeenCalled();
+    await user.hover(grey);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Not explored yet');
+  });
+
+  it('marks the state with a symbol as well as a colour', () => {
+    setup();
+    const partial = screen.getByRole('button', { name: 'Sfax, Agri-food, Partial' });
+    const maintenance = screen.getByRole('button', { name: 'Sfax, Textile, Maintenance' });
+    expect(partial).toHaveAttribute('data-state', 'yielding');
+    expect(partial.querySelector('svg')).not.toBeNull();
+    expect(maintenance.querySelector('svg')).not.toBeNull();
+    // A square never searched has no symbol, only its (grey) state in the name.
+    expect(
+      screen.getByRole('button', { name: 'Tunis, Textile, Unexplored' }).querySelector('svg'),
+    ).toBeNull();
+  });
+
+  it('shows region, sector, state, leads, cost and last run in a tooltip on hover', async () => {
+    const { user } = setup();
+    await user.hover(screen.getByRole('button', { name: 'Sfax, Agri-food, Partial' }));
+    const tip = await screen.findByRole('tooltip');
+    expect(tip).toHaveTextContent('Sfax, Agri-food');
+    expect(within(tip).getByText('Partial')).toBeVisible();
+    expect(within(tip).getByText('5')).toBeVisible();
+    expect(within(tip).getByText('$2.50')).toBeVisible();
+    expect(within(tip).getByText('17 Oct 2026')).toBeVisible();
+  });
+
+  it('selects a region from its label and a region and sector from a square', async () => {
+    const { onSelectCell, onSelectRegion, user } = setup();
+    await user.click(screen.getByRole('button', { name: 'Sfax' }));
+    expect(onSelectRegion).toHaveBeenCalledWith('sfax');
+    await user.click(screen.getByRole('button', { name: 'Tunis, Textile, Unexplored' }));
+    expect(onSelectCell).toHaveBeenCalledWith('tunis', 'textile');
+  });
+
+  it('changes what the squares show with the metric', () => {
+    setup('leads');
+    expect(screen.getByRole('button', { name: 'Sfax, Agri-food, Partial' })).toHaveTextContent('5');
+    expect(screen.getByRole('button', { name: 'Sfax, Textile, Maintenance' })).toHaveTextContent(
+      '9',
     );
-    expect(screen.getByRole('button', { name: /Tunis, Textile.*Not searched/ })).toHaveClass(
-      'grid-not_searched',
+    expect(screen.getByRole('button', { name: 'Sfax, Textile, Maintenance' })).toHaveAttribute(
+      'data-level',
+      '4',
     );
   });
 
-  it('hands the region and sector to onPick on click', async () => {
-    const { onPick, user } = setup();
-    await user.click(screen.getByRole('button', { name: /Tunis, Textile/ }));
-    expect(onPick).toHaveBeenCalledWith({ regionId: 'tunis', sectorIds: ['textile'] });
+  it.each([
+    ['status', ['1', '1']],
+    ['leads', ['5', '9']],
+    ['cost', ['$2.5', '$6.0']],
+    ['yield', ['3.3', '0.1']],
+  ] as const)('ends each sector column with its total for %s', (metric, totals) => {
+    setup(metric);
+    const foot = screen.getAllByRole('rowheader').find((h) => h.textContent === 'Total')!;
+    const cells = within(foot.closest('tr')!).getAllByRole('cell');
+    expect(cells.slice(0, 2).map((c) => c.textContent)).toEqual(totals);
   });
 
-  it('switches to fullscreen and back, and Escape leaves fullscreen', async () => {
-    const { container, user } = setup();
-    const view = container.querySelector('.matrix-view')!;
-    await user.click(screen.getByRole('radio', { name: 'Fullscreen' }));
-    expect(view).toHaveClass('is-fullscreen');
-    await user.keyboard('{Escape}');
-    expect(view).not.toHaveClass('is-fullscreen');
-    expect(screen.getByRole('radio', { name: 'Normal' })).toBeChecked();
+  it('ends each explored region with a thin coverage bar and not the greyed one', () => {
+    setup();
+    expect(screen.getByRole('progressbar', { name: 'Coverage of Sfax' })).toHaveAttribute(
+      'aria-valuenow',
+      '50',
+    );
+    expect(screen.queryByRole('progressbar', { name: 'Coverage of Gabès' })).toBeNull();
+  });
+
+  it('keeps one tab stop and moves between squares with the arrow keys', async () => {
+    const { user } = setup();
+    const tabStops = screen
+      .getAllByRole('button')
+      .filter((b) => b.getAttribute('tabindex') === '0');
+    expect(tabStops).toHaveLength(1);
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Sfax' })).toHaveFocus();
+    await user.keyboard('{ArrowRight}');
+    expect(screen.getByRole('button', { name: 'Sfax, Agri-food, Partial' })).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    expect(screen.getByRole('button', { name: 'Tunis, Agri-food, Unexplored' })).toHaveFocus();
+  });
+
+  it('selects with Enter and Space', async () => {
+    const { onSelectCell, user } = setup();
+    await user.tab();
+    await user.keyboard('{ArrowRight}{Enter}');
+    expect(onSelectCell).toHaveBeenCalledWith('sfax', 'agri-food');
+    await user.keyboard('{ArrowRight} ');
+    expect(onSelectCell).toHaveBeenCalledWith('sfax', 'textile');
   });
 });

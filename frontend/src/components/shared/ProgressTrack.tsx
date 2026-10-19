@@ -11,6 +11,7 @@ export function ProgressTrack({
   endLabel,
   checkpointsLabel,
   tone = 'coral',
+  size = 'normal',
 }: {
   value: number;
   /** Accessible name of the bar. */
@@ -24,11 +25,13 @@ export function ProgressTrack({
   checkpointsLabel?: string;
   /** Fill colour. */
   tone?: 'coral' | 'purple' | 'teal';
+  /** thin: a slim bar for a table row. */
+  size?: 'normal' | 'thin';
 }) {
   const share = Math.min(1, Math.max(0, value));
   const hasScale = startLabel !== undefined || endLabel !== undefined || checkpointsLabel;
   return (
-    <div className="progress" data-tone={tone}>
+    <div className={size === 'thin' ? 'progress is-thin' : 'progress'} data-tone={tone}>
       {hasScale && (
         <div className="progress-scale" aria-hidden="true">
           <span>{startLabel}</span>

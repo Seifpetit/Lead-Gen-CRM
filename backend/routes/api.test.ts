@@ -784,11 +784,14 @@ describe('GET /api/coverage', () => {
     expect(['yielding', 'saturated']).toContain(textile.state);
     expect(textile.spendUsd).toBeGreaterThan(0);
     expect(textile.costPerLeadUsd).toBeCloseTo(textile.spendUsd / 4, 5);
+    // The searches just ran, so the last-run date is now.
+    expect(Date.now() - new Date(textile.lastRunAt!).getTime()).toBeLessThan(10 * 60_000);
     expect(entry(c, 'sfax', 'wholesale')).toMatchObject({
       queriesRun: 0,
       leads: 0,
       spendUsd: 0,
       costPerLeadUsd: null,
+      lastRunAt: null,
       state: 'not_searched',
     });
     expect(entry(c, 'tunis', 'textile')).toMatchObject({ state: 'not_searched' });
@@ -816,6 +819,27 @@ describe('GET /api/coverage', () => {
       }
     }
     expect(entry(await coverage(alice), 'sfax', 'textile').state).toBe('saturated');
+  });
+
+  it('moves a saturated sector to maintenance once its last search is older than the interval', async () => {
+    const cells = await listCells(db, 'sfax', { leafOnly: true });
+    for (const cell of cells) {
+      for (const w of ['usine textile', 'confection']) {
+        await db.query(
+          'INSERT INTO exhausted_queries (user_id, region_cell_id, normalized_query) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+          [alice.id, cell.id, w],
+        );
+      }
+    }
+    const saturated = entry(await coverage(alice), 'sfax', 'textile');
+    expect(saturated.state).toBe('saturated');
+    await db.query(
+      "UPDATE search_queries SET created_at = now() - interval '45 days' WHERE user_id = $1",
+      [alice.id],
+    );
+    const due = entry(await coverage(alice), 'sfax', 'textile');
+    expect(due.state).toBe('maintenance');
+    expect(new Date(due.lastRunAt!).getTime()).toBeLessThan(Date.now() - 40 * 86_400_000);
   });
 
   it("shows another user none of Alice's history", async () => {

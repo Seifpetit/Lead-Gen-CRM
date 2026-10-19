@@ -2,6 +2,7 @@ import type { RunSummary } from '@lead-gen-crm/shared';
 import { useMemo } from 'react';
 import { Modal } from '../../components/Modal.js';
 import { useT } from '../../i18n/index.js';
+import type { StartPrefill } from './prefill.js';
 import { StartRunWidget } from './StartRunWidget.js';
 
 /**
@@ -10,16 +11,22 @@ import { StartRunWidget } from './StartRunWidget.js';
  */
 export function CreateRunModal({
   regionId,
+  prefill: planned,
   onCreated,
   onCancel,
 }: {
   /** The region picked on the dashboard, if any; the form starts on it. */
   regionId: string;
+  /** A region and sector (or cell) to start on, from the coverage page; wins over regionId. */
+  prefill?: StartPrefill;
   onCreated: (run: RunSummary) => void;
   onCancel: () => void;
 }) {
   const t = useT();
-  const prefill = useMemo(() => (regionId ? { regionId, nonce: 1 } : null), [regionId]);
+  const prefill = useMemo(
+    () => (planned ? { ...planned, nonce: 1 } : regionId ? { regionId, nonce: 1 } : null),
+    [planned, regionId],
+  );
   return (
     <Modal title={t('create.title')} onClose={onCancel} wide>
       <div className="modal-body">

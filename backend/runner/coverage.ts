@@ -11,6 +11,7 @@ import type { Queryable } from '../data/db.js';
 import type { UserId } from '../data/ids.js';
 import { listRegions } from '../data/regions.js';
 import { normalizeQuery } from '../lib/normalize.js';
+import { DEFAULT_RUNNER_CONFIG } from './config.js';
 
 const key = (regionId: string, sectorId: string | null) => `${regionId}\u0000${sectorId ?? ''}`;
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
@@ -25,9 +26,16 @@ const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
  *   split evenly over its companies. Spend with no sector (typed-in wordings, model calls
  *   during qualify) is reported under sector null, so region totals still add up.
  * - state: not searched (no query yet); saturated when, in every cell of the region, either the
- *   cell is exhausted or all the sector's wordings are; otherwise still yielding.
+ *   cell is exhausted or all the sector's wordings are; otherwise still yielding. A saturated
+ *   sector whose last search is older than the maintenance interval is in maintenance: due for
+ *   a slow re-check.
+ * - lastRunAt: when the sector was last searched in the region.
  */
-export async function buildCoverage(db: Queryable, userId: UserId): Promise<Coverage> {
+export async function buildCoverage(
+  db: Queryable,
+  userId: UserId,
+  now: Date = new Date(),
+): Promise<Coverage> {
   const [regions, queries, leads, steps, companies, exhaustion] = await Promise.all([
     listRegions(db),
     queryTotalsByRegionSector(db, userId),
@@ -39,13 +47,13 @@ export async function buildCoverage(db: Queryable, userId: UserId): Promise<Cove
 
   const cells = new Map<
     string,
-    { queries: number; newPlaces: number; leads: number; spend: number }
+    { queries: number; newPlaces: number; leads: number; spend: number; lastAt: Date | null }
   >();
   const cell = (regionId: string, sectorId: string | null) => {
     const k = key(regionId, sectorId);
     let c = cells.get(k);
     if (!c) {
-      c = { queries: 0, newPlaces: 0, leads: 0, spend: 0 };
+      c = { queries: 0, newPlaces: 0, leads: 0, spend: 0, lastAt: null };
       cells.set(k, c);
     }
     return c;
@@ -54,6 +62,7 @@ export async function buildCoverage(db: Queryable, userId: UserId): Promise<Cove
     const c = cell(q.regionId, q.sectorId);
     c.queries += q.queries;
     c.newPlaces += q.newPlaces;
+    if (q.lastAt && (!c.lastAt || q.lastAt > c.lastAt)) c.lastAt = q.lastAt;
   }
   for (const l of leads) cell(l.regionId, l.sectorId).leads += l.leads;
   for (const s of steps) {
@@ -77,6 +86,7 @@ export async function buildCoverage(db: Queryable, userId: UserId): Promise<Cove
     regionId: string,
     sectorId: string | null,
     queriesRun: number,
+    lastAt: Date | null,
   ): CoverageState => {
     if (queriesRun === 0) return 'not_searched';
     const wordings = sectorId ? wordingsOf.get(sectorId) : undefined;
@@ -86,7 +96,9 @@ export async function buildCoverage(db: Queryable, userId: UserId): Promise<Cove
       (id) =>
         ex.exhaustedCells.has(id) || wordings.every((w) => ex.wordings.get(id)?.has(w) ?? false),
     );
-    return done ? 'saturated' : 'yielding';
+    if (!done) return 'yielding';
+    const dueMs = DEFAULT_RUNNER_CONFIG.maintenanceIntervalDays * 86_400_000;
+    return lastAt && now.getTime() - lastAt.getTime() > dueMs ? 'maintenance' : 'saturated';
   };
 
   const entries: CoverageEntry[] = [];
@@ -106,7 +118,8 @@ export async function buildCoverage(db: Queryable, userId: UserId): Promise<Cove
         leads: c?.leads ?? 0,
         spendUsd,
         costPerLeadUsd: c && c.leads > 0 ? round6(c.spend / c.leads) : null,
-        state: stateOf(r.id, sectorId, queriesRun),
+        lastRunAt: c?.lastAt ? c.lastAt.toISOString() : null,
+        state: stateOf(r.id, sectorId, queriesRun, c?.lastAt ?? null),
       });
     }
   }
