@@ -183,7 +183,6 @@ export class AnthropicClassifier implements CompanyClassifier, TitleClassifier {
         body: {
           model: this.model,
           max_tokens: MAX_OUTPUT_TOKENS,
-          temperature: 0,
           system,
           messages: [{ role: 'user', content: user }],
         },

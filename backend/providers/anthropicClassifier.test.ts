@@ -93,6 +93,13 @@ describe('company classification', () => {
     expect(candidates[0]).toMatch(/textile/i);
   });
 
+  it('sends no sampling settings, which newer models reject with a 400', async () => {
+    const { http, sent } = fakeHttp(message('{"verdict":"review","reasons":[]}'));
+    await classifier(http).classifyCompany(FACTS);
+    const keys = Object.keys(sent[0]!.body);
+    for (const banned of ['temperature', 'top_p', 'top_k']) expect(keys).not.toContain(banned);
+  });
+
   it('accepts JSON wrapped in a code fence', async () => {
     const { http } = fakeHttp(message('```json\n{"verdict":"rejected","reasons":["a shop"]}\n```'));
     expect((await classifier(http).classifyCompany(FACTS)).verdict).toBe('rejected');
