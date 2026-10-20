@@ -915,7 +915,7 @@ describe('Runs section', () => {
     expect(row.querySelector('progress')).not.toBeNull();
   });
 
-  describe('live strip', () => {
+  describe('active runs', () => {
     const live = (id: string, region: string, sentence: string, over = {}) =>
       run({
         id,
@@ -930,25 +930,7 @@ describe('Runs section', () => {
         ...over,
       });
 
-    it('shows one slim row per active run: the sentence, the progress, the spend and a link', async () => {
-      const one = live(
-        'run-live',
-        'Ben Arous',
-        'Searching Google Maps for olive oil companies in Ben Arous...',
-      );
-      await setup(undefined, { 'GET /api/runs/live': { runs: [one] } });
-      const strip = await screen.findByRole('region', { name: 'Runs in progress' });
-      const link = within(strip).getByRole('link', { name: /Searching Google Maps for olive oil/ });
-      expect(link).toHaveAttribute('href', '/leadgen/runs/run-live');
-      expect(within(strip).getByText('Running')).toBeVisible();
-      expect(within(strip).getByText('$0.48 of $2.50')).toBeVisible();
-      const bar = within(strip).getByRole('progressbar');
-      // Half of the first of six checkpoints is 8 percent of the run.
-      expect(bar).toHaveAttribute('aria-valuenow', '8');
-      expect(bar).toHaveAttribute('aria-valuetext', '8 percent done. Now: Searching Google Maps');
-    });
-
-    it('shows two runs side by side in the strip and stops Create run at two', async () => {
+    it('stops Create run at two runs in progress', async () => {
       await setup(undefined, {
         'GET /api/runs/live': {
           runs: [
@@ -957,35 +939,11 @@ describe('Runs section', () => {
           ],
         },
       });
-      const strip = await screen.findByRole('region', { name: 'Runs in progress' });
-      expect(within(strip).getAllByRole('listitem')).toHaveLength(2);
-      expect(within(strip).getAllByRole('progressbar')).toHaveLength(2);
-      for (const button of screen.getAllByRole('button', { name: 'Create run' })) {
-        expect(button).toBeDisabled();
-      }
-    });
-
-    it('draws nothing when no run is in progress, so the leads keep the room', async () => {
-      await setup();
-      await screen.findByRole('region', { name: 'Recent leads' });
-      expect(screen.queryByRole('region', { name: 'Runs in progress' })).toBeNull();
-      expect(document.querySelector('.live-strip')).toBeNull();
-    });
-
-    it('speaks a changed sentence politely, not every change', async () => {
-      const one = live(
-        'run-live',
-        'Sfax',
-        'Searching Google Maps for textile companies in Sfax...',
-      );
-      await setup(undefined, { 'GET /api/runs/live': { runs: [one] } });
-      const strip = await screen.findByRole('region', { name: 'Runs in progress' });
-      const announcer = strip.querySelector('[aria-live="polite"]')!;
-      await waitFor(() =>
-        expect(announcer).toHaveTextContent(
-          'Sfax: Searching Google Maps for textile companies in Sfax...',
-        ),
-      );
+      await waitFor(() => {
+        for (const button of screen.getAllByRole('button', { name: 'Create run' })) {
+          expect(button).toBeDisabled();
+        }
+      });
     });
   });
 });

@@ -205,12 +205,40 @@
 
 /* WhatsApp button and "WhatsApp opened" line on cards */
 .channel-whatsapp {
-  color: #0b6b3a;
+  color: var(--black);
 }
-.wa-button {
+.wa-button,
+.channel-whatsapp {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+}
+.wa-logo {
+  flex: none;
+  display: block;
+}
+/* On a computer: a small labelled button. */
+.channel-whatsapp.channel-button {
+  padding: 1px 8px 1px 2px;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: var(--white);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+}
+.channel-whatsapp .wa-label {
+  white-space: nowrap;
+}
+/* On a phone (touch screen): the number is a call link, and WhatsApp is the logo alone. */
+@media (pointer: coarse) {
+  .channel-whatsapp.channel-button {
+    padding: 2px;
+    border: 0;
+    background: none;
+  }
+  .channel-whatsapp .wa-label {
+    display: none;
+  }
 }
 .contact-line {
   display: block;

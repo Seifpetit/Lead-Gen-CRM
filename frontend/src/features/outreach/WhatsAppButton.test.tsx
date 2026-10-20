@@ -39,6 +39,21 @@ describe('WhatsAppButton', () => {
     expect(screen.queryByRole('button', { name: /WhatsApp/ })).toBeNull();
   });
 
+  it('wears the WhatsApp logo and says "Chat" for a computer, or the full words as a labelled button', () => {
+    const small = renderWith(<WhatsAppButton target={target()} />, server());
+    const icon = screen.getByRole('button', { name: 'Write to Amel Ben Salah on WhatsApp' });
+    expect(icon.querySelector('svg.wa-logo')).not.toBeNull();
+    // The brand green and no stand-in speech bubble.
+    expect(icon.querySelector('svg.wa-logo rect')).toHaveAttribute('fill', '#25D366');
+    expect(icon.querySelector('.lucide-message-circle')).toBeNull();
+    expect(within(icon).getByText('Chat')).toBeInTheDocument();
+    small.unmount();
+    renderWith(<WhatsAppButton target={target()} variant="button" />, server());
+    const big = screen.getByRole('button', { name: 'Write to Amel Ben Salah on WhatsApp' });
+    expect(big.querySelector('svg.wa-logo')).not.toBeNull();
+    expect(within(big).getByText('Chat on WhatsApp')).toBeInTheDocument();
+  });
+
   it('previews the filled message, opens WhatsApp Web from the panel and notes the contact', async () => {
     const s = server();
     renderWith(<WhatsAppButton target={target()} variant="button" />, s);

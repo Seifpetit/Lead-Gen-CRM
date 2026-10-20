@@ -1049,7 +1049,8 @@ export const en = {
   'external.skip.maps': 'Don’t ask again for Google Maps',
   'external.skip.linkedin': 'Don’t ask again for LinkedIn',
 
-  'whatsapp.button': 'WhatsApp',
+  'whatsapp.button': 'Chat on WhatsApp',
+  'whatsapp.chat': 'Chat',
   'whatsapp.button.label': 'Write to {name} on WhatsApp',
   'whatsapp.title': 'Message on WhatsApp',
   'whatsapp.to': 'To',
