@@ -184,6 +184,9 @@ export const en = {
   'chips.none': 'Deselect all',
   'plan.sectors': 'Sectors to search',
   'plan.sectors.all': 'All',
+  'start.sector.fixed': 'Sector',
+  'start.sector.fixed.help':
+    'One sector across any number of regions. To search several sectors, start from a region.',
   'plan.sectors.none': 'None',
   'plan.count': '{n} of {total} selected',
   'plan.sectors.loading': 'Loading sectors…',

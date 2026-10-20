@@ -214,10 +214,9 @@ describe('Coverage page', () => {
       'aria-disabled',
       'true',
     );
-    expect(within(dialog).getByRole('button', { name: 'Textile' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    // The sector is fixed (shown, not a chip to untick), so only the regions can be many.
+    expect(within(dialog).getByText('Textile')).toBeVisible();
+    expect(within(dialog).queryByRole('button', { name: 'Textile' })).toBeNull();
     expect(within(dialog).getByText('0 of 2 regions selected')).toBeVisible();
   });
 
@@ -336,10 +335,9 @@ describe('Coverage page', () => {
         'aria-pressed',
         'false',
       );
-      expect(within(dialog).getByRole('button', { name: 'Agri-food' })).toHaveAttribute(
-        'aria-pressed',
-        'true',
-      );
+      // The sector is fixed (shown, not a chip to untick), so only the regions can be many.
+      expect(within(dialog).getByText('Agri-food')).toBeVisible();
+      expect(within(dialog).queryByRole('button', { name: 'Agri-food' })).toBeNull();
       await waitFor(() =>
         expect(server.to('POST /api/runs/preview').at(-1)!.body).toMatchObject({
           regionId: 'sfax',

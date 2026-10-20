@@ -551,6 +551,68 @@ describe('Start a run: prefill from Coverage', () => {
   });
 });
 
+describe('Start a run: from a sector', () => {
+  const fromSector = () => {
+    const server = fakeServer({
+      ...dashboardRoutes(),
+      'GET /api/coverage': startCoverage,
+      'GET /api/regions': page(regions),
+      'POST /api/runs/preview': { body: preview() },
+      'POST /api/runs': { status: 201, body: run({ id: 'run-9', status: 'running' }) },
+    });
+    renderWith(
+      <StartRunWidget
+        onStarted={() => {}}
+        prefill={{ sectorIds: ['textile'], regionIds: [], nonce: 1 }}
+      />,
+      server,
+    );
+    return { server, user: userEvent.setup() };
+  };
+
+  it('fixes the clicked sector and only lets regions be added, so it is never many to many', async () => {
+    fromSector();
+    expect(await screen.findByText('Sector')).toBeVisible();
+    expect(await screen.findByText('Textile')).toBeVisible();
+    // No sector chips to tick or untick, and no Region drop-down either: regions are chips.
+    expect(screen.queryByRole('button', { name: 'Road freight' })).toBeNull();
+    expect(screen.queryByText('Sectors to search')).toBeNull();
+    expect(screen.queryByLabelText('Region')).toBeNull();
+    expect(await screen.findByRole('button', { name: /^Sfax/ })).toBeVisible();
+    expect(screen.getByRole('button', { name: /^Tunis/ })).toBeVisible();
+  });
+
+  it('starts one run per ticked region, each with the same single sector', async () => {
+    const { server, user } = fromSector();
+    await user.click(await screen.findByRole('button', { name: /^Sfax/ }));
+    await user.click(screen.getByRole('button', { name: /^Tunis/ }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^Start 2 runs/ })).toHaveAttribute(
+        'aria-disabled',
+        'false',
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: /^Start 2 runs/ }));
+    // The fixture estimate is above the $2 cap, so it asks once more.
+    await user.click(await screen.findByRole('button', { name: /^Yes, start/ }));
+    await waitFor(() => expect(server.to('POST /api/runs')).toHaveLength(2));
+    const bodies = server
+      .to('POST /api/runs')
+      .map((c) => c.body as { regionId: string; sectorIds: string[] });
+    expect(bodies.map((b) => b.regionId)).toEqual(['sfax', 'tunis']);
+    for (const b of bodies) expect(b.sectorIds).toEqual(['textile']);
+  });
+
+  it('keeps one region with many sectors when started from a region', async () => {
+    const { user } = setup();
+    await pickRegion(user);
+    expect(await screen.findByText('Sectors to search')).toBeVisible();
+    expect(screen.queryByRole('button', { name: /^Sfax/ })).toBeNull();
+    await user.click(chip('Textile'));
+    expect(chip('Textile')).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
 describe('parseWordings', () => {
   it('trims, collapses spaces and drops blank lines', () => {
     expect(parseWordings('  a   b \n\n c ')).toEqual(['a b', 'c']);
