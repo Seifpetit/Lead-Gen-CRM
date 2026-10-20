@@ -11,15 +11,26 @@ export const OSM_ATTRIBUTION =
  * is shown, so it stays out of the rest of the app. No API key, no screenshots stored: tiles are
  * fetched by the browser straight from OpenStreetMap.
  */
+export interface MapBounds {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+}
+
 export function OsmMap({
   lat,
   lng,
   zoom = 15,
+  bounds,
   label,
 }: {
   lat: number;
   lng: number;
+  /** Used when no bounds are given. */
   zoom?: number;
+  /** Show all of this area (and the pin) from above instead of a street-level close-up. */
+  bounds?: MapBounds | null;
   /** What the pin is, for the screen reader. */
   label: string;
 }) {
@@ -36,6 +47,12 @@ export function OsmMap({
       ]);
       if (cancelled || !host.current) return;
       map = L.map(host.current, { center: [lat, lng], zoom, scrollWheelZoom: false });
+      if (bounds) {
+        // The whole region from above, widened if the pin happens to lie outside it.
+        const area = L.latLngBounds([bounds.south, bounds.west], [bounds.north, bounds.east]);
+        area.extend([lat, lng]);
+        map.fitBounds(area, { padding: [8, 8] });
+      }
       L.tileLayer(OSM_TILES, { maxZoom: 19, attribution: OSM_ATTRIBUTION }).addTo(map);
       // A drawn pin, so no marker image has to be found by the bundler.
       const icon = L.divIcon({
@@ -50,7 +67,7 @@ export function OsmMap({
       cancelled = true;
       map?.remove();
     };
-  }, [lat, lng, zoom, label]);
+  }, [lat, lng, zoom, label, bounds?.south, bounds?.west, bounds?.north, bounds?.east]);
 
   return (
     <div

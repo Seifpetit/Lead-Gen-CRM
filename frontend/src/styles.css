@@ -5649,30 +5649,6 @@ a.channel:hover .channel-text {
   color: var(--muted);
   font-size: var(--fs-caption);
 }
-.tunisia-mini {
-  width: 100%;
-  max-height: 150px;
-  flex: none;
-}
-.mini-region {
-  fill: var(--surface);
-  stroke: var(--ink);
-  stroke-width: 0.6;
-  stroke-opacity: 0.45;
-}
-.mini-region.is-picked {
-  fill: var(--coral, #ff6b5e);
-  stroke-opacity: 1;
-  stroke-width: 1.2;
-}
-.mini-pin-halo {
-  fill: var(--white);
-  stroke: var(--ink);
-  stroke-width: 1.5;
-}
-.mini-pin-dot {
-  fill: var(--ink);
-}
 .osm-map {
   flex: 1 1 200px;
   min-height: 180px;
@@ -5696,6 +5672,54 @@ a.channel:hover .channel-text {
 .osm-pin {
   background: transparent;
   border: 0;
+}
+.location-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+}
+.location-address {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-caption);
+}
+.drive {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  flex: none;
+}
+.drive p {
+  margin: 0;
+}
+.drive-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  width: 100%;
+}
+.drive-form .input {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.drive-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  font-weight: 600;
+}
+.button-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--link, inherit);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
 }
 .location-open {
   display: inline-flex;

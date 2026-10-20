@@ -1,6 +1,7 @@
 import { regionLabel } from '@lead-gen-crm/shared';
 import { runProgress, type RunProgress, type RunSummary } from '@lead-gen-crm/shared';
 import type { StringKey, Translate } from '../../../i18n/index.js';
+import { formatUsd } from '../../../lib/format.js';
 import { isActive } from '../runParts.js';
 
 export interface RunView {
@@ -38,4 +39,22 @@ export function describeRun(t: Translate, run: RunSummary): RunView {
     active,
     halted,
   };
+}
+
+/** Held-back estimates smaller than this are not worth a mention. */
+const MIN_RESERVED_USD = 0.005;
+
+/**
+ * "$0.06 of $2.50", and while a step is in progress "plus $0.12 held for it". What is spent is
+ * only what providers have charged; the hold is the estimate that the real charge replaces when
+ * the step ends, so the spent figure only ever goes up.
+ */
+export function spendText(t: Translate, run: RunSummary): string {
+  const base = t('live.spend.text', {
+    spent: formatUsd(run.spentUsd),
+    cap: formatUsd(run.budgetCapUsd),
+  });
+  return isActive(run.status) && run.reservedUsd >= MIN_RESERVED_USD
+    ? `${base} ${t('live.spend.held', { amount: formatUsd(run.reservedUsd) })}`
+    : base;
 }

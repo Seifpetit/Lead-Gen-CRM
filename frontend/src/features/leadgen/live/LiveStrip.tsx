@@ -5,11 +5,10 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { ProgressTrack } from '../../../components/shared/ProgressTrack.js';
 import { useT } from '../../../i18n/index.js';
-import { formatUsd } from '../../../lib/format.js';
 import { useThrottled } from '../../../lib/useThrottled.js';
 import { OutcomeBadge, outcomeText } from '../runOutcomeView.js';
 import { RunProblem } from './RunProblem.js';
-import { describeRun } from './runView.js';
+import { describeRun, spendText } from './runView.js';
 import './live.css';
 
 /** Screen readers hear a run's sentence at most this often, however fast it changes. */
@@ -38,12 +37,7 @@ function StripRow({ run, onChanged }: { run: RunSummary; onChanged?: (() => void
             valueText={view.progressText}
           />
         </span>
-        <span className="strip-spend">
-          {t('live.spend.text', {
-            spent: formatUsd(run.spentUsd),
-            cap: formatUsd(run.budgetCapUsd),
-          })}
-        </span>
+        <span className="strip-spend">{spendText(t, run)}</span>
       </div>
       <RunProblem run={run} onChanged={onChanged} />
     </li>

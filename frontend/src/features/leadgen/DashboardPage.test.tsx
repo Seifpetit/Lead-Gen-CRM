@@ -333,6 +333,24 @@ describe('Recent leads cards', () => {
   });
 });
 
+describe('Show its leads', () => {
+  it('opens Recent leads filtered by that run only, with a chip that clears it', async () => {
+    const server = fakeServer(routes());
+    renderWith(<DashboardPage />, server, '/leadgen?run=run-1');
+    const user = userEvent.setup();
+    await screen.findByText('Fixture Transport SARL');
+    const last = () => server.to('GET /api/crm/companies/cards').at(-1)!.query;
+    await waitFor(() => expect(last().get('runId')).toBe('run-1'));
+    // Nothing else narrows the list: no region, stage, search, score or found window.
+    for (const key of ['regionId', 'stage', 'q', 'minScore', 'foundDays', 'sector']) {
+      expect(last().get(key), key).toBeNull();
+    }
+    const chip = await within(panel()).findByRole('button', { name: /Run:/ });
+    await user.click(chip);
+    await waitFor(() => expect(last().get('runId')).toBeNull());
+  });
+});
+
 describe('Rearranging cards', () => {
   it('lets a card be dragged to another place, and keeps it there', async () => {
     await setup();

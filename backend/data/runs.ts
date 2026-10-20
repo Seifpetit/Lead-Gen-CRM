@@ -14,6 +14,7 @@ interface Row {
   current_stage: RunStage | null;
   budget_cap_usd: number;
   spent_usd: number;
+  reserved_usd: number;
   places_dropped_outside: number;
   error: string | null;
   created_at: Date;
@@ -21,8 +22,13 @@ interface Row {
   finished_at: Date | null;
 }
 
-// Spend is summed from the cost ledger, never stored on the run.
-const SELECT_RUN = `SELECT r.*, COALESCE((SELECT sum(l.amount_usd) FROM cost_ledger l WHERE l.run_id = r.id), 0) AS spent_usd
+// Spend is summed from the cost ledger, never stored on the run. "Spent" counts what providers
+// really charged (actual rows); "reserved" is the estimate held for steps still in progress. A
+// step's estimate is swapped for its actual when it ends, so showing both in one number made
+// the total drop as the run went on.
+const SELECT_RUN = `SELECT r.*,
+    COALESCE((SELECT sum(l.amount_usd) FILTER (WHERE l.kind = 'actual') FROM cost_ledger l WHERE l.run_id = r.id), 0) AS spent_usd,
+    COALESCE((SELECT sum(l.amount_usd) FILTER (WHERE l.kind = 'estimated') FROM cost_ledger l WHERE l.run_id = r.id), 0) AS reserved_usd
   FROM runs r`;
 
 const toRun = (r: Row): Run => ({
@@ -37,6 +43,7 @@ const toRun = (r: Row): Run => ({
   currentStage: r.current_stage,
   budgetCapUsd: r.budget_cap_usd,
   spentUsd: r.spent_usd,
+  reservedUsd: r.reserved_usd,
   placesDroppedOutside: r.places_dropped_outside,
   createdAt: r.created_at.toISOString(),
   finishedAt: r.finished_at?.toISOString() ?? null,
@@ -61,7 +68,7 @@ export async function createRun(
     `INSERT INTO runs (user_id, region_id, sectors, custom_only, custom_wordings, cell_keys,
                        budget_cap_usd, mode)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     RETURNING *, 0 AS spent_usd`,
+     RETURNING *, 0 AS spent_usd, 0 AS reserved_usd`,
     [
       userId,
       input.regionId,

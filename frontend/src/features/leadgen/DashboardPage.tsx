@@ -1,7 +1,8 @@
 import { Select } from '../../components/shared/Select.js';
 import type { Coverage, Lead, RunSummary } from '@lead-gen-crm/shared';
 import { Plus } from 'lucide-react';
-import { useCallback, useId, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState, type CSSProperties } from 'react';
+import { useSearchParams } from 'react-router';
 import { Splitter } from '../../components/shared/Splitter.js';
 import { useApi } from '../../api/context.js';
 import { SectionTitle } from '../../components/shared/SectionTitle.js';
@@ -57,6 +58,14 @@ export function DashboardPage() {
   const refresh = useCallback(() => setRefreshKey((n) => n + 1), []);
   const [creating, setCreating] = useState(false);
   const [regionId, setRegionId] = useState('');
+  // "Show its leads" from a run arrives as ?run=<id>: show that run's leads and nothing else
+  // narrowing the list, then drop the parameter so the chip can be cleared like any filter.
+  const [params, setParams] = useSearchParams();
+  const focusRun = params.get('run');
+  useEffect(() => {
+    if (focusRun) setRegionId('');
+  }, [focusRun]);
+  const focusDone = useCallback(() => setParams({}, { replace: true }), [setParams]);
   const [split, setSplit] = useState(readSplit);
   const resize = useCallback((value: number) => {
     setSplit(value);
@@ -159,6 +168,8 @@ export function DashboardPage() {
         />
 
         <LeadsPanel
+          focusRun={focusRun}
+          onFocusDone={focusDone}
           regionId={regionId}
           refreshKey={refreshKey}
           runs={runItems}

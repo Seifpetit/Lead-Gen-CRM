@@ -4,7 +4,6 @@ import {
   CircleHelp,
   LayoutDashboard,
   Map as MapIcon,
-  ScrollText,
   Settings,
 } from 'lucide-react';
 import { Outlet, useLocation } from 'react-router';
@@ -91,11 +90,6 @@ export function Layout() {
                       icon: <Activity size={ICON} aria-hidden="true" />,
                       badge: activeRuns,
                       badgeLabel: t('side.badge.activeRuns', { count: activeRuns }),
-                    },
-                    {
-                      to: '/leadgen/logs',
-                      label: t('side.logs'),
-                      icon: <ScrollText size={ICON} aria-hidden="true" />,
                     },
                   ],
                 },

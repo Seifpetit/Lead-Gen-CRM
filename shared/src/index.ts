@@ -156,7 +156,10 @@ export interface Run {
   status: RunStatus;
   currentStage: RunStage | null;
   budgetCapUsd: number;
+  /** What providers really charged for the steps done so far. */
   spentUsd: number;
+  /** The estimate held for steps still in progress; swapped for the real charge when each step ends. */
+  reservedUsd: number;
   /** Discovered places that fell outside the region's outline and were discarded before qualifying. */
   placesDroppedOutside: number;
   createdAt: string;

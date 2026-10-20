@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { translate } from '../../../i18n/index.js';
 import { run } from '../../../test/fixtures.js';
-import { describeRun } from './runView.js';
+import { describeRun, spendText } from './runView.js';
 
 const t = (key: Parameters<typeof translate>[1], vars?: Record<string, string | number>) =>
   translate('en', key, vars);
@@ -44,5 +44,25 @@ describe('describeRun', () => {
     );
     expect(stopped.halted).toBe(true);
     expect(stopped.progressText).toBe('33 percent done. Stopped at: Finding people');
+  });
+});
+
+describe('spendText', () => {
+  const going = {
+    status: 'running' as const,
+    finishedAt: null,
+    budgetCapUsd: 2.5,
+    spentUsd: 0.059,
+  };
+  it('shows only what was charged, and the hold for the step in progress beside it', () => {
+    expect(spendText(t, run({ ...going, reservedUsd: 0.12 }))).toBe(
+      '$0.059 of $2.50 (plus $0.12 held for the step in progress)',
+    );
+  });
+  it('says nothing about a hold when there is none, or the run is over', () => {
+    expect(spendText(t, run({ ...going, reservedUsd: 0 }))).toBe('$0.059 of $2.50');
+    expect(spendText(t, run({ ...going, status: 'finished', reservedUsd: 0.12 }))).toBe(
+      '$0.059 of $2.50',
+    );
   });
 });

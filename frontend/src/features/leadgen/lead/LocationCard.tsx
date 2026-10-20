@@ -3,7 +3,7 @@ import { regionLabel } from '@lead-gen-crm/shared';
 import { MapPin, SquareArrowOutUpRight } from 'lucide-react';
 import { useApi } from '../../../api/context.js';
 import { OsmMap } from '../../../components/shared/OsmMap.js';
-import { TunisiaMiniMap } from '../../../components/shared/TunisiaMiniMap.js';
+import { DriveTime } from './DriveTime.js';
 import { useT } from '../../../i18n/index.js';
 import { useResource } from '../../../lib/useResource.js';
 
@@ -19,50 +19,70 @@ export function googleMapsLink(
 }
 
 /**
- * Where the business is: Tunisia with its region lit and a pin, then an OpenStreetMap close-up
- * with a link out to Google Maps. Without coordinates the region is lit and the card says the
- * exact place is unknown.
+ * Where the business is: an OpenStreetMap view of its whole region from above with a pin on the
+ * business, the street address beside a link out to Google Maps, and a button that works out the
+ * drive by car from the person's own address. Without coordinates the card says the exact place
+ * is unknown.
  */
 export function LocationCard({ company }: { company: Company }) {
   const t = useT();
   const api = useApi();
   const geometry = useResource(() => api.regions.geometry());
   const regions: readonly RegionGeometry[] = geometry.data?.items ?? [];
-  const regionName =
-    regions.find((r) => r.regionId === company.governorate)?.name ??
-    regionLabel(company.governorate);
+  const region = regions.find((r) => r.regionId === company.governorate);
+  const regionName = region?.name ?? regionLabel(company.governorate);
   const where = company.location ?? null;
   const link = googleMapsLink(company);
+  const bounds = region?.bounds ?? null;
 
   return (
     <section className="location-card" aria-label={t('location.title')}>
       <h3 className="location-title">
         <MapPin size={16} aria-hidden="true" /> {t('location.title')}
       </h3>
-      {/* The region itself is on the map and in the Region row; a city says something more. */}
+      {/* The region is the map's extent; a city says something more. */}
       {company.city && company.city !== regionName && (
         <p className="location-region">{`${company.city}, ${regionName}`}</p>
       )}
-      {regions.length > 0 && (
-        <TunisiaMiniMap regions={regions} regionId={company.governorate} pin={where} />
-      )}
       {where ? (
         <>
-          <OsmMap lat={where.lat} lng={where.lng} label={company.name} />
-          {link && (
-            <a className="location-open" href={link} target="_blank" rel="noreferrer noopener">
-              {t('location.openGoogle')}
-              <SquareArrowOutUpRight size={12} aria-hidden="true" />
-            </a>
+          {/* Drawn once the region's box is known, so the map does not jump from one view to another. */}
+          {geometry.loading ? (
+            <div className="osm-map" aria-hidden="true" />
+          ) : (
+            <OsmMap
+              lat={where.lat}
+              lng={where.lng}
+              bounds={bounds}
+              zoom={10}
+              label={company.name}
+            />
           )}
+          <p className="location-links">
+            {link && (
+              <a className="location-open" href={link} target="_blank" rel="noreferrer noopener">
+                {t('location.openGoogle')}
+                <SquareArrowOutUpRight size={12} aria-hidden="true" />
+              </a>
+            )}
+            {company.address && (
+              <span className="location-address">
+                {t('location.address', { address: company.address })}
+              </span>
+            )}
+          </p>
+          <DriveTime to={where} />
         </>
       ) : (
-        <p className="muted location-unknown">{t('location.unknown')}</p>
+        <>
+          {company.address && (
+            <p className="location-address">
+              {t('location.address', { address: company.address })}
+            </p>
+          )}
+          <p className="muted location-unknown">{t('location.unknown')}</p>
+        </>
       )}
-      {/*
-        FUTURE: a "distance from my address" line goes here. Coordinates are stored as lat/lng
-        numbers on the company and `haversineKm` (backend/lib/geo.ts) is ready; not built yet.
-      */}
     </section>
   );
 }

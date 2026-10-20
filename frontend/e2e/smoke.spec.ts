@@ -50,13 +50,7 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
   await nav.getByRole('link', { name: 'Lead Gen' }).click();
   await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible();
   const side = page.getByRole('navigation', { name: 'Lead Gen sections' });
-  await expect(side.getByRole('link')).toHaveText([
-    'Dashboard',
-    'Coverage',
-    'Costs',
-    'Runs',
-    'Logs',
-  ]);
+  await expect(side.getByRole('link')).toHaveText(['Dashboard', 'Coverage', 'Costs', 'Runs']);
 
   // Clean start: no leads and no runs yet.
   await expect(page.getByText('No leads yet. Create a run to find your first ones.')).toBeVisible();
@@ -98,8 +92,9 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
     runs.getByRole('link', { name: 'Open run for sfax' }).getByText('Running'),
   ).toBeVisible();
 
-  // Watch it on the Logs page while it runs: one compact row, with a Running badge.
-  await side.getByRole('link', { name: 'Logs' }).click();
+  // Watch it in the logs, inside the Runs page, while it runs: one compact row, with a Running badge.
+  await side.getByRole('link', { name: 'Runs' }).click();
+  await page.locator('.segmented label', { hasText: 'Logs' }).click();
   const log = page.getByRole('list', { name: 'Runs, newest first' });
   await expect(log.getByText('Running')).toBeVisible();
 
@@ -110,7 +105,9 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
   ).toBeVisible({
     timeout: 100_000,
   });
-  await side.getByRole('link', { name: 'Logs' }).click();
+  await side.getByRole('link', { name: 'Runs' }).click();
+  // Nothing is going now, so the Runs page opens on the logs by itself.
+  await expect(page.getByRole('radio', { name: 'Logs' })).toBeChecked();
   await expect(log.getByText('Completed with leads')).toBeVisible();
   // Its whole story opens in a window, and Escape closes it.
   await log.getByRole('button', { name: /^Open log for / }).click();

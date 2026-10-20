@@ -6,7 +6,8 @@ import { fakeServer } from '../../../test/fakeServer.js';
 import { emptyApifyLog, funnel, page, run } from '../../../test/fixtures.js';
 import { chooseOption } from '../../../test/select.js';
 import { renderWith } from '../../../test/render.js';
-import { LogsPage } from './LogsPage.js';
+import { Route, Routes } from 'react-router';
+import { LogsView } from './LogsView.js';
 
 const step = (n: number, over: Partial<ApifyStepView> = {}): ApifyStepView => ({
   runStepId: `s${n}`,
@@ -87,10 +88,9 @@ const serverWith = (runs: ApifyLogRun[]) =>
 const rows = () =>
   within(screen.getByRole('list', { name: 'Runs, newest first' })).getAllByRole('listitem');
 
-describe('Logs page', () => {
+describe('Logs view', () => {
   it('lists one compact row per run, newest first, with its outcome, summary and spend', async () => {
-    renderWith(<LogsPage />, serverWith([sfax, failed, bizerte]));
-    expect(await screen.findByRole('heading', { name: 'Logs', level: 1 })).toBeVisible();
+    renderWith(<LogsView />, serverWith([sfax, failed, bizerte]));
     await screen.findByText('Bizerte, 19 Oct');
     const [first, second, third] = rows();
     expect(within(first!).getByText('Bizerte, 19 Oct')).toBeVisible();
@@ -105,13 +105,13 @@ describe('Logs page', () => {
   });
 
   it('has no repeated Start / Cost checkpoints / End bars', async () => {
-    renderWith(<LogsPage />, serverWith([bizerte]));
+    renderWith(<LogsView />, serverWith([bizerte]));
     await screen.findByText('Bizerte, 19 Oct');
     expect(screen.queryByText('Cost checkpoints')).toBeNull();
   });
 
   it('filters by status and by region', async () => {
-    renderWith(<LogsPage />, serverWith([sfax, failed, bizerte]));
+    renderWith(<LogsView />, serverWith([sfax, failed, bizerte]));
     await screen.findByText('Bizerte, 19 Oct');
     const user = userEvent.setup();
 
@@ -129,7 +129,7 @@ describe('Logs page', () => {
   });
 
   it('opens the whole log in a window, closes it with Escape and gives focus back', async () => {
-    renderWith(<LogsPage />, serverWith([bizerte]));
+    renderWith(<LogsView />, serverWith([bizerte]));
     const user = userEvent.setup();
     const open = await screen.findByRole('button', { name: 'Open log for Bizerte, 19 Oct' });
     await user.click(open);
@@ -149,7 +149,7 @@ describe('Logs page', () => {
   });
 
   it('keeps focus inside the window while Tab is pressed', async () => {
-    renderWith(<LogsPage />, serverWith([bizerte]));
+    renderWith(<LogsView />, serverWith([bizerte]));
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Open log for Bizerte, 19 Oct' }));
     const dialog = await screen.findByRole('dialog');
@@ -160,7 +160,45 @@ describe('Logs page', () => {
   });
 
   it('has an empty state when there are no runs', async () => {
-    renderWith(<LogsPage />, serverWith([]));
+    renderWith(<LogsView />, serverWith([]));
     expect(await screen.findByText('No runs to show')).toBeVisible();
+  });
+
+  it('shows how many of the six steps were done as icons, on every row', async () => {
+    const partway: ApifyLogRun = {
+      run: run({
+        id: 'run-part',
+        region: 'gabes',
+        status: 'failed',
+        error: 'Provider said no',
+        currentStage: 'find_people',
+        stageFraction: 0.5,
+        finishedAt: '2026-10-17T09:10:00.000Z',
+        createdAt: '2026-10-17T09:00:00.000Z',
+      }),
+      steps: [],
+    };
+    renderWith(<LogsView />, serverWith([sfax, partway]));
+    await screen.findByText('Sfax, 18 Oct');
+    const [done, stopped] = rows();
+    // A finished run has all six, a failed one stopped at the third.
+    expect(within(done!).getByRole('img', { name: '6 of 6 steps done' })).toBeVisible();
+    expect(within(stopped!).getByRole('img', { name: '2 of 6 steps done' })).toBeVisible();
+    expect(stopped!.querySelectorAll('.step-icon[data-state="done"]')).toHaveLength(2);
+    expect(stopped!.querySelectorAll('.step-icon[data-state="halted"]')).toHaveLength(1);
+    expect(stopped!.querySelectorAll('.step-icon[data-state="todo"]')).toHaveLength(3);
+  });
+
+  it('has a Show its leads button that opens the dashboard leads for that run only', async () => {
+    const user = userEvent.setup();
+    renderWith(
+      <Routes>
+        <Route path="/" element={<LogsView />} />
+        <Route path="/leadgen" element={<p>Dashboard</p>} />
+      </Routes>,
+      serverWith([sfax]),
+    );
+    await user.click(await screen.findByRole('button', { name: 'Show the leads of Sfax, 18 Oct' }));
+    expect(await screen.findByText('Dashboard')).toBeVisible();
   });
 });

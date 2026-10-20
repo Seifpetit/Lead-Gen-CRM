@@ -1,5 +1,5 @@
 import type { RunSummary } from '@lead-gen-crm/shared';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FilterChips } from '../../../components/shared/FilterMenu.js';
 import { Modal } from '../../../components/Modal.js';
 import { PanelSection } from '../../../components/shared/PanelSection.js';
@@ -25,11 +25,17 @@ import { useLeadCards } from './useLeadCards.js';
  * opens on the same cards and what is changed there is kept after it closes.
  */
 export function LeadsPanel({
+  focusRun = null,
+  onFocusDone,
   regionId,
   refreshKey,
   runs,
   onCreateRun,
 }: {
+  /** A run whose leads to show, and nothing else narrowing the list; set by "Show its leads". */
+  focusRun?: string | null;
+  /** Called once the view has moved to that run, so the caller can forget the request. */
+  onFocusDone?: () => void;
   regionId: string;
   refreshKey: number;
   runs: readonly RunSummary[];
@@ -45,6 +51,11 @@ export function LeadsPanel({
     [],
   );
   const reset = useCallback(() => patch(NO_FILTERS), [patch]);
+  useEffect(() => {
+    if (!focusRun) return;
+    setQuery({ ...initialQuery, runId: focusRun });
+    onFocusDone?.();
+  }, [focusRun, onFocusDone]);
 
   const data = useLeadCards(
     query.pipeline,

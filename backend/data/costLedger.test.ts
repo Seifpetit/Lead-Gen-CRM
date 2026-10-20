@@ -11,6 +11,7 @@ import {
   reconcileCost,
   recordCost,
   remainingBudget,
+  settleStepCosts,
   type CostEntryInput,
 } from './costLedger.js';
 import { upsertLead } from './crmLeads.js';
@@ -68,8 +69,24 @@ describe('cost ledger', () => {
       item: 'model-x',
       unitPriceUsd: 0.5,
     });
-    expect((await getRun(db, user, runId))?.spentUsd).toBe(2.5);
+    // Open estimates are held in reserve; nothing is spent until a provider charges for it.
+    expect(await getRun(db, user, runId)).toMatchObject({ spentUsd: 0, reservedUsd: 2.5 });
     expect((await listSteps(db, user, runId))[0]?.costUsd).toBe(2);
+  });
+
+  it("never lowers a run's spent figure when a step's estimate is swapped for its real charge", async () => {
+    const step = (await ensureStep(db, user, { runId, stage: 'discover', stepKey: 'k2' }))!;
+    await recordCost(db, user, apify(500, { runStepId: step.id }));
+    const before = (await getRun(db, user, runId))!;
+    expect(before).toMatchObject({ spentUsd: 0, reservedUsd: 2 });
+    await settleStepCosts(db, user, {
+      runId,
+      runStepId: step.id,
+      actuals: [{ provider: 'apify', item: 'x', units: 100, unitPriceUsd: 0.004 }],
+    });
+    const after = (await getRun(db, user, runId))!;
+    expect(after.spentUsd).toBeGreaterThanOrEqual(before.spentUsd);
+    expect(after).toMatchObject({ spentUsd: 0.4, reservedUsd: 0 });
   });
 
   it('refuses updates and deletes at the database level', async () => {

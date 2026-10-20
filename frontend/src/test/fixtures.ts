@@ -132,6 +132,7 @@ export function run(over: Partial<RunSummary> = {}): RunSummary {
     currentStage: null,
     budgetCapUsd: 10,
     spentUsd: 3.21,
+    reservedUsd: 0,
     placesDroppedOutside: 0,
     customOnly: false,
     customWordings: [],
