@@ -17,6 +17,7 @@ export function Popover({
   portal = false,
   badge,
   buttonLabel,
+  triggerClassName,
 }: {
   /** Names the button for screen readers and as its tooltip. */
   label: string;
@@ -31,6 +32,8 @@ export function Popover({
   badge?: number;
   /** What a screen reader says for the button when it differs from `label` (e.g. with the count). */
   buttonLabel?: string;
+  /** An extra class for the button, for a button with a colour of its own. */
+  triggerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const id = useId();
@@ -103,7 +106,9 @@ export function Popover({
       <button
         ref={button}
         type="button"
-        className={showLabel ? 'button button-icon-text' : 'button button-icon'}
+        className={[showLabel ? 'button button-icon-text' : 'button button-icon', triggerClassName]
+          .filter(Boolean)
+          .join(' ')}
         aria-label={buttonLabel ?? label}
         title={label}
         aria-expanded={open}

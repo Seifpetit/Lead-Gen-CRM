@@ -63,3 +63,19 @@ export function useRunLog(runId: string, active: boolean): RunLogState {
 
   return state;
 }
+
+/** Every line of one run's log, read page by page (the Logs export; no polling, no state). */
+export async function readRunLog(
+  api: ReturnType<typeof useApi>,
+  runId: string,
+): Promise<RunLogLine[]> {
+  const lines: RunLogLine[] = [];
+  let last = 0;
+  for (;;) {
+    const page = await api.runs.logs(runId, { after: last, limit: PAGE });
+    const fresh = page.items.filter((line) => line.id > last);
+    lines.push(...fresh);
+    if (fresh.length > 0) last = fresh[fresh.length - 1]!.id;
+    if (!page.hasMore || fresh.length === 0) return lines;
+  }
+}

@@ -1,6 +1,6 @@
 import type { Company, RegionGeometry } from '@lead-gen-crm/shared';
 import { regionLabel } from '@lead-gen-crm/shared';
-import { MapPin, SquareArrowOutUpRight } from 'lucide-react';
+import { SquareArrowOutUpRight } from 'lucide-react';
 import { useApi } from '../../../api/context.js';
 import { OsmMap } from '../../../components/shared/OsmMap.js';
 import { DriveTime } from './DriveTime.js';
@@ -36,15 +36,13 @@ export function LocationCard({ company }: { company: Company }) {
   const link = googleMapsLink(company);
   const bounds = region?.bounds ?? null;
 
+  // One line, region first and address after: "Ariana, Cebalat Ben Ammar".
+  const address = company.address?.trim() ?? '';
+  const place = [company.governorate ? regionName : '', address].filter(Boolean).join(', ');
+
   return (
     <section className="location-card" aria-label={t('location.title')}>
-      <h3 className="location-title">
-        <MapPin size={16} aria-hidden="true" /> {t('location.title')}
-      </h3>
-      {/* The region is the map's extent; a city says something more. */}
-      {company.city && company.city !== regionName && (
-        <p className="location-region">{`${company.city}, ${regionName}`}</p>
-      )}
+      {place && <p className="location-place">{place}</p>}
       {where ? (
         <>
           {/* Drawn once the region's box is known, so the map does not jump from one view to another. */}
@@ -59,30 +57,16 @@ export function LocationCard({ company }: { company: Company }) {
               label={company.name}
             />
           )}
-          <p className="location-links">
-            {link && (
-              <ExternalLink kind="maps" name={company.name} className="location-open" href={link}>
-                {t('location.openGoogle')}
-                <SquareArrowOutUpRight size={12} aria-hidden="true" />
-              </ExternalLink>
-            )}
-            {company.address && (
-              <span className="location-address">
-                {t('location.address', { address: company.address })}
-              </span>
-            )}
-          </p>
+          {link && (
+            <ExternalLink kind="maps" name={company.name} className="location-open" href={link}>
+              {t('location.openGoogle')}
+              <SquareArrowOutUpRight size={12} aria-hidden="true" />
+            </ExternalLink>
+          )}
           <DriveTime to={where} />
         </>
       ) : (
-        <>
-          {company.address && (
-            <p className="location-address">
-              {t('location.address', { address: company.address })}
-            </p>
-          )}
-          <p className="muted location-unknown">{t('location.unknown')}</p>
-        </>
+        <p className="muted location-unknown">{t('location.unknown')}</p>
       )}
     </section>
   );

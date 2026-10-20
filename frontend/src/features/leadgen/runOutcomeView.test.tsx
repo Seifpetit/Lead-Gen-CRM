@@ -81,6 +81,16 @@ describe('run outcome words', () => {
     ).toBe('The searches returned no places');
   });
 
+  it('says a run stopped by its cap in one clean sentence, never the raw message', () => {
+    const capped = run({
+      status: 'stopped_by_cap',
+      error: 'Spend cap reached: 1 place found',
+    });
+    expect(sentence(capped, 7)).toBe('Spend cap reached after 7 searches');
+    expect(sentence(capped, 1)).toBe('Spend cap reached after 1 search');
+    expect(sentence(capped)).toBe('Spend cap reached');
+  });
+
   it('badges each outcome with words, an icon and a colour, green only for leads', () => {
     const cases: [ReturnType<typeof run>, string, string][] = [
       [run(), 'Completed with leads', 'green'],

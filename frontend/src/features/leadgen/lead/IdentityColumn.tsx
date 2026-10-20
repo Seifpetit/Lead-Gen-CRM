@@ -1,11 +1,10 @@
 import type { CompanyCardDetail, Evidence, Lead } from '@lead-gen-crm/shared';
-import { regionLabel } from '@lead-gen-crm/shared';
-import { Globe, Info, Mail, MapPin, MapPinned, Phone, SquareArrowOutUpRight } from 'lucide-react';
+import { Globe, Info, Mail, Phone, SquareArrowOutUpRight } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Tip } from '../../../components/shared/Tip.js';
 import { useT } from '../../../i18n/index.js';
 import { evidenceFor, safeHref } from '../../../lib/format.js';
-import { channelHref, mapsSourceUrl } from '../../../lib/lead.js';
+import { channelHref } from '../../../lib/lead.js';
 import { CompanyThumb } from '../../crm/BoardCard.js';
 import { CopyButton } from './CopyButton.js';
 import { DotLegend, EvidenceDot } from './EvidenceDot.js';
@@ -49,7 +48,6 @@ function Row({
 export function IdentityColumn({ lead, detail }: { lead: Lead; detail: CompanyCardDetail }) {
   const t = useT();
   const { company, contact } = lead;
-  const mapsUrl = mapsSourceUrl(company);
   const site = safeHref(company.website);
   const phone = company.phone;
   const email = company.email;
@@ -144,23 +142,6 @@ export function IdentityColumn({ lead, detail }: { lead: Lead; detail: CompanyCa
           ) : (
             missing
           )}
-        </Row>
-        <Row
-          icon={<MapPinned size={ICON} />}
-          label={t('leadView.row.maps')}
-          empty={!(mapsUrl && safeHref(mapsUrl))}
-        >
-          {mapsUrl && safeHref(mapsUrl) ? (
-            <ExternalLink kind="maps" name={company.name} href={safeHref(mapsUrl)!}>
-              {t('lead.company.source.maps')}
-              <SquareArrowOutUpRight size={12} aria-hidden="true" className="lead-external" />
-            </ExternalLink>
-          ) : (
-            missing
-          )}
-        </Row>
-        <Row icon={<MapPin size={ICON} />} label={t('leadView.row.region')}>
-          {company.governorate ? regionLabel(company.governorate) : missing}
         </Row>
       </ul>
     </div>
