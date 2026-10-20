@@ -813,7 +813,8 @@ export const en = {
   'outcome.text.no_people':
     '{kept} kept, 0 people found, so the people step had nothing to carry forward',
   'outcome.text.no_leads': '{kept} kept, {people} people found, but none became a lead',
-  'outcome.text.stopped_by_cap': 'Spend cap reached: {places} found, {leads}',
+  'outcome.text.stopped_by_cap': 'Spend cap reached',
+  'outcome.text.stopped_by_cap.after': 'Spend cap reached after {searches}',
   'outcome.text.stopped': 'Stopped by you: {places} found, {leads}',
   'outcome.text.failed': 'Failed: {message}',
   'outcome.text.failed.plain': 'Failed before it finished',

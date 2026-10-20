@@ -23,13 +23,18 @@
   flex-direction: column;
   gap: var(--space-2);
 }
+/*
+ * One row is a grid of fixed, non-overlapping columns. The badge column fits its words and is
+ * never clipped, the six step icons have a column of their own, and the summary takes what is
+ * left (two lines at most). Narrower panels move the icons and the summary to a second line.
+ */
 .logs-row {
   display: grid;
-  grid-template-columns:
-    minmax(70px, 1fr) 130px auto minmax(60px, 2fr) minmax(100px, 1fr) 48px
-    auto;
+  grid-template-columns: minmax(80px, 1fr) max-content 176px minmax(120px, 2fr) 120px 76px 232px;
+  grid-template-areas: 'name badge steps summary spend time actions';
   align-items: center;
-  gap: var(--space-2);
+  column-gap: var(--space-3);
+  row-gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border: var(--bw) solid var(--ink);
   border-radius: var(--radius);
@@ -38,38 +43,68 @@
 .logs-row > * {
   min-width: 0;
 }
-.logs-name,
-.logs-summary {
+.logs-name {
+  grid-area: name;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.logs-outcome {
+  grid-area: badge;
+  display: block;
+  white-space: nowrap;
+}
+.logs-row .step-icons {
+  grid-area: steps;
+  flex: none;
+  white-space: nowrap;
+}
+.logs-summary {
+  grid-area: summary;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
 .logs-spend {
+  grid-area: spend;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 .logs-time {
+  grid-area: time;
   text-align: right;
   white-space: nowrap;
 }
-.logs-open {
-  justify-self: end;
+.logs-actions {
+  grid-area: actions;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.logs-actions button {
   white-space: nowrap;
 }
-@container dashpanel (max-width: 980px) {
+@container dashpanel (max-width: 1100px) {
   .logs-row {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(176px, 1fr) max-content 120px 76px 232px;
+    grid-template-areas:
+      'name badge spend time actions'
+      'steps summary summary summary summary';
   }
-  .logs-summary {
-    grid-column: 1 / -1;
-    white-space: normal;
-  }
-  .logs-spend {
-    grid-column: 1 / 2;
-  }
-  .logs-time {
-    text-align: left;
+}
+@container dashpanel (max-width: 820px) {
+  .logs-row {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    grid-template-areas:
+      'name badge'
+      'steps steps'
+      'summary summary'
+      'spend time'
+      'actions actions';
   }
 }
 
@@ -180,9 +215,4 @@
 }
 .logs-actions button {
   white-space: nowrap;
-}
-.logs-actions {
-  display: flex;
-  gap: var(--space-2);
-  justify-self: end;
 }

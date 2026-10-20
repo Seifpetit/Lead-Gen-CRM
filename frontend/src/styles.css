@@ -6097,3 +6097,19 @@ a.channel:hover .channel-text {
 .badge-outcome[data-tone='grey'] {
   background: var(--surface);
 }
+
+/* Export has a colour of its own (orange), so it is not mistaken for the teal primary action. */
+.button-export {
+  background: var(--orange);
+  color: var(--black);
+  border-color: var(--ink);
+  box-shadow: var(--shadow-1);
+}
+.button-export:hover:not(:disabled) {
+  filter: none;
+  background: var(--orange);
+}
+.button-export:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-0);
+}

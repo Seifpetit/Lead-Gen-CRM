@@ -94,8 +94,12 @@ export function outcomeText(
             });
       break;
     case 'stopped_by_cap':
-      text = t('outcome.text.stopped_by_cap', { places: found, leads });
-      break;
+      // One clean sentence, never the raw message: "Spend cap reached after 7 searches".
+      return searches !== undefined && searches > 0
+        ? t('outcome.text.stopped_by_cap.after', {
+            searches: t(searches === 1 ? 'outcome.search.one' : 'outcome.search', { n: searches }),
+          })
+        : t('outcome.text.stopped_by_cap');
     case 'stopped':
       text = t('outcome.text.stopped', { places: found, leads });
       break;

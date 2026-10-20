@@ -440,6 +440,36 @@ const logRuns = Array.from({ length: 40 }, (_, i) => ({
   },
   steps: [],
 }));
+
+// Rows with the longest outcome labels, to check that no cell of a log row sits on another.
+const outcomeRows = [
+  { status: 'finished', placesDroppedOutside: 0, leads: 5, discovered: 30 },
+  { status: 'finished', placesDroppedOutside: 98, leads: 0, discovered: 0 },
+  { status: 'stopped_by_cap', placesDroppedOutside: 0, leads: 1, discovered: 1 },
+  { status: 'running', placesDroppedOutside: 0, leads: 0, discovered: 0 },
+].map((o, i) => {
+  const base = logRuns[i + 1]!;
+  return {
+    ...base,
+    run: {
+      ...base.run,
+      id: `layout-outcome-${i}`,
+      region: 'ben-arous',
+      status: o.status,
+      currentStage: o.status === 'running' ? 'discover' : null,
+      finishedAt: o.status === 'running' ? null : base.run.finishedAt,
+      placesDroppedOutside: o.placesDroppedOutside,
+      funnel: {
+        ...base.run.funnel,
+        discovered: o.discovered,
+        leads: o.leads,
+        ...(o.leads === 0 && o.discovered === 0
+          ? { qualified: 0, review: 0, unreachable: 0, peopleFound: 0 }
+          : {}),
+      },
+    },
+  };
+});
 const costRows = Array.from({ length: 60 }, (_, i) => ({
   key: `layout-provider-${i}`,
   actualUsd: 1.5,
@@ -487,9 +517,10 @@ for (const size of [
     expect(
       await page.locator('.logs-body').evaluate((el) => el.scrollHeight > el.clientHeight),
     ).toBe(true);
-    // A row is one line high, and Open log is pinned to its right edge.
+    // A row is one line high when the panel is wide enough and two lines below 1100px, and
+    // Open log is pinned to its right edge.
     const row = (await rows.first().boundingBox())!;
-    expect(row.height).toBeLessThan(80);
+    expect(row.height).toBeLessThan(size.width >= 1440 ? 80 : 110);
     const open = (await rows.first().locator('.logs-open').boundingBox())!;
     expect(row.x + row.width - (open.x + open.width)).toBeLessThan(24);
 
@@ -510,5 +541,76 @@ for (const size of [
       await page.locator('.costs-body').evaluate((el) => el.scrollHeight > el.clientHeight),
     ).toBe(true);
     expect((await page.locator('.dp-header').boundingBox())!.height).toBeLessThanOrEqual(60);
+  });
+}
+
+for (const width of [800, 1280, 1440, 1920]) {
+  test(`${width}px: the cells of a log row never overlap and the badge is never clipped`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await signIn(page);
+    await page.route(
+      (url) => url.pathname === '/api/apify/log',
+      (route) =>
+        route.fulfill({
+          json: {
+            runs: outcomeRows,
+            attention: [],
+            recent: { items: [], total: 0, limit: 50, offset: 0, nextOffset: null },
+          },
+        }),
+    );
+    await page.goto('/leadgen/runs?view=logs');
+    const rows = page.locator('.logs-row');
+    await expect(rows).toHaveCount(outcomeRows.length);
+    const found = await rows.evaluateAll((els) =>
+      els.map((row) => {
+        const cells = [...row.children].map((c) => {
+          const r = c.getBoundingClientRect();
+          return { name: c.className, x: r.x, y: r.y, w: r.width, h: r.height };
+        });
+        const overlaps: string[] = [];
+        for (let a = 0; a < cells.length; a++) {
+          for (let b = a + 1; b < cells.length; b++) {
+            const p = cells[a]!;
+            const q = cells[b]!;
+            const across = Math.min(p.x + p.w, q.x + q.w) - Math.max(p.x, q.x);
+            const down = Math.min(p.y + p.h, q.y + q.h) - Math.max(p.y, q.y);
+            if (across > 0.5 && down > 0.5) overlaps.push(`${p.name} / ${q.name}`);
+          }
+        }
+        // Text must also stay inside its own cell (a cell box can be fine while its words spill).
+        const spilling = ['.logs-time', '.logs-spend', '.logs-actions', '.step-icons'].filter(
+          (q) => {
+            const el = row.querySelector<HTMLElement>(q)!;
+            return el.scrollWidth > el.clientWidth + 1;
+          },
+        );
+        const badge = row.querySelector<HTMLElement>('.badge-outcome')!;
+        const slot = badge.parentElement!;
+        const rowBox = row.getBoundingClientRect();
+        const inside = cells.every((c) => c.x >= rowBox.x - 0.5 && c.x + c.w <= rowBox.right + 0.5);
+        return {
+          overlaps,
+          spilling,
+          inside,
+          badgeLabel: badge.textContent,
+          badgeClipped: badge.scrollWidth > badge.clientWidth,
+          slotClipped: slot.scrollWidth > slot.clientWidth,
+        };
+      }),
+    );
+    for (const row of found) {
+      expect(row.overlaps, row.badgeLabel ?? '').toEqual([]);
+      expect(row.spilling, row.badgeLabel ?? '').toEqual([]);
+      expect(row.badgeClipped, row.badgeLabel ?? '').toBe(false);
+      expect(row.slotClipped, row.badgeLabel ?? '').toBe(false);
+      expect(row.inside, row.badgeLabel ?? '').toBe(true);
+    }
+    const labels = found.map((r) => r.badgeLabel);
+    expect(labels).toContain('Completed with leads');
+    expect(labels).toContain('Ended, no results');
+    expect(labels).toContain('Stopped by spend cap');
   });
 }
