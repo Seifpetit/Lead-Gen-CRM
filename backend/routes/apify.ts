@@ -63,7 +63,14 @@ export async function apifyRoutes(app: FastifyInstance, deps: RouteDeps): Promis
         throw new ApiError(503, 'webhook_disabled', 'No webhook secret is configured');
       }
       const payload = verifyWebhook(deps.webhookSecret, request.body);
-      if (!payload) return reply.code(401).send({ error: 'invalid_signature' });
+      if (!payload) {
+        await deps.errors?.message(
+          'webhook',
+          'invalid_signature',
+          'A webhook call arrived with a signature that does not match the webhook secret, and was refused',
+        );
+        return reply.code(401).send({ error: 'invalid_signature' });
+      }
       // Unknown, finished or repeated events are accepted and ignored: Apify retries anything
       // that isn't a 2xx, and applying a result twice is impossible (Orchestrator.applyJob).
       if (!UUID.safeParse(payload.userId).success || !UUID.safeParse(payload.stepId).success) {

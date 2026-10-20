@@ -17,6 +17,8 @@ import type {
   CrmFacets,
   CrmPipeline,
   CrmStage,
+  HealthProvider,
+  HealthView,
   CsvDelimiter,
   DecisionMakerInput,
   ExportFormat,
@@ -106,6 +108,8 @@ export function createApi(client: ApiClient) {
       start: (input: StartRunInput) =>
         client.request<RunSummary>('POST', '/api/runs', { body: input }),
       stop: (id: string) => client.request<RunSummary>('POST', `/api/runs/${id}/stop`),
+      /** Gives a run its next pass now and returns it with what the watchdog thinks of it. */
+      recheck: (id: string) => client.request<RunSummary>('POST', `/api/runs/${id}/recheck`),
       /** The runs in progress; the polling fallback for the event stream. */
       live: () => client.get<LiveRuns>('/api/runs/live'),
       /** Where the event stream of the runs in progress lives. */
@@ -113,6 +117,13 @@ export function createApi(client: ApiClient) {
       /** A run's log lines after the given id, oldest first. */
       logs: (id: string, params: { after?: number; limit?: number } = {}) =>
         client.get<RunLogPage>(`/api/runs/${id}/logs`, defined(params)),
+    },
+
+    health: {
+      get: () => client.get<HealthView>('/api/health'),
+      /** "I fixed it": puts a provider back to ok; the next real call decides again. */
+      resetProvider: (provider: HealthProvider) =>
+        client.request<HealthView>('POST', `/api/health/providers/${provider}/reset`),
     },
 
     regions: {

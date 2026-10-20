@@ -12,6 +12,8 @@ export type LiveMode = 'connecting' | 'live' | 'polling';
 export interface LiveRunsState {
   /** The runs in progress; null until the first answer. */
   runs: RunSummary[] | null;
+  /** Runs that ended in the last half hour, newest first: failed, stopped or finished. */
+  ended: RunSummary[];
   /** live: the server pushes changes; polling: the stream failed, so it is asked every 3 s. */
   mode: LiveMode;
   /** The last polling failure; cleared by the next success. */
@@ -29,6 +31,7 @@ export function useLiveRuns(onEnded?: (run: RunSummary) => void): LiveRunsState 
   const api = useApi();
   const [state, setState] = useState<LiveRunsState>({
     runs: null,
+    ended: [],
     mode: 'connecting',
     error: null,
   });
@@ -36,11 +39,12 @@ export function useLiveRuns(onEnded?: (run: RunSummary) => void): LiveRunsState 
   const ended = useRef(onEnded);
   ended.current = onEnded;
 
-  const apply = useCallback((runs: RunSummary[], mode: LiveMode) => {
+  const apply = useCallback((live: LiveRuns, mode: LiveMode) => {
+    const runs = live.runs;
     const still = new Set(runs.map((r) => r.id));
     for (const run of known.current) if (!still.has(run.id)) ended.current?.(run);
     known.current = runs;
-    setState({ runs, mode, error: null });
+    setState({ runs, ended: live.ended ?? [], mode, error: null });
   }, []);
 
   useEffect(() => {
@@ -53,7 +57,7 @@ export function useLiveRuns(onEnded?: (run: RunSummary) => void): LiveRunsState 
     const poll = async () => {
       try {
         const live = await api.runs.live();
-        if (!closed && polling) apply(live.runs, 'polling');
+        if (!closed && polling) apply(live, 'polling');
       } catch (error) {
         if (!closed) setState((s) => ({ ...s, mode: 'polling', error }));
       } finally {
@@ -82,7 +86,7 @@ export function useLiveRuns(onEnded?: (run: RunSummary) => void): LiveRunsState 
         try {
           const live = JSON.parse((event as MessageEvent<string>).data) as LiveRuns;
           stopPolling();
-          apply(live.runs, 'live');
+          apply(live, 'live');
         } catch {
           // A garbled event is skipped; the next one replaces it.
         }

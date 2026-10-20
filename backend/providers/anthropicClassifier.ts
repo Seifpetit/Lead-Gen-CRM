@@ -83,12 +83,18 @@ export interface AnthropicClassifierOptions {
   model: string;
   http?: HttpJson;
   timeoutMs?: number;
+  /** Told about a failed call (the classifier itself never throws), e.g. to track provider health. */
+  onFailure?: (err: unknown) => void;
+  /** Told about a call that went through. */
+  onSuccess?: () => void;
 }
 
 export class AnthropicClassifier implements CompanyClassifier, TitleClassifier {
   private readonly model: string;
   private readonly http: HttpJson;
   private readonly timeoutMs: number;
+  private readonly onFailure: ((err: unknown) => void) | undefined;
+  private readonly onSuccess: (() => void) | undefined;
 
   constructor(
     private readonly apiKey: string,
@@ -97,6 +103,8 @@ export class AnthropicClassifier implements CompanyClassifier, TitleClassifier {
     this.model = options.model;
     this.http = options.http ?? defaultHttp;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.onFailure = options.onFailure;
+    this.onSuccess = options.onSuccess;
   }
 
   async classifyCompany(facts: CompanyFacts): Promise<Classification<QualifyVerdict>> {
@@ -182,6 +190,11 @@ export class AnthropicClassifier implements CompanyClassifier, TitleClassifier {
         timeoutMs: this.timeoutMs,
       });
     } catch (err) {
+      try {
+        this.onFailure?.(err);
+      } catch {
+        // Reporting must never change what the classifier answers.
+      }
       // Only the kind of failure is kept: messages could echo request details.
       if (err instanceof HttpError) return { status: `http ${err.status}`, costs: [] };
       const name = err instanceof Error ? err.name : '';
@@ -191,6 +204,11 @@ export class AnthropicClassifier implements CompanyClassifier, TitleClassifier {
       };
     }
 
+    try {
+      this.onSuccess?.();
+    } catch {
+      // See onFailure.
+    }
     // The tokens were billed even if the answer turns out to be unusable.
     const costs = this.costOf(response, system.length + user.length);
     const text = textOf(response.content);
@@ -257,10 +275,12 @@ function evidenceFor(
 export function createClassifier(
   env: { ANTHROPIC_API_KEY?: string | undefined; CLASSIFIER_MODEL: string },
   http?: HttpJson,
+  hooks: Pick<AnthropicClassifierOptions, 'onFailure' | 'onSuccess'> = {},
 ): AnthropicClassifier | null {
   if (!env.ANTHROPIC_API_KEY) return null;
   return new AnthropicClassifier(env.ANTHROPIC_API_KEY, {
     model: env.CLASSIFIER_MODEL,
     ...(http ? { http } : {}),
+    ...hooks,
   });
 }
