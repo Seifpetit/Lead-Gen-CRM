@@ -91,6 +91,7 @@ export function AppShell({
   expandLabel,
   profileName,
   profile,
+  banner,
   children,
 }: {
   brand: string;
@@ -107,6 +108,8 @@ export function AppShell({
   profileName: string;
   /** What the profile menu holds (sign out). */
   profile: ReactNode;
+  /** Fixed to the bottom edge of the top bar, above every page (the live run banner). */
+  banner?: ReactNode;
   children: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
@@ -147,6 +150,7 @@ export function AppShell({
           </div>
         )}
       </header>
+      {banner}
       {sideNav ? (
         <div className={`shell${collapsed ? ' is-collapsed' : ''}`}>
           <aside className="sidebar">

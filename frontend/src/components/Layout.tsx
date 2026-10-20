@@ -10,6 +10,7 @@ import { Outlet, useLocation } from 'react-router';
 import { useApi } from '../api/context.js';
 import { useAuth } from '../features/auth/AuthContext.js';
 import { HealthNotice } from '../features/leadgen/health/HealthNotice.js';
+import { LiveBanner } from '../features/leadgen/live/LiveBanner.js';
 import { useT } from '../i18n/index.js';
 import { useResource } from '../lib/useResource.js';
 import { AppShell } from './shared/AppShell.js';
@@ -108,6 +109,7 @@ export function Layout() {
               ],
             }
           : {})}
+        banner={<LiveBanner />}
         profileName={auth.user?.email ?? ''}
         profile={
           <button type="button" className="profile-signout" onClick={() => void auth.signOut()}>

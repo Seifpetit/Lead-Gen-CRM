@@ -1,6 +1,6 @@
 import { whatsappNumber } from '@lead-gen-crm/shared';
-import { MessageCircle } from 'lucide-react';
 import { useState } from 'react';
+import { WhatsAppLogo } from '../../components/shared/WhatsAppLogo.js';
 import { useT } from '../../i18n/index.js';
 import { WhatsAppPanel } from './WhatsAppPanel.js';
 import { targetName, type WhatsAppTarget } from './whatsapp.js';
@@ -8,6 +8,8 @@ import { targetName, type WhatsAppTarget } from './whatsapp.js';
 /**
  * The WhatsApp action for a lead, shown only when its phone looks like a Tunisian mobile
  * (landlines and foreign numbers keep the call link only). It always opens the preview first.
+ * On a computer, where a phone number cannot be called, it is a labelled "Chat" button with the
+ * WhatsApp logo; on a phone the number stays a call link and this shrinks to the logo.
  */
 export function WhatsAppButton({
   target,
@@ -38,8 +40,11 @@ export function WhatsAppButton({
           setOpen(true);
         }}
       >
-        <MessageCircle size={14} aria-hidden="true" />
-        {variant === 'button' && t('whatsapp.button')}
+        <WhatsAppLogo size={variant === 'button' ? 20 : 18} />
+        {/* On a computer the button says what it does; on a phone the logo alone is enough. */}
+        <span className="wa-label">
+          {t(variant === 'button' ? 'whatsapp.button' : 'whatsapp.chat')}
+        </span>
       </button>
       {open && (
         <WhatsAppPanel

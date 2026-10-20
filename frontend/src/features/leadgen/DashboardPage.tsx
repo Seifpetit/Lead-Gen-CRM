@@ -15,7 +15,6 @@ import { LeadsPanel } from './dashboard/LeadsPanel.js';
 import { RunsSection } from './dashboard/RunsSection.js';
 import { CreateRunModal } from './CreateRunModal.js';
 import { startedMessage } from './startrun/startPlan.js';
-import { LiveStrip } from './live/LiveStrip.js';
 import { MAX_ACTIVE_RUNS } from './runParts.js';
 import { useErrorToast } from './useErrorToast.js';
 
@@ -158,14 +157,6 @@ export function DashboardPage() {
             </button>
           </div>
         </header>
-
-        <LiveStrip
-          runs={activeRuns}
-          ended={live.ended}
-          mode={live.mode}
-          unreachable={live.error !== null}
-          onChanged={refresh}
-        />
 
         <LeadsPanel
           focusRun={focusRun}
