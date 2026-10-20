@@ -1,9 +1,12 @@
 import type { CrmCard } from '@lead-gen-crm/shared';
 import { formatPhone, regionLabel } from '@lead-gen-crm/shared';
 import { Globe, Mail, Phone } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import { ExternalLink } from '../../components/shared/ExternalLink.js';
 import { useT, type Translate } from '../../i18n/index.js';
 import { formatDay, hostOf, safeHref } from '../../lib/format.js';
+import { WhatsAppButton } from '../outreach/WhatsAppButton.js';
+import { targetOfCard } from '../outreach/whatsapp.js';
 import { cardName } from './useBoard.js';
 
 const ICON = 14;
@@ -84,6 +87,8 @@ export function ChannelRows({
   const site = !person && company.website ? safeHref(company.website) : null;
   const linkedin = person?.linkedinUrl ? safeHref(person.linkedinUrl) : null;
   const shown = formatPhone(phone);
+  const [contactedAt, setContactedAt] = useState<string | null>(null);
+  const lastContact = contactedAt ?? card.lastContactAt ?? null;
 
   return (
     <span className="channels">
@@ -106,6 +111,7 @@ export function ChannelRows({
             className="channel-phone"
           />
         )}
+        <WhatsAppButton target={targetOfCard(card)} onContacted={setContactedAt} />
         {trailing}
       </span>
       <span className="channel-row">
@@ -129,18 +135,18 @@ export function ChannelRows({
         )}
         {!person &&
           (site ? (
-            <a
+            <ExternalLink
+              kind="website"
+              name={company.name}
               className="channel channel-site"
               href={site}
-              target="_blank"
-              rel="noreferrer noopener"
               draggable={false}
               aria-label={t('crm.card.website', { name })}
               title={company.website ?? site}
             >
               <Globe size={ICON} aria-hidden="true" />
               <span className="channel-text">{siteDomain(site)}</span>
-            </a>
+            </ExternalLink>
           ) : (
             <Missing
               icon={<Globe size={ICON} aria-hidden="true" />}
@@ -149,19 +155,24 @@ export function ChannelRows({
             />
           ))}
         {linkedin && (
-          <a
+          <ExternalLink
+            kind="linkedin"
+            name={name}
             className="channel channel-linkedin"
             href={linkedin}
-            target="_blank"
-            rel="noreferrer noopener"
             draggable={false}
             aria-label={t('crm.card.linkedin', { name })}
             title={t('crm.card.linkedin', { name })}
           >
             <LinkedinIcon />
-          </a>
+          </ExternalLink>
         )}
       </span>
+      {lastContact && (
+        <span className="contact-line">
+          {t('whatsapp.lastContact', { date: formatDay(lastContact) })}
+        </span>
+      )}
     </span>
   );
 }

@@ -6,6 +6,7 @@ import { OsmMap } from '../../../components/shared/OsmMap.js';
 import { DriveTime } from './DriveTime.js';
 import { useT } from '../../../i18n/index.js';
 import { useResource } from '../../../lib/useResource.js';
+import { ExternalLink } from '../../../components/shared/ExternalLink.js';
 
 /** A Google Maps link for a point or a place: a plain link, so it needs no API key. */
 export function googleMapsLink(
@@ -60,10 +61,10 @@ export function LocationCard({ company }: { company: Company }) {
           )}
           <p className="location-links">
             {link && (
-              <a className="location-open" href={link} target="_blank" rel="noreferrer noopener">
+              <ExternalLink kind="maps" name={company.name} className="location-open" href={link}>
                 {t('location.openGoogle')}
                 <SquareArrowOutUpRight size={12} aria-hidden="true" />
-              </a>
+              </ExternalLink>
             )}
             {company.address && (
               <span className="location-address">

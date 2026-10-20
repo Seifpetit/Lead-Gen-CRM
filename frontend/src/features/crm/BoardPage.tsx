@@ -26,6 +26,7 @@ import {
   type BoardQuery,
 } from './boardView.js';
 import { cardName, useBoard } from './useBoard.js';
+import { ExportButton } from '../outreach/ExportButton.js';
 
 /**
  * One CRM board (Companies or People), as columns or as a table. A move that needs more than a
@@ -146,6 +147,11 @@ export function BoardPage({ pipeline }: { pipeline: CrmPipeline }) {
         total={board.total}
         busy={board.loading}
         onChange={change}
+        exportButton={
+          query.view === 'table' ? (
+            <ExportButton source={{ kind: 'cards', pipeline, filters }} count={board.rowsTotal} />
+          ) : undefined
+        }
       />
       {loadingFirst ? (
         <LoadingState />

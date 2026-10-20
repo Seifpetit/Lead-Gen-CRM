@@ -1,0 +1,230 @@
+/* The step before anything leaves the app, the chip editor and the export menu. */
+
+.external-panel {
+  max-width: 560px;
+  border: var(--bw) solid var(--border);
+  box-shadow: var(--shadow-2);
+}
+.external-body p {
+  margin: 0 0 var(--space-2);
+}
+.external-name {
+  font-weight: 700;
+}
+.external-target {
+  display: inline-block;
+  max-width: 100%;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: var(--bw) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--yellow);
+  box-shadow: var(--shadow-1);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.external-skip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  font-size: var(--fs-caption);
+}
+.external-actions a.button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-decoration: none;
+  color: var(--text);
+}
+.external-note {
+  margin: var(--space-2) 0 0;
+  text-align: right;
+}
+
+/* WhatsApp preview */
+.wa-head {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+.wa-head dt {
+  font-weight: 700;
+}
+.wa-head dd {
+  margin: 0;
+}
+.wa-field {
+  display: grid;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+.wa-field > span,
+.wa-field > label {
+  font-weight: 700;
+}
+.wa-settings {
+  font-size: var(--fs-caption);
+}
+
+/* Chips: variables inside a message */
+.chip-editor {
+  display: grid;
+  gap: var(--space-2);
+}
+.chip-editor-box {
+  padding: var(--space-2) var(--space-3);
+  border: var(--bw) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  line-height: 1.9;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  unicode-bidi: plaintext;
+  max-height: 40vh;
+  overflow: auto;
+}
+.chip-editor-box:focus {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.chip-editor-box.is-over {
+  border-color: var(--danger-text);
+}
+.chip-var {
+  display: inline-block;
+  margin: 0 2px;
+  padding: 0 6px;
+  border: var(--bw) solid var(--border);
+  border-radius: 8px;
+  background: var(--yellow);
+  box-shadow: 2px 2px 0 var(--shadow-color);
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+  unicode-bidi: isolate;
+  user-select: all;
+  cursor: default;
+}
+.chip-var[data-var='my_name'],
+.chip-var[data-var='my_company'] {
+  background: var(--teal);
+}
+.chip-var.is-missing {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  border-color: var(--danger-text);
+}
+.chip-editor-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.chip-count.is-over {
+  color: var(--danger-text);
+  font-weight: 700;
+}
+.chip-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.chip-sample {
+  margin: 0;
+}
+
+/* Settings: templates */
+.templates {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) 1fr;
+  gap: var(--space-4);
+}
+.templates-list {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.templates-list button {
+  width: 100%;
+  text-align: start;
+}
+.templates-list button[aria-current='true'] {
+  background: var(--yellow);
+}
+.templates-form {
+  display: grid;
+  gap: var(--space-3);
+}
+.templates-form input,
+.sender-form input {
+  width: 100%;
+}
+.templates-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.sender-form {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 420px;
+}
+@media (max-width: 720px) {
+  .templates {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Export menu */
+.export-panel {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 260px;
+}
+.export-panel h3 {
+  margin: 0;
+  font-size: var(--fs-h4);
+}
+.export-panel section {
+  display: grid;
+  gap: var(--space-2);
+}
+.export-panel section + section {
+  padding-top: var(--space-3);
+  border-top: var(--bw) solid var(--border);
+}
+.export-panel p {
+  margin: 0;
+}
+
+/* WhatsApp button and "WhatsApp opened" line on cards */
+.channel-whatsapp {
+  color: #0b6b3a;
+}
+.wa-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.contact-line {
+  display: block;
+  font-size: var(--fs-caption);
+  color: var(--muted);
+}
+.channel-button {
+  flex: 0 0 auto;
+  padding: 2px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+}
+.channel-button:focus-visible {
+  outline: 3px solid var(--focus);
+}

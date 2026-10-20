@@ -178,9 +178,10 @@ interface Ids {
   company: string;
   region: string;
   cell: string;
+  template: string;
 }
 interface RouteCase {
-  method: 'GET' | 'POST' | 'PUT' | 'PATCH';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   pattern: string;
   url: (ids: Ids) => string;
   body?: unknown;
@@ -302,6 +303,39 @@ const CASES: RouteCase[] = [
     url: () => '/api/health/providers/apify/reset',
   },
   { method: 'POST', pattern: '/api/runs/:id/recheck', url: (i) => `/api/runs/${i.run}/recheck` },
+  {
+    method: 'GET',
+    pattern: '/api/exports/cards/:pipeline',
+    url: () => '/api/exports/cards/companies?format=csv',
+  },
+  { method: 'GET', pattern: '/api/exports/leads', url: () => '/api/exports/leads?format=csv' },
+  { method: 'GET', pattern: '/api/templates', url: () => '/api/templates' },
+  {
+    method: 'POST',
+    pattern: '/api/templates',
+    url: () => '/api/templates',
+    body: { name: 'Court', body: 'Bonjour {person}' },
+  },
+  {
+    method: 'PUT',
+    pattern: '/api/templates/:id',
+    url: (i) => `/api/templates/${i.template}`,
+    body: { name: 'Court', body: 'Bonjour {person}' },
+  },
+  { method: 'DELETE', pattern: '/api/templates/:id', url: (i) => `/api/templates/${i.template}` },
+  { method: 'GET', pattern: '/api/profile/sender', url: () => '/api/profile/sender' },
+  {
+    method: 'PUT',
+    pattern: '/api/profile/sender',
+    url: () => '/api/profile/sender',
+    body: { name: 'Samia', company: 'Trans Sfax' },
+  },
+  {
+    method: 'POST',
+    pattern: '/api/crm/contacts',
+    url: () => '/api/crm/contacts',
+    body: { channel: 'whatsapp', companyId: NO_SUCH },
+  },
 ];
 /** Public routes: sign-in (tested in auth.test.ts) and the signed webhook (below). */
 const PUBLIC = [
@@ -323,6 +357,7 @@ async function ids(): Promise<Ids> {
     company: first.company.id,
     region: 'sfax',
     cell: cell.id,
+    template: (await call(alice, 'GET', '/api/templates')).json().items[0].id,
   };
 }
 
@@ -393,6 +428,7 @@ describe('every route', () => {
       if (c.pattern.startsWith('/api/regions/')) continue; // geometry is shared; see regions
       if (c.pattern.startsWith('/api/health/')) continue; // provider states are the server's, not a user's
       if (c.pattern.startsWith('/api/crm/:pipeline')) continue; // a board name, not an ID
+      if (c.pattern.startsWith('/api/exports/cards/')) continue; // a board name, not an ID
       const res = await call(bob, c.method, c.url(i), c.body);
       expect(res.statusCode, `${c.method} ${c.pattern}`).toBe(404);
       expect(res.json()).toEqual({ error: 'not_found', message: 'not_found' });
@@ -1923,5 +1959,146 @@ describe('failure tracking routes', () => {
     const res = await call(alice, 'GET', '/api/runs/live');
     expect(res.json()).toHaveProperty('ended');
     expect(res.json().ended.map((r: { id: string }) => r.id)).toContain(seededRun);
+  });
+});
+
+describe('exports', () => {
+  it('downloads the dashboard cards as CSV with the filters applied, and only the user’s own', async () => {
+    const cards = (await call(alice, 'GET', '/api/crm/companies/cards?excludeNoise=true')).json();
+    expect(cards.total).toBeGreaterThan(0);
+    const res = await call(
+      alice,
+      'GET',
+      '/api/exports/cards/companies?format=csv&delimiter=semicolon&excludeNoise=true',
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('text/csv; charset=utf-8');
+    expect(res.headers['content-disposition']).toMatch(
+      /^attachment; filename="leads-\d{4}-\d{2}-\d{2}\.csv"$/,
+    );
+    expect(res.headers['x-export-total']).toBe(String(cards.total));
+    expect(res.body.charCodeAt(0)).toBe(0xfeff);
+    const lines = res.body.trim().split('\r\n');
+    expect(lines[0]).toContain('Company;Person;Role');
+    expect(lines).toHaveLength(cards.total + 1);
+    // No ids leave the app.
+    expect(res.body).not.toContain(cards.cards[0].id);
+    expect(res.body).not.toContain(cards.cards[0].company.id);
+
+    const none = await call(alice, 'GET', '/api/exports/cards/companies?format=csv&minScore=1000');
+    expect(none.body.trim().split('\r\n')).toHaveLength(1);
+    const bobs = await call(bob, 'GET', '/api/exports/cards/companies?format=csv');
+    expect(bobs.body.trim().split('\r\n')).toHaveLength(1);
+  });
+
+  it('downloads a run’s leads as XLSX and PDF', async () => {
+    const xlsx = await call(alice, 'GET', `/api/exports/leads?format=xlsx&runIds=${seededRun}`);
+    expect(xlsx.statusCode).toBe(200);
+    expect(xlsx.rawPayload.subarray(0, 2).toString()).toBe('PK');
+    const leads = (await call(alice, 'GET', `/api/leads?runId=${seededRun}`)).json();
+    expect(xlsx.headers['x-export-rows']).toBe(String(leads.total));
+    const pdf = await call(alice, 'GET', `/api/exports/leads?format=pdf&runIds=${seededRun}`);
+    expect(pdf.headers['content-type']).toBe('application/pdf');
+    expect(pdf.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
+    const bobs = await call(bob, 'GET', `/api/exports/leads?format=csv&runIds=${seededRun}`);
+    expect(bobs.headers['x-export-total']).toBe('0');
+  });
+
+  it('validates the format and the filters', async () => {
+    for (const url of [
+      '/api/exports/leads',
+      '/api/exports/leads?format=docx',
+      '/api/exports/leads?format=csv&delimiter=tab',
+      '/api/exports/leads?format=csv&runIds=nope',
+      '/api/exports/cards/people?format=csv&stage=nope',
+      '/api/exports/cards/nope?format=csv',
+    ]) {
+      expect((await call(alice, 'GET', url)).statusCode, url).toBe(400);
+    }
+  });
+});
+
+describe('message templates and the sender', () => {
+  it('starts every user with three French templates, once', async () => {
+    const first = (await call(alice, 'GET', '/api/templates')).json().items;
+    expect(first.map((t: { name: string }) => t.name)).toEqual([
+      'Premier contact',
+      'Trouver le bon contact',
+      'Relance',
+    ]);
+    expect(first[0].body).toContain('{company}');
+    for (const t of first) {
+      expect((await call(alice, 'DELETE', `/api/templates/${t.id}`)).statusCode).toBe(204);
+    }
+    // Deleting them all does not bring the defaults back.
+    expect((await call(alice, 'GET', '/api/templates')).json().items).toEqual([]);
+    expect((await call(bob, 'GET', '/api/templates')).json().items).toHaveLength(3);
+  });
+
+  it('creates and edits templates up to 1000 characters, Arabic included', async () => {
+    const arabic = 'مرحبا {person}، نحن شركة نقل في {my_company}.';
+    const made = await call(alice, 'POST', '/api/templates', { name: 'عربي', body: arabic });
+    expect(made.statusCode).toBe(201);
+    expect(made.json()).toMatchObject({ name: 'عربي', body: arabic });
+    const id = made.json().id;
+    const long = 'x'.repeat(1000);
+    expect(
+      (await call(alice, 'PUT', `/api/templates/${id}`, { name: 'Long', body: long })).json().body,
+    ).toBe(long);
+    for (const bad of [
+      { name: 'Too long', body: 'x'.repeat(1001) },
+      { name: '', body: 'Bonjour' },
+      { name: 'Blank', body: '   ' },
+      { name: 'Extra', body: 'Bonjour', id },
+    ]) {
+      expect((await call(alice, 'PUT', `/api/templates/${id}`, bad)).statusCode).toBe(400);
+    }
+    expect(
+      (await call(bob, 'PUT', `/api/templates/${id}`, { name: 'Mine', body: 'x' })).statusCode,
+    ).toBe(404);
+    expect((await call(bob, 'DELETE', `/api/templates/${id}`)).statusCode).toBe(404);
+  });
+
+  it('keeps who the messages come from, per user', async () => {
+    expect((await call(alice, 'GET', '/api/profile/sender')).json()).toEqual({
+      name: '',
+      company: '',
+    });
+    const saved = await call(alice, 'PUT', '/api/profile/sender', {
+      name: ' Samia ',
+      company: 'Trans Sfax',
+    });
+    expect(saved.json()).toEqual({ name: 'Samia', company: 'Trans Sfax' });
+    expect((await call(alice, 'GET', '/api/profile/sender')).json()).toEqual({
+      name: 'Samia',
+      company: 'Trans Sfax',
+    });
+    expect((await call(bob, 'GET', '/api/profile/sender')).json()).toEqual({
+      name: '',
+      company: '',
+    });
+  });
+});
+
+describe('POST /api/crm/contacts', () => {
+  it('notes that WhatsApp was opened, on the card and in the company’s history', async () => {
+    const i = await ids();
+    const res = await call(alice, 'POST', '/api/crm/contacts', {
+      channel: 'whatsapp',
+      companyId: i.company,
+    });
+    expect(res.statusCode).toBe(201);
+    const detail = (await call(alice, 'GET', `/api/crm/cards/by-company/${i.company}`)).json();
+    expect(detail.card.lastContactAt).toBe(res.json().at);
+    expect(detail.contacts).toEqual([{ channel: 'whatsapp', person: null, at: res.json().at }]);
+  });
+
+  it('refuses another user’s company and anything but WhatsApp', async () => {
+    const i = await ids();
+    const body = { channel: 'whatsapp', companyId: i.company };
+    expect((await call(bob, 'POST', '/api/crm/contacts', body)).statusCode).toBe(404);
+    expect(
+      (await call(alice, 'POST', '/api/crm/contacts', { ...body, channel: 'sms' })).statusCode,
+    ).toBe(400);
   });
 });

@@ -3,13 +3,15 @@ import { useT } from '../i18n/index.js';
 import { channelHref, type Channel } from '../lib/lead.js';
 import { evidenceFor, safeHref } from '../lib/format.js';
 import { Field, KindTag, SourceNote } from './Evidence.js';
+import { ExternalLink } from './shared/ExternalLink.js';
+import type { LinkKind } from '../lib/externalOpen.js';
 
-export function LinkValue({ url }: { url: string }) {
+export function LinkValue({ url, kind = 'website' }: { url: string; kind?: LinkKind }) {
   const href = safeHref(url);
   return href ? (
-    <a href={href} target="_blank" rel="noreferrer noopener">
+    <ExternalLink kind={kind} href={href}>
       {url.replace(/^https?:\/\/(www\.)?/, '')}
-    </a>
+    </ExternalLink>
   ) : (
     <>{url}</>
   );
@@ -28,7 +30,7 @@ export function ChannelField({ label, channel }: { label: string; channel: Chann
         <>
           <span className="channel-kind">{t(`lead.channel.${channel.kind}`)}: </span>
           {channel.kind === 'linkedin' ? (
-            <LinkValue url={channel.value} />
+            <LinkValue url={channel.value} kind="linkedin" />
           ) : href ? (
             <a href={href}>{channel.value}</a>
           ) : (
