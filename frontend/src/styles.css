@@ -5637,17 +5637,11 @@ a.channel:hover .channel-text {
   padding-top: var(--space-3);
   border-top: 2px solid var(--ink);
 }
-.location-title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
+.location-place {
   margin: 0;
-  font-size: var(--fs-h4);
-}
-.location-region {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--fs-caption);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 700;
 }
 .osm-map {
   flex: 1 1 200px;
@@ -5672,18 +5666,6 @@ a.channel:hover .channel-text {
 .osm-pin {
   background: transparent;
   border: 0;
-}
-.location-links {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-1) var(--space-3);
-  margin: 0;
-}
-.location-address {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-size: var(--fs-caption);
 }
 .drive {
   display: flex;

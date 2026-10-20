@@ -544,8 +544,15 @@ for (const size of [
   });
 }
 
-for (const width of [800, 1280, 1440, 1920]) {
-  test(`${width}px: the cells of a log row never overlap and the badge is never clipped`, async ({
+for (const [width, exporting] of [800, 1280, 1440, 1920].flatMap(
+  (w) =>
+    [
+      [w, false],
+      [w, true],
+    ] as const,
+)) {
+  const mode = exporting ? ' in export mode' : '';
+  test(`${width}px: the cells of a log row never overlap and the badge is never clipped${mode}`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -564,6 +571,10 @@ for (const width of [800, 1280, 1440, 1920]) {
     await page.goto('/leadgen/runs?view=logs');
     const rows = page.locator('.logs-row');
     await expect(rows).toHaveCount(outcomeRows.length);
+    if (exporting) {
+      await page.getByRole('button', { name: 'Export' }).click();
+      await expect(page.locator('.logs-check')).toHaveCount(outcomeRows.length);
+    }
     const found = await rows.evaluateAll((els) =>
       els.map((row) => {
         const cells = [...row.children].map((c) => {

@@ -15,10 +15,17 @@ export function RunLogRow({
   entry,
   now,
   onOpen,
+  selecting = false,
+  selected = false,
+  onToggle,
 }: {
   entry: ApifyLogRun;
   now: number;
   onOpen: () => void;
+  /** Export mode: a checkbox shows on the left and a click on the row picks it. */
+  selecting?: boolean;
+  selected?: boolean;
+  onToggle?: () => void;
 }) {
   const t = useT();
   const { run } = entry;
@@ -28,7 +35,22 @@ export function RunLogRow({
   const spent = t('money.spentOfCap', { spent: formatUsd(run.spentUsd), cap: formatUsd(cap) });
   const summary = outcomeText(t, run, searchCount(entry.steps));
   return (
-    <li className="logs-row">
+    <li
+      className="logs-row"
+      data-selecting={selecting ? 'true' : undefined}
+      data-selected={selecting && selected ? 'true' : undefined}
+      onClick={selecting ? onToggle : undefined}
+    >
+      {selecting && (
+        <input
+          type="checkbox"
+          className="logs-check"
+          checked={selected}
+          onChange={() => onToggle?.()}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={t('logs.export.pick', { name })}
+        />
+      )}
       <strong className="logs-name">{name}</strong>
       <span className="logs-outcome">
         <OutcomeBadge run={run} />
@@ -48,7 +70,7 @@ export function RunLogRow({
         />
       </span>
       <span className="logs-time small muted">{formatDuration(runSeconds(run, now))}</span>
-      <span className="logs-actions">
+      <span className="logs-actions" aria-hidden={selecting ? true : undefined}>
         <button
           type="button"
           className="button"

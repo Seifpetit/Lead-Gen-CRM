@@ -172,3 +172,4 @@ export * from './places.js';
 export * from './runOutcome.js';
 export * from './exports.js';
 export * from './messages.js';
+export * from './redact.js';

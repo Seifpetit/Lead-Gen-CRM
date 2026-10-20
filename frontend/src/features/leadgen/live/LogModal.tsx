@@ -14,6 +14,7 @@ import { Modal } from '../../../components/Modal.js';
 import { ToggleGroup } from '../../../components/shared/ToggleGroup.js';
 import { useT } from '../../../i18n/index.js';
 import { describeError } from '../../../lib/errors.js';
+import { copyText, downloadText } from '../../../lib/textOut.js';
 import { isActive } from '../runParts.js';
 import {
   filterLog,
@@ -33,46 +34,6 @@ const OVERSCAN = 12;
 const FALLBACK_VIEW_PX = 600;
 /** How close to the end counts as "at the end". */
 const BOTTOM_SLACK_PX = ROW_PX;
-
-/** Puts text on the clipboard; falls back to a hidden text box where the clipboard API is missing. */
-async function copyText(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // Fall through to the older way.
-  }
-  const box = document.createElement('textarea');
-  box.value = text;
-  box.setAttribute('readonly', '');
-  box.style.position = 'fixed';
-  box.style.opacity = '0';
-  document.body.appendChild(box);
-  box.select();
-  let ok: boolean;
-  try {
-    ok = document.execCommand('copy');
-  } catch {
-    ok = false;
-  }
-  box.remove();
-  return ok;
-}
-
-function download(name: string, text: string): boolean {
-  if (typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') return false;
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = name;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1_000);
-  return true;
-}
 
 /**
  * Every line of a run's log in a terminal-style window: monospace on a dark panel (the one dark
@@ -147,7 +108,7 @@ export function LogTerminal({ run }: { run: RunSummary }) {
     setNote((await copyText(logToText(shown))) ? t('logs.copied') : t('logs.copyFailed'));
   }
   function save() {
-    if (!download(logFileName(run.region), logToText(shown))) setNote(t('logs.copyFailed'));
+    if (!downloadText(logFileName(run.region), logToText(shown))) setNote(t('logs.copyFailed'));
   }
 
   const empty = !log.loading && log.lines.length === 0;

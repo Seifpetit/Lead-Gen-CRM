@@ -147,7 +147,9 @@ describe('Lead page', () => {
     );
     expect(screen.getByRole('button', { name: /Copy email address/ })).toBeVisible();
     expect(screen.getByRole('link', { name: /Open fixture-transport/ })).toBeVisible();
-    expect(screen.getByText('Sfax')).toBeVisible();
+    // The Google Maps place and Region rows are gone: the Location card says both once.
+    expect(screen.queryByText('Google Maps place')).toBeNull();
+    expect(screen.queryByText('Region')).toBeNull();
     // No Fact or Estimate pills and no source under each value.
     expect(screen.queryByText('Fact')).toBeNull();
     expect(screen.queryByText('Estimate')).toBeNull();
