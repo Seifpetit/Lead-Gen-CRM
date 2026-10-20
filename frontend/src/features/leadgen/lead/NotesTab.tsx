@@ -1,4 +1,4 @@
-import { MAX_NOTES_LENGTH, type CardEvent } from '@lead-gen-crm/shared';
+import { MAX_NOTES_LENGTH, type CardEvent, type ContactEvent } from '@lead-gen-crm/shared';
 import { useId, useState } from 'react';
 import { useApi } from '../../../api/context.js';
 import { useT } from '../../../i18n/index.js';
@@ -13,6 +13,7 @@ export function NotesTab({
   onDraft,
   onSaved,
   history,
+  contacts = [],
 }: {
   companyId: string;
   /** The text the server holds. */
@@ -22,6 +23,8 @@ export function NotesTab({
   onDraft: (text: string) => void;
   onSaved: (text: string) => void;
   history: readonly CardEvent[];
+  /** WhatsApp conversations opened from the app, shown in the same list. */
+  contacts?: readonly ContactEvent[];
 }) {
   const t = useT();
   const api = useApi();
@@ -29,6 +32,10 @@ export function NotesTab({
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | { failed: string }>('idle');
   const dirty = draft !== saved;
   const stage = (key: CardEvent['to']) => t(`boardStage.${key}`);
+  // Newest first, stage changes and opened conversations together.
+  const entries: (CardEvent | ContactEvent)[] = [...history, ...contacts].sort((a, b) =>
+    b.at.localeCompare(a.at),
+  );
 
   const save = async () => {
     setState('saving');
@@ -78,16 +85,20 @@ export function NotesTab({
       )}
 
       <h3>{t('leadView.history')}</h3>
-      {history.length === 0 ? (
+      {entries.length === 0 ? (
         <p className="muted">{t('leadView.history.none')}</p>
       ) : (
         <ol className="history">
-          {history.map((e, i) => (
+          {entries.map((e, i) => (
             <li key={`${e.at}-${i}`}>
               <span>
-                {e.from === null
-                  ? t('leadView.history.created', { stage: stage(e.to) })
-                  : t('leadView.history.moved', { from: stage(e.from), to: stage(e.to) })}
+                {'channel' in e
+                  ? e.person
+                    ? t('whatsapp.history.person', { name: e.person })
+                    : t('whatsapp.history')
+                  : e.from === null
+                    ? t('leadView.history.created', { stage: stage(e.to) })
+                    : t('leadView.history.moved', { from: stage(e.from), to: stage(e.to) })}
               </span>
               <time dateTime={e.at} className="muted">
                 {formatDateTime(e.at)}

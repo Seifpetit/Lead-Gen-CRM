@@ -4,6 +4,7 @@ import { HealthPanel } from './health/HealthPanel.js';
 import { SectionTitle } from '../../components/shared/SectionTitle.js';
 import { Card } from '../../components/shared/Card.js';
 import { useAuth } from '../auth/AuthContext.js';
+import { SenderCard, TemplatesCard } from '../outreach/TemplatesCard.js';
 import { useT, type StringKey } from '../../i18n/index.js';
 
 type SettingsTab = 'general' | 'health';
@@ -39,6 +40,8 @@ export function SettingsPage() {
                   {t('nav.signOut')}
                 </button>
               </Card>
+              <SenderCard />
+              <TemplatesCard />
               <Card title={t('settings.safety')} className="info-card">
                 <p className="muted">{t('settings.safety.body')}</p>
               </Card>

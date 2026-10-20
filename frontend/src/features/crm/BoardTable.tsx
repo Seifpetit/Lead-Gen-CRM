@@ -17,6 +17,9 @@ import { FALLBACK_VIEW_HEIGHT, OVERSCAN } from './boardLayout.js';
 import type { BoardQuery } from './boardView.js';
 import { effectiveDirection, effectiveSort } from './boardView.js';
 import { cardName } from './useBoard.js';
+import { ExternalLink } from '../../components/shared/ExternalLink.js';
+import { WhatsAppButton } from '../outreach/WhatsAppButton.js';
+import { targetOfCard } from '../outreach/whatsapp.js';
 
 const ROW_HEIGHT = 48;
 const LOAD_ROWS_AHEAD = 12;
@@ -328,15 +331,16 @@ function TableRow({
             <Mail size={16} aria-hidden="true" />
           </a>
         )}
+        <WhatsAppButton target={targetOfCard(card)} />
         {site && (
-          <a
+          <ExternalLink
+            kind="website"
+            name={company.name}
             href={site}
-            target="_blank"
-            rel="noreferrer noopener"
             aria-label={t('crm.card.website', { name })}
           >
             <Globe size={16} aria-hidden="true" />
-          </a>
+          </ExternalLink>
         )}
       </span>
     </div>

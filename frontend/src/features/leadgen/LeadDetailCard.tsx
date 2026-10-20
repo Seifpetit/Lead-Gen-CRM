@@ -11,6 +11,9 @@ import { useT } from '../../i18n/index.js';
 import { evidenceFor, safeHref } from '../../lib/format.js';
 import { bestChannel, companyChannels, mapsSourceUrl } from '../../lib/lead.js';
 import { LeadActions } from '../crm/LeadActions.js';
+import { ExternalLink } from '../../components/shared/ExternalLink.js';
+import { WhatsAppButton } from '../outreach/WhatsAppButton.js';
+import { targetOfLead } from '../outreach/whatsapp.js';
 
 const MAX = { companyFit: 50, contactFit: 30, reachability: 20 } as const;
 
@@ -36,6 +39,7 @@ export function LeadDetailCard({
         <span className="score-total" title={t('lead.score')}>
           {t('lead.score.total', { total: lead.score.total })} <KindTag kind="estimate" />
         </span>
+        <WhatsAppButton variant="button" target={targetOfLead(lead)} />
       </header>
 
       <section aria-label={t('lead.people')}>
@@ -56,7 +60,9 @@ export function LeadDetailCard({
               label={t('lead.linkedin')}
               value={contact.linkedinUrl}
               evidence={evidenceFor(contact.evidence, 'linkedinUrl', contact.linkedinUrl)}
-              display={contact.linkedinUrl ? <LinkValue url={contact.linkedinUrl} /> : null}
+              display={
+                contact.linkedinUrl ? <LinkValue url={contact.linkedinUrl} kind="linkedin" /> : null
+              }
             />
             <ChannelField label={t('lead.bestChannel')} channel={channel} />
             <div className="field">
@@ -106,9 +112,13 @@ export function LeadDetailCard({
             <div className="field">
               <dt>{t('lead.company.source')}</dt>
               <dd>
-                <a href={safeHref(mapsUrl) ?? undefined} target="_blank" rel="noreferrer noopener">
-                  {t('lead.company.source.maps')}
-                </a>
+                {safeHref(mapsUrl) ? (
+                  <ExternalLink kind="maps" name={company.name} href={safeHref(mapsUrl)!}>
+                    {t('lead.company.source.maps')}
+                  </ExternalLink>
+                ) : (
+                  t('lead.company.source.maps')
+                )}
               </dd>
             </div>
           )}

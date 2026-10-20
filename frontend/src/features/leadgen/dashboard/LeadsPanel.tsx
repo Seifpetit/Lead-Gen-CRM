@@ -18,6 +18,7 @@ import {
   type LeadsQuery,
 } from './leadsQuery.js';
 import { useLeadCards } from './useLeadCards.js';
+import { ExportButton } from '../../outreach/ExportButton.js';
 
 /**
  * Recent leads: the section that takes about 55% of the panel. Its view (found-in, pipeline,
@@ -83,6 +84,16 @@ export function LeadsPanel({
           fields={fields}
           onReset={reset}
           onExpand={() => setExpanded(true)}
+          exportButton={
+            <ExportButton
+              source={{
+                kind: 'cards',
+                pipeline: query.pipeline,
+                filters: cardFilters(query, regionId),
+              }}
+              count={data.total}
+            />
+          }
         />
       }
     >
@@ -177,7 +188,22 @@ function LeadsExplorer({
         <div className="explorer-main">
           <div className="explorer-bar">
             <PipelineSwitch query={query} onQuery={onQuery} />
-            <LeadsActions query={query} onQuery={onQuery} fields={fields} onReset={reset} />
+            <LeadsActions
+              query={query}
+              onQuery={onQuery}
+              fields={fields}
+              onReset={reset}
+              exportButton={
+                <ExportButton
+                  source={{
+                    kind: 'cards',
+                    pipeline: query.pipeline,
+                    filters: cardFilters(query, regionId),
+                  }}
+                  count={data.total}
+                />
+              }
+            />
           </div>
           <FilterChips fields={fields} />
           <p className="muted small explorer-count" role="status">

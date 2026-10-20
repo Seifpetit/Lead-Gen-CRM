@@ -8,6 +8,7 @@ import {
   type BoardStageKey,
   type CardEvent,
   type CompanyCardDetail,
+  type ContactChannel,
   type CrmBoard,
   type CrmCard,
   type CrmCardPage,
@@ -98,6 +99,7 @@ interface CardRow {
   lead_id: string | null;
   stage_position: number;
   score: number | null;
+  last_contact_at: Date | null;
 }
 
 const CARD_SELECT = `
@@ -111,7 +113,8 @@ const CARD_SELECT = `
          coalesce(bl.run_id, p.run_id, c.run_id) AS run_id, bl.id AS lead_id,
          (SELECT s.position FROM pipeline_stages s
            WHERE s.pipeline = k.pipeline AND s.key = k.stage) AS stage_position,
-         bl.score_total::integer AS score
+         bl.score_total::integer AS score,
+         (SELECT max(e.at) FROM crm_contact_events e WHERE e.card_id = k.id) AS last_contact_at
     FROM crm_cards k
     JOIN companies c ON c.id = k.company_id
     LEFT JOIN contacts p ON p.id = k.contact_id
@@ -165,6 +168,7 @@ function toCard(r: CardRow, retentionDays: number): CrmCard {
     foundAt: r.found_at.toISOString(),
     runId: r.run_id,
     leadId: r.lead_id,
+    lastContactAt: r.last_contact_at?.toISOString() ?? null,
   };
 }
 
@@ -794,6 +798,15 @@ export async function getCompanyDetail(
         AND stage <> 'noise' ORDER BY created_at LIMIT 1`,
     [userId, companyId],
   );
+  const contacts = await db.query<{ channel: ContactChannel; full_name: string | null; at: Date }>(
+    `SELECT e.channel, p.full_name, e.at
+       FROM crm_contact_events e
+       JOIN crm_cards k ON k.id = e.card_id
+       LEFT JOIN contacts p ON p.id = k.contact_id
+      WHERE k.user_id = $1 AND k.company_id = $2
+      ORDER BY e.at DESC, e.id DESC LIMIT 50`,
+    [userId, companyId],
+  );
   const history: CardEvent[] = events.rows.map((e) => ({
     from: e.from_stage,
     to: e.to_stage,
@@ -805,8 +818,44 @@ export async function getCompanyDetail(
     sectorName: sector ? (FREIGHT_SECTORS.find((s) => s.id === sector)?.name ?? sector) : null,
     notes: company.rows[0].notes,
     history,
+    contacts: contacts.rows.map((c) => ({
+      channel: c.channel,
+      person: c.full_name,
+      at: c.at.toISOString(),
+    })),
     person: people.rows[0] ? await getCard(db, userId, people.rows[0].id, retentionDays) : null,
   };
+}
+
+/**
+ * Notes that a conversation was opened from the app: on the decision-maker's People card when
+ * there is one, otherwise on the company's card (made in Found if missing). Nothing is sent:
+ * this is the "WhatsApp opened" line on the card.
+ */
+export async function recordContact(
+  db: Queryable,
+  userId: UserId,
+  target: { companyId: string; personId?: string | null | undefined },
+  channel: ContactChannel,
+): Promise<{ at: string }> {
+  const owned = await db.query('SELECT 1 FROM companies WHERE user_id = $1 AND id = $2', [
+    userId,
+    target.companyId,
+  ]);
+  if (owned.rowCount === 0) throw new BoardError('not_found', 'Company not found');
+  await ensureCompanyCard(db, userId, target.companyId);
+  const { rows } = await db.query<{ at: Date }>(
+    `INSERT INTO crm_contact_events (card_id, channel)
+     SELECT k.id, $4 FROM crm_cards k
+      WHERE k.user_id = $1 AND k.company_id = $2
+        AND (k.pipeline = 'companies' OR k.contact_id = $3::uuid)
+      ORDER BY (k.contact_id IS NOT DISTINCT FROM $3::uuid AND k.pipeline = 'people') DESC,
+               k.created_at
+      LIMIT 1
+     RETURNING at`,
+    [userId, target.companyId, target.personId ?? null, channel],
+  );
+  return { at: rows[0]!.at.toISOString() };
 }
 
 /** Saves the company's notes; the text is kept as typed. */

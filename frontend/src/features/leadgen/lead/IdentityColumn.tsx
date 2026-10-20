@@ -10,6 +10,8 @@ import { CompanyThumb } from '../../crm/BoardCard.js';
 import { CopyButton } from './CopyButton.js';
 import { DotLegend, EvidenceDot } from './EvidenceDot.js';
 import { SourcesPopover } from './SourcesPopover.js';
+import { ExternalLink } from '../../../components/shared/ExternalLink.js';
+import { WhatsAppButton } from '../../outreach/WhatsAppButton.js';
 
 const ICON = 16;
 
@@ -78,6 +80,16 @@ export function IdentityColumn({ lead, detail }: { lead: Lead; detail: CompanyCa
                     <Info size={14} aria-hidden="true" />
                   </Tip>
                 )}
+                <WhatsAppButton
+                  target={{
+                    companyId: company.id,
+                    personId: null,
+                    company: company.name,
+                    sector: company.sector,
+                    person: null,
+                    phone,
+                  }}
+                />
                 <CopyButton value={phone} what="leadView.what.phone" />
               </>
             )
@@ -120,15 +132,15 @@ export function IdentityColumn({ lead, detail }: { lead: Lead; detail: CompanyCa
           }
         >
           {site ? (
-            <a
+            <ExternalLink
+              kind="website"
+              name={company.name}
               href={site}
-              target="_blank"
-              rel="noreferrer noopener"
               aria-label={t('leadView.open', { value: company.domain ?? site })}
             >
               {company.domain ?? site.replace(/^https?:\/\/(www\.)?/, '')}
               <SquareArrowOutUpRight size={12} aria-hidden="true" className="lead-external" />
-            </a>
+            </ExternalLink>
           ) : (
             missing
           )}
@@ -139,10 +151,10 @@ export function IdentityColumn({ lead, detail }: { lead: Lead; detail: CompanyCa
           empty={!(mapsUrl && safeHref(mapsUrl))}
         >
           {mapsUrl && safeHref(mapsUrl) ? (
-            <a href={safeHref(mapsUrl) ?? undefined} target="_blank" rel="noreferrer noopener">
+            <ExternalLink kind="maps" name={company.name} href={safeHref(mapsUrl)!}>
               {t('lead.company.source.maps')}
               <SquareArrowOutUpRight size={12} aria-hidden="true" className="lead-external" />
-            </a>
+            </ExternalLink>
           ) : (
             missing
           )}

@@ -10,11 +10,14 @@ import { daysLeft } from '../../crm/boardTime.js';
 import { leftKey } from '../../crm/useBoard.js';
 import { useStageActions } from './useStageActions.js';
 import type { Resource } from '../../../lib/useResource.js';
+import { ExternalLink } from '../../../components/shared/ExternalLink.js';
+import { WhatsAppButton } from '../../outreach/WhatsAppButton.js';
 
 const ICON = 16;
 const STAGES = ['found', 'investigating', 'decision_maker_identified'] as const;
 
 interface Person {
+  id: string;
   name: string;
   title: string | null;
   email: string | null;
@@ -27,6 +30,7 @@ function personOf(lead: Lead, detail: CompanyCardDetail): Person | null {
   const named = detail.person?.person;
   if (named) {
     return {
+      id: named.id,
       name: named.fullName,
       title: named.title,
       email: named.email,
@@ -37,6 +41,7 @@ function personOf(lead: Lead, detail: CompanyCardDetail): Person | null {
   const c = lead.contact;
   return c
     ? {
+        id: c.id,
         name: c.fullName,
         title: c.title,
         email: c.email,
@@ -46,7 +51,15 @@ function personOf(lead: Lead, detail: CompanyCardDetail): Person | null {
     : null;
 }
 
-function DecisionMaker({ person, onAdd }: { person: Person | null; onAdd: () => void }) {
+function DecisionMaker({
+  person,
+  lead,
+  onAdd,
+}: {
+  person: Person | null;
+  lead: Lead;
+  onAdd: () => void;
+}) {
   const t = useT();
   const linkedin = person?.linkedinUrl ? safeHref(person.linkedinUrl) : null;
   return (
@@ -86,17 +99,28 @@ function DecisionMaker({ person, onAdd }: { person: Person | null; onAdd: () => 
                 <Mail size={ICON} aria-hidden="true" />
               </a>
             )}
+            <WhatsAppButton
+              variant="button"
+              target={{
+                companyId: lead.company.id,
+                personId: person.id,
+                company: lead.company.name,
+                sector: lead.company.sector,
+                person: person.name,
+                phone: person.phone,
+              }}
+            />
             {linkedin && (
-              <a
+              <ExternalLink
+                kind="linkedin"
+                name={person.name}
                 className="button button-icon"
                 href={linkedin}
-                target="_blank"
-                rel="noreferrer noopener"
                 aria-label={t('leadView.dm.linkedin', { name: person.name })}
                 title={t('lead.linkedin')}
               >
                 <LinkedinIcon />
-              </a>
+              </ExternalLink>
             )}
             {!person.phone && !person.email && !linkedin && (
               <span className="muted">{t('leadView.dm.noChannel')}</span>
@@ -140,7 +164,7 @@ export function OverviewTab({
   };
   return (
     <div className="lead-overview">
-      <DecisionMaker person={personOf(lead, detail.data)} onAdd={onAddDecisionMaker} />
+      <DecisionMaker person={personOf(lead, detail.data)} lead={lead} onAdd={onAddDecisionMaker} />
       <section className="action-bar" aria-label={t('leadView.actions')}>
         <ToggleGroup
           label={t('leadView.stage')}

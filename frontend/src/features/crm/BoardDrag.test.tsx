@@ -116,6 +116,9 @@ describe('dragging a card', () => {
       await release(at(0));
       fireEvent.click(link);
       expect(document.querySelector('.kanban-card-overlay')).toBeNull();
+      // The website first asks in our own panel; closing it leaves the card as it was.
+      const asking = screen.queryByRole('dialog', { name: 'Open the website?' });
+      if (asking) fireEvent.click(within(asking).getByRole('button', { name: 'Cancel' }));
     }
     // The icons are links, so the click is theirs: it did not open the card.
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

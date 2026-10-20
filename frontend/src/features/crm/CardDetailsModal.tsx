@@ -6,6 +6,7 @@ import { formatDay, safeHref } from '../../lib/format.js';
 import { CompanyThumb, PersonAvatar, type CardActions } from './BoardCard.js';
 import { daysInStage } from './boardTime.js';
 import { cardName } from './useBoard.js';
+import { ExternalLink } from '../../components/shared/ExternalLink.js';
 
 /** Everything a card knows, opened by clicking the card (or Enter on it). */
 export function CardDetailsModal({
@@ -42,17 +43,17 @@ export function CardDetailsModal({
   add(
     t('crm.details.website'),
     site && (
-      <a href={site} target="_blank" rel="noreferrer noopener">
+      <ExternalLink kind="website" name={company.name} href={site}>
         {company.website}
-      </a>
+      </ExternalLink>
     ),
   );
   add(
     t('crm.details.linkedin'),
     linkedin && (
-      <a href={linkedin} target="_blank" rel="noreferrer noopener">
+      <ExternalLink kind="linkedin" name={name} href={linkedin}>
         {person?.linkedinUrl}
-      </a>
+      </ExternalLink>
     ),
   );
 
