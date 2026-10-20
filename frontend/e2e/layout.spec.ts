@@ -140,7 +140,7 @@ const PAGES = [
   ['Coverage', '/leadgen/coverage'],
   ['Costs', '/leadgen/costs'],
   ['Runs', '/leadgen/runs'],
-  ['Logs', '/leadgen/logs'],
+  ['Runs', '/leadgen/runs?view=logs'],
   ['Settings', '/leadgen/settings'],
   ['Help', '/leadgen/help'],
 ] as const;
@@ -476,7 +476,7 @@ for (const size of [
         }),
     );
 
-    await page.goto('/leadgen/logs');
+    await page.goto('/leadgen/runs?view=logs');
     const rows = page.locator('.logs-row');
     await expect(rows.first()).toBeVisible();
     const header = (await page.locator('.dp-header').boundingBox())!;
@@ -490,10 +490,10 @@ for (const size of [
     // A row is one line high, and Open log is pinned to its right edge.
     const row = (await rows.first().boundingBox())!;
     expect(row.height).toBeLessThan(80);
-    const open = (await rows.first().getByRole('button').boundingBox())!;
+    const open = (await rows.first().locator('.logs-open').boundingBox())!;
     expect(row.x + row.width - (open.x + open.width)).toBeLessThan(24);
 
-    await rows.first().getByRole('button').click();
+    await rows.first().locator('.logs-open').click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByText('Complete log')).toBeVisible();
     const opened = await page.evaluate(measure);

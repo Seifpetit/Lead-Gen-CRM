@@ -29,7 +29,7 @@ const tunis = going('run-b', 'Tunis', 'Found 24 companies, checking which ones m
 });
 const old = run({ id: 'run-old', region: 'Sousse', liveMessage: 'Done. 11 leads are ready.' });
 
-function show(routes: Record<string, Handler> = {}, at = '/leadgen/runs') {
+function show(routes: Record<string, Handler> = {}, at = '/leadgen/runs?view=live') {
   const server = fakeServer({
     'GET /api/runs/live': { runs: [] },
     'GET /api/runs': page([old]),
@@ -217,5 +217,35 @@ describe('Runs page', () => {
       '/leadgen/runs/nope',
     );
     expect(await screen.findByRole('alert')).toBeVisible();
+  });
+
+  it('opens on the logs when no run is going, and on the run when one is', async () => {
+    const quiet = show(
+      { 'GET /api/apify/log': { runs: [], attention: [], recent: page([]) } },
+      '/leadgen/runs',
+    );
+    act(() => lastStream().emit('runs', { runs: [] }));
+    expect(await screen.findByRole('radio', { name: 'Logs' })).toBeChecked();
+    expect(screen.queryByRole('region', { name: 'Running now' })).toBeNull();
+    quiet.unmount();
+
+    show({ 'GET /api/apify/log': { runs: [], attention: [], recent: page([]) } }, '/leadgen/runs');
+    act(() => lastStream().emit('runs', { runs: [sfax] }));
+    expect(await screen.findByRole('radio', { name: 'Live run' })).toBeChecked();
+    expect(await screen.findByRole('region', { name: 'Running now' })).toBeVisible();
+  });
+
+  it('lets the person switch views, and what they picked stays even when a run starts', async () => {
+    const { user } = show(
+      { 'GET /api/apify/log': { runs: [], attention: [], recent: page([]) } },
+      '/leadgen/runs',
+    );
+    act(() => lastStream().emit('runs', { runs: [] }));
+    await user.click(await screen.findByRole('radio', { name: 'Live run' }));
+    expect(await screen.findByRole('region', { name: 'Running now' })).toBeVisible();
+    await user.click(screen.getByRole('radio', { name: 'Logs' }));
+    act(() => lastStream().emit('runs', { runs: [sfax] }));
+    expect(screen.getByRole('radio', { name: 'Logs' })).toBeChecked();
+    expect(screen.queryByRole('region', { name: 'Running now' })).toBeNull();
   });
 });

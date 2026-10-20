@@ -23,14 +23,14 @@ const activeRun = run({
 });
 
 describe('Lead Gen sidebar and pages', () => {
-  it('has the five sections in the sidebar, with the profile at the top', async () => {
+  it('has the four sections in the sidebar, with the profile at the top', async () => {
     renderApp(fakeServer(signedIn), '/leadgen');
     const side = await screen.findByRole('navigation', { name: 'Lead Gen sections' });
     expect(
       within(side)
         .getAllByRole('link')
         .map((a) => a.textContent),
-    ).toEqual(['Dashboard', 'Coverage', 'Costs', 'Runs', 'Logs']);
+    ).toEqual(['Dashboard', 'Coverage', 'Costs', 'Runs']);
     expect(within(side).getByRole('link', { name: 'Dashboard' })).toHaveAttribute(
       'aria-current',
       'page',
@@ -63,9 +63,10 @@ describe('Lead Gen sidebar and pages', () => {
     expect(await screen.findByRole('region', { name: 'Costs' })).toBeVisible();
   });
 
-  it('renders the Logs page with its filters and Refresh now', async () => {
+  it('sends the old Logs address to the Runs page, on its Logs view, with filters and Refresh now', async () => {
     renderApp(fakeServer(signedIn), '/leadgen/logs');
-    expect(await screen.findByRole('heading', { name: 'Logs', level: 1 })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Runs', level: 1 })).toBeVisible();
+    expect(screen.getByRole('radio', { name: 'Logs' })).toBeChecked();
     expect(await screen.findByText('No runs to show')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Refresh now' })).toBeVisible();
   });

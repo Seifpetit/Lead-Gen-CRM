@@ -1,8 +1,10 @@
 import type { ApifyLogRun } from '@lead-gen-crm/shared';
+import { useNavigate } from 'react-router';
 import { ProgressTrack } from '../../../components/shared/ProgressTrack.js';
 import { useT } from '../../../i18n/index.js';
 import { formatDuration, formatUsd } from '../../../lib/format.js';
 import { OutcomeBadge, outcomeText } from '../runOutcomeView.js';
+import { StepIcons } from './StepIcons.js';
 import { runName, runSeconds, searchCount } from './runLogView.js';
 
 /**
@@ -20,6 +22,7 @@ export function RunLogRow({
 }) {
   const t = useT();
   const { run } = entry;
+  const navigate = useNavigate();
   const name = runName(run);
   const cap = run.budgetCapUsd;
   const spent = t('money.spentOfCap', { spent: formatUsd(run.spentUsd), cap: formatUsd(cap) });
@@ -30,6 +33,7 @@ export function RunLogRow({
       <span className="logs-outcome">
         <OutcomeBadge run={run} />
       </span>
+      <StepIcons run={run} />
       <span className="logs-summary" title={summary}>
         {summary}
       </span>
@@ -44,14 +48,24 @@ export function RunLogRow({
         />
       </span>
       <span className="logs-time small muted">{formatDuration(runSeconds(run, now))}</span>
-      <button
-        type="button"
-        className="button logs-open"
-        aria-label={t('logs.row.open.for', { name })}
-        onClick={onOpen}
-      >
-        {t('logs.row.open')}
-      </button>
+      <span className="logs-actions">
+        <button
+          type="button"
+          className="button"
+          aria-label={t('logs.row.leads.for', { name })}
+          onClick={() => navigate(`/leadgen?run=${encodeURIComponent(run.id)}`)}
+        >
+          {t('logs.row.leads')}
+        </button>
+        <button
+          type="button"
+          className="button logs-open"
+          aria-label={t('logs.row.open.for', { name })}
+          onClick={onOpen}
+        >
+          {t('logs.row.open')}
+        </button>
+      </span>
     </li>
   );
 }

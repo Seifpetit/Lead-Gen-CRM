@@ -11,7 +11,7 @@ import { useT, type StringKey } from '../../../i18n/index.js';
 import { formatNumber } from '../../../lib/format.js';
 import './live.css';
 
-const ICONS: Record<CheckpointId, LucideIcon> = {
+export const CHECKPOINT_ICONS: Record<CheckpointId, LucideIcon> = {
   searching: Search,
   checking: Building2,
   people: Users,
@@ -45,7 +45,7 @@ export function Checkpoints({
       {CHECKPOINT_IDS.map((id) => {
         const state = checkpointState(progress, id);
         const shown = state === 'current' && halted ? 'halted' : state;
-        const Icon = ICONS[id];
+        const Icon = CHECKPOINT_ICONS[id];
         const showCount = state !== 'todo';
         return (
           <li key={id} className="cp" data-state={shown} title={t(`cp.${id}` as StringKey)}>

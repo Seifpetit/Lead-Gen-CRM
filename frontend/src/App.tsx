@@ -14,7 +14,6 @@ import { CoveragePage } from './features/leadgen/CoveragePage.js';
 import { DashboardPage } from './features/leadgen/DashboardPage.js';
 import { LeadPage } from './features/leadgen/LeadPage.js';
 import { HelpPage, SettingsPage } from './features/leadgen/InfoPages.js';
-import { LogsPage } from './features/leadgen/logs/LogsPage.js';
 import { RunsPage } from './features/leadgen/live/RunsPage.js';
 import { I18nProvider, useT } from './i18n/index.js';
 
@@ -40,7 +39,7 @@ function Screens() {
             <Route index element={<DashboardPage />} />
             <Route path="coverage" element={<CoveragePage />} />
             <Route path="costs" element={<CostsPage />} />
-            <Route path="logs" element={<LogsPage />} />
+            <Route path="logs" element={<Navigate to="/leadgen/runs?view=logs" replace />} />
             <Route path="runs" element={<RunsPage />} />
             <Route path="runs/:runId" element={<RunsPage />} />
             <Route path="runs/:runId/leads/:leadId" element={<LeadPage />} />

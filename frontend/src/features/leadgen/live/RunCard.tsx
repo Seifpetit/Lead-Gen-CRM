@@ -6,11 +6,11 @@ import { Card } from '../../../components/shared/Card.js';
 import { ProgressTrack } from '../../../components/shared/ProgressTrack.js';
 import { OutcomeBadge, outcomeText } from '../runOutcomeView.js';
 import { useT } from '../../../i18n/index.js';
-import { formatDateTime, formatUsd } from '../../../lib/format.js';
+import { formatDateTime } from '../../../lib/format.js';
 import { useThrottled } from '../../../lib/useThrottled.js';
 import { Checkpoints } from './Checkpoints.js';
 import { RunProblem } from './RunProblem.js';
-import { describeRun } from './runView.js';
+import { describeRun, spendText } from './runView.js';
 import { StopRunDialog } from './StopRunDialog.js';
 import { ANNOUNCE_MS } from './LiveStrip.js';
 import './live.css';
@@ -42,7 +42,7 @@ export function RunCard({
   const [stopping, setStopping] = useState(false);
   const cap = run.budgetCapUsd;
   const spendShare = cap > 0 ? Math.min(1, run.spentUsd / cap) : 0;
-  const spent = t('live.spend.text', { spent: formatUsd(run.spentUsd), cap: formatUsd(cap) });
+  const spent = spendText(t, run);
 
   return (
     <>
