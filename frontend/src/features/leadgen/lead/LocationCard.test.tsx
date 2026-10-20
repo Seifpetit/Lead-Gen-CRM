@@ -76,6 +76,17 @@ const REGIONS: RegionGeometry[] = [
   },
 ];
 
+/** A located business in Sfax (or the given region id) with the given address. */
+function render(address: string | null, governorate = 'sfax') {
+  const server = fakeServer({ 'GET /api/regions/geometry': { items: REGIONS } });
+  return renderWith(
+    <LocationCard
+      company={company({ governorate, address, location: { lat: 34.74, lng: 10.76 } })}
+    />,
+    server,
+  );
+}
+
 function view(over: Parameters<typeof company>[0] = {}) {
   const server = fakeServer({ 'GET /api/regions/geometry': { items: REGIONS } });
   const c = company({ governorate: 'sfax', ...over });
@@ -114,20 +125,40 @@ describe('Location card with coordinates', () => {
     expect(calls.icons[0]!.iconSize).toEqual([26, 26]);
   });
 
-  it('puts the real address next to the Google Maps link', async () => {
-    view({
-      location: { lat: 34.74, lng: 10.76 },
-      address: 'Route de Tunis km 3, 3000 Sfax, Tunisia',
-    });
-    expect(
-      await screen.findByText('Address: Route de Tunis km 3, 3000 Sfax, Tunisia'),
-    ).toBeVisible();
-    expect(screen.getByRole('link', { name: /Open in Google Maps/ })).toBeVisible();
+  it('puts the region and the address on one line, above the map', async () => {
+    const { container } = render('Route de Tunis km 3, 3000 Sfax');
+    const line = await screen.findByText('Sfax, Route de Tunis km 3, 3000 Sfax');
+    expect(line).toBeVisible();
+    const map = await screen.findByRole('region', { name: /^Map of / });
+    expect(line.compareDocumentPosition(map) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(container.querySelectorAll('.location-place')).toHaveLength(1);
   });
 
-  it('names the city next to the region when they differ', async () => {
-    view({ location: { lat: 34.8, lng: 10.7 }, city: 'Sakiet Ezzit' });
-    expect(await screen.findByText('Sakiet Ezzit, Sfax')).toBeVisible();
+  it('has one Google Maps link, the drive button, and none of the repeats', async () => {
+    render('Route de Tunis km 3');
+    await screen.findByText('Sfax, Route de Tunis km 3');
+    expect(screen.getAllByRole('link', { name: /Google Maps/ })).toHaveLength(1);
+    expect(screen.getByRole('link', { name: /Open in Google Maps/ })).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Add your address to see the drive by car' }),
+    ).toBeVisible();
+    expect(screen.queryByText(/Address:/)).toBeNull();
+    expect(screen.queryByText(/Google Maps place/)).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Location' })).toBeNull();
+    expect(screen.queryByText(/^Region:/)).toBeNull();
+  });
+
+  it('shows only the region when there is no address, and only the address when there is no region', async () => {
+    const onlyRegion = render(null);
+    expect(await screen.findByText('Sfax')).toBeVisible();
+    onlyRegion.unmount();
+    const onlyAddress = render('Route de Tunis km 3', '');
+    expect(await screen.findByText('Route de Tunis km 3')).toBeVisible();
+    expect(screen.queryByText(/^Sfax,/)).toBeNull();
+    onlyAddress.unmount();
+    const neither = render(null, '');
+    await screen.findByRole('region', { name: /^Map of / });
+    expect(neither.container.querySelector('.location-place')).toBeNull();
   });
 
   it('shows an OpenStreetMap map on the business, with its credit, and a Google Maps link', async () => {
@@ -159,10 +190,11 @@ describe('Location card with coordinates', () => {
 });
 
 describe('Location card without coordinates', () => {
-  it('says the exact place is unknown, still shows the address, and draws no map', async () => {
-    view({ location: null, city: null, address: 'Zone industrielle, Sfax' });
+  it('says the exact place is unknown, still shows region and address, and draws no map', async () => {
+    view({ location: null, city: null, address: 'Zone industrielle' });
     expect(await screen.findByText('Exact location unknown')).toBeVisible();
-    expect(screen.getByText('Address: Zone industrielle, Sfax')).toBeVisible();
+    expect(screen.getByText('Sfax, Zone industrielle')).toBeVisible();
+    expect(screen.queryByText(/Address:/)).toBeNull();
     expect(screen.queryByRole('link', { name: /Google Maps/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Add your address/ })).toBeNull();
     expect(calls.map).toHaveLength(0);

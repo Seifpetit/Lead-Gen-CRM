@@ -59,7 +59,13 @@ export function ExportMenu({
   const nothing = count === 0;
 
   return (
-    <Popover label={label} icon={<Download size={16} aria-hidden="true" />} showLabel portal>
+    <Popover
+      label={label}
+      icon={<Download size={16} aria-hidden="true" />}
+      showLabel
+      portal
+      triggerClassName="button-export"
+    >
       {(close) => (
         <div className="export-panel">
           {nothing ? (
