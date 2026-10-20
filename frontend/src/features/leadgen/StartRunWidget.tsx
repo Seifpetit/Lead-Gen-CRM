@@ -20,6 +20,7 @@ import {
 import { EstimateCard } from './startrun/EstimateCard.js';
 import { RegionChips } from './startrun/RegionChips.js';
 import { SectorChips } from './startrun/SectorChips.js';
+import { sectorLook } from '../crm/sectorLook.js';
 import {
   QUICK_CAPS_USD,
   capProblem,
@@ -334,6 +335,23 @@ export function StartRunWidget({
               <ErrorState error={coverage.error} onRetry={coverage.reload} />
             ) : sectors.length === 0 ? (
               <p className="muted">{t('plan.sectors.loading')}</p>
+            ) : many ? (
+              // From a sector: that sector is fixed, and only the regions can be many.
+              <div className="form-field sr-fixed-sector">
+                <span className="sr-fixed-label">{t('start.sector.fixed')}</span>
+                <ul className="sr-fixed-list">
+                  {selected.map((id) => {
+                    const { Icon, color } = sectorLook(id);
+                    return (
+                      <li key={id} className="sr-fixed-chip" style={{ background: color }}>
+                        <Icon size={14} aria-hidden="true" />
+                        {sectors.find((x) => x.id === id)?.name ?? id}
+                      </li>
+                    );
+                  })}
+                </ul>
+                <small className="muted">{t('start.sector.fixed.help')}</small>
+              </div>
             ) : (
               <SectorChips
                 sectors={sectors}

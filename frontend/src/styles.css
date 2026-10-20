@@ -6097,3 +6097,26 @@ a.channel:hover .channel-text {
 .badge-outcome[data-tone='grey'] {
   background: var(--surface);
 }
+
+/* Start a run from a sector: the sector is fixed (shown, not chosen); only regions are many. */
+.sr-fixed-label {
+  font-weight: 700;
+}
+.sr-fixed-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sr-fixed-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border: var(--bw) solid var(--ink);
+  border-radius: 999px;
+  color: var(--black);
+  font-weight: 700;
+}
