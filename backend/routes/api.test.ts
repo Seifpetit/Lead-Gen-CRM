@@ -16,6 +16,8 @@ import { setMonthlyCap } from '../data/userBudget.js';
 import { openTestDb, resetData } from '../data/testDb.js';
 import { dismissalFeedback } from '../data/views.js';
 import type { Bounds } from '../lib/geo.js';
+import { ErrorReporter } from '../runner/errorReporter.js';
+import { listErrors } from '../data/appErrors.js';
 import { signStep } from '../runner/webhooks.js';
 import { testRunner } from '../test/testRunner.js';
 import { CSRF_HEADER } from './csrf.js';
@@ -53,7 +55,14 @@ afterAll(async () => {
   await db.end();
 });
 
-async function mkApp(opts: { paid?: boolean; secret?: string | null; maxRunCapUsd?: number } = {}) {
+async function mkApp(
+  opts: {
+    paid?: boolean;
+    secret?: string | null;
+    maxRunCapUsd?: number;
+    errors?: ErrorReporter;
+  } = {},
+) {
   auth = new AuthService(db, { ...DEFAULT_POLICY });
   const a = await buildApp({
     db,
@@ -61,6 +70,7 @@ async function mkApp(opts: { paid?: boolean; secret?: string | null; maxRunCapUs
     runner: world.runner,
     paidRunsEnabled: opts.paid ?? true,
     webhookSecret: opts.secret === undefined ? SECRET : opts.secret,
+    ...(opts.errors ? { errors: opts.errors } : {}),
     ...(opts.maxRunCapUsd === undefined ? {} : { maxRunCapUsd: opts.maxRunCapUsd }),
   });
   extraApps.push(a);
@@ -285,6 +295,13 @@ const CASES: RouteCase[] = [
     body: { capUsd: 20 },
   },
   { method: 'GET', pattern: '/api/apify/log', url: () => '/api/apify/log' },
+  { method: 'GET', pattern: '/api/health', url: () => '/api/health' },
+  {
+    method: 'POST',
+    pattern: '/api/health/providers/:provider/reset',
+    url: () => '/api/health/providers/apify/reset',
+  },
+  { method: 'POST', pattern: '/api/runs/:id/recheck', url: (i) => `/api/runs/${i.run}/recheck` },
 ];
 /** Public routes: sign-in (tested in auth.test.ts) and the signed webhook (below). */
 const PUBLIC = [
@@ -374,6 +391,7 @@ describe('every route', () => {
     const withId = CASES.filter((c) => c.pattern.includes(':'));
     for (const c of withId) {
       if (c.pattern.startsWith('/api/regions/')) continue; // geometry is shared; see regions
+      if (c.pattern.startsWith('/api/health/')) continue; // provider states are the server's, not a user's
       if (c.pattern.startsWith('/api/crm/:pipeline')) continue; // a board name, not an ID
       const res = await call(bob, c.method, c.url(i), c.body);
       expect(res.statusCode, `${c.method} ${c.pattern}`).toBe(404);
@@ -1814,5 +1832,96 @@ describe('crm boards', () => {
     const restored = (await post(alice, `/api/crm/cards/${id}/restore`)).json();
     expect(restored).toMatchObject({ stage: 'found', noiseAt: null, purgeAt: null });
     expect((await post(alice, `/api/crm/cards/${id}/restore`)).statusCode).toBe(409);
+  });
+});
+
+describe('failure tracking routes', () => {
+  it('GET /api/health lists providers, checks and no notices on a healthy install', async () => {
+    const res = await call(alice, 'GET', '/api/health');
+    expect(res.statusCode).toBe(200);
+    const view = res.json();
+    expect(view.providers.map((p: { provider: string }) => p.provider)).toEqual([
+      'apify',
+      'anthropic',
+    ]);
+    expect(view.pendingMigrations).toEqual([]);
+    expect(view.notices).toEqual([]);
+    expect(view.checks.map((c: { id: string }) => c.id)).toContain('migrations');
+  });
+
+  it('a provider put down shows as a notice and "I fixed it" clears it', async () => {
+    const { markProviderFailed } = await import('../data/appErrors.js');
+    await markProviderFailed(
+      db,
+      'apify',
+      { kind: 'out_of_credit', reason: 'Apify is out of credit: top up and start a new run' },
+      () => 'down',
+    );
+    const down = (await call(alice, 'GET', '/api/health')).json();
+    expect(down.notices[0].message).toBe('Apify is out of credit: top up and start a new run');
+    const reset = await call(alice, 'POST', '/api/health/providers/apify/reset');
+    expect(reset.statusCode).toBe(200);
+    expect(reset.json().notices).toEqual([]);
+    expect((await call(alice, 'POST', '/api/health/providers/nope/reset')).statusCode).toBe(404);
+  });
+
+  it('records a refused webhook as an error', async () => {
+    const reporting = await mkApp({ errors: new ErrorReporter(db, [SECRET]) });
+    const res = await call(
+      null,
+      'POST',
+      '/api/webhooks/apify',
+      { userId: alice.id, stepId: NO_SUCH, signature: 'f'.repeat(64) },
+      { on: reporting },
+    );
+    expect(res.statusCode).toBe(401);
+    const errors = await listErrors(db, alice.id, 20);
+    expect(errors.find((e) => e.kind === 'invalid_signature')).toMatchObject({
+      source: 'webhook',
+      count: 1,
+    });
+  });
+
+  it('records an unhandled 5xx masked, with the route as its step, and answers a plain 500', async () => {
+    const reporting = await mkApp({ errors: new ErrorReporter(db, [SECRET]) });
+    reporting.get('/api/test-boom', async () => {
+      throw new Error(`database said no, key ${SECRET}`);
+    });
+    const res = await call(alice, 'GET', '/api/test-boom', undefined, { on: reporting });
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({ error: 'internal' });
+    await new Promise((r) => setTimeout(r, 50));
+    const errors = await listErrors(db, alice.id, 20);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ kind: 'unhandled', step: 'GET /api/test-boom' });
+    expect(JSON.stringify(errors)).not.toContain(SECRET);
+  });
+
+  it('refuses to start a run while a migration is pending, in plain words', async () => {
+    await db.query("DELETE FROM schema_migrations WHERE id = '014_failure_tracking'");
+    try {
+      const res = await call(alice, 'POST', '/api/runs', {
+        regionId: 'sfax',
+        budgetCapUsd: 5,
+        confirm: true,
+      });
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error).toBe('migrations_pending');
+      expect(res.json().message).toContain('npm run db:migrate');
+    } finally {
+      await db.query("INSERT INTO schema_migrations (id) VALUES ('014_failure_tracking')");
+    }
+  });
+
+  it('POST /api/runs/:id/recheck returns the run with its problem', async () => {
+    const res = await call(alice, 'POST', `/api/runs/${seededRun}/recheck`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ id: seededRun, problem: null });
+  });
+
+  it('GET /api/runs/live carries recently ended runs', async () => {
+    const res = await call(alice, 'GET', '/api/runs/live');
+    expect(res.json()).toHaveProperty('ended');
+    expect(res.json().ended.map((r: { id: string }) => r.id)).toContain(seededRun);
   });
 });

@@ -304,6 +304,19 @@ export async function reserveStepCharge(
   );
 }
 
+/** Takes back a step's reservation after its call was refused before anything started. */
+export async function clearStepReservation(
+  db: Queryable,
+  userId: UserId,
+  stepId: string,
+): Promise<void> {
+  await db.query(
+    `UPDATE run_steps SET max_charge_usd = NULL, updated_at = now()
+      WHERE user_id = $1 AND id = $2 AND processed_at IS NULL`,
+    [userId, stepId],
+  );
+}
+
 /**
  * Spend that unsettled steps may still add beyond their estimates: max cost minus estimate,
  * for the run and across all the user's runs (for the monthly cap).

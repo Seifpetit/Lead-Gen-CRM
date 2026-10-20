@@ -62,11 +62,35 @@ export interface RunSummary extends Run {
   liveMessage: string | null;
   /** Share of the current step's searches or lookups already finished, 0 to 1 (see runProgress). */
   stageFraction: number;
+  /** Something wrong with a run in progress, in plain words; null when all is well. */
+  problem: RunProblem | null;
 }
 
-/** What GET /api/runs/live and the /api/runs/stream events carry: the runs in progress. */
+export const RUN_PROBLEM_KINDS = ['provider_down', 'retrying', 'stuck', 'spend_fast'] as const;
+export type RunProblemKind = (typeof RUN_PROBLEM_KINDS)[number];
+
+/** What to offer next to a problem: look again now, or stop the run. */
+export type RunProblemAction = 'recheck' | 'stop';
+
+/** A run in progress that is not going well, said in plain words and set by the watchdog. */
+export interface RunProblem {
+  kind: RunProblemKind;
+  /** The plain sentence, e.g. "This run looks stuck since 14:20". */
+  message: string;
+  /** When the problem began (ISO 8601). */
+  since: string;
+  /** The button to offer; null when there is nothing to do but wait. */
+  action: RunProblemAction | null;
+}
+
+/**
+ * What GET /api/runs/live and the /api/runs/stream events carry: the runs in progress, and the
+ * runs that ended badly (failed, stopped by the cap) in the last half hour, so a failure is not
+ * missed by someone who looked away.
+ */
 export interface LiveRuns {
   runs: RunSummary[];
+  ended?: RunSummary[];
 }
 
 export const LOG_LEVELS = ['info', 'warn', 'error'] as const;
@@ -633,4 +657,82 @@ export const MAX_NOTES_LENGTH = 5000;
 export interface AddDecisionMakerResult {
   company: CrmCard;
   person: CrmCard;
+}
+
+// ---------------------------------------------------------------------------------------
+// Health: failures, provider states, startup checks
+
+export const HEALTH_PROVIDERS = ['apify', 'anthropic'] as const;
+export type HealthProvider = (typeof HEALTH_PROVIDERS)[number];
+export type HealthState = 'ok' | 'degraded' | 'down';
+
+/** Why a provider call failed, in the classes the app tells apart. */
+export const FAILURE_KINDS = [
+  'invalid_key',
+  'out_of_credit',
+  'quota_exceeded',
+  'rate_limited',
+  'timeout',
+  'server_error',
+  'network',
+  'unknown',
+] as const;
+export type FailureKind = (typeof FAILURE_KINDS)[number];
+
+export interface ProviderHealth {
+  provider: HealthProvider;
+  state: HealthState;
+  /** In plain words, e.g. "Apify is out of credit. Top up and start a new run."; null when ok. */
+  reason: string | null;
+  kind: FailureKind | null;
+  /** When it left ok (ISO 8601); null when ok. */
+  since: string | null;
+  lastOkAt: string | null;
+}
+
+/** One kind of failure, with how often it happened. */
+export interface AppErrorView {
+  id: string;
+  /** Free text such as 'provider', 'run', 'request', 'webhook', 'startup' or 'migration'. */
+  source: string;
+  provider: string | null;
+  step: string | null;
+  runId: string | null;
+  kind: string;
+  /** Safe to show: secrets are masked before it is stored. */
+  message: string;
+  /** The top few stack lines, masked; null when there is no stack. */
+  stack: string | null;
+  count: number;
+  firstSeen: string;
+  lastSeen: string;
+}
+
+export type CheckStatus = 'ok' | 'warn' | 'fail';
+
+/** One startup check: a key, the database, the migrations. */
+export interface HealthCheck {
+  id:
+    'apify_token' | 'anthropic_key' | 'database' | 'migrations' | 'webhook' | 'external_reporting';
+  status: CheckStatus;
+  /** What is wrong, or what is fine, in plain words. */
+  message: string;
+}
+
+export type HealthWarningKind = 'daily_spend_jump';
+export interface HealthWarning {
+  kind: HealthWarningKind;
+  message: string;
+}
+
+export interface HealthView {
+  providers: ProviderHealth[];
+  /** The last 20 distinct errors, most recent first. */
+  errors: AppErrorView[];
+  pendingMigrations: string[];
+  checks: HealthCheck[];
+  warnings: HealthWarning[];
+  /** The notices shown across the app: a provider down or a key problem. Empty when all is well. */
+  notices: { id: string; message: string }[];
+  checkedAt: string;
 }

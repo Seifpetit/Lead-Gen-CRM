@@ -10,6 +10,7 @@ import {
 import { Outlet, useLocation } from 'react-router';
 import { useApi } from '../api/context.js';
 import { useAuth } from '../features/auth/AuthContext.js';
+import { HealthNotice } from '../features/leadgen/health/HealthNotice.js';
 import { useT } from '../i18n/index.js';
 import { useResource } from '../lib/useResource.js';
 import { AppShell } from './shared/AppShell.js';
@@ -120,6 +121,7 @@ export function Layout() {
           </button>
         }
       >
+        <HealthNotice />
         <Outlet />
       </AppShell>
     </ToastProvider>

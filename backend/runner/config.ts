@@ -33,6 +33,8 @@ export interface RunnerConfig {
   googleRefreshDays: number;
   /** Most the Claude classifier may spend on one run (USD). Past it, undecided items go to review. */
   classifierRunCapUsd: number;
+  /** Waits, in ms, before each retry of a call the provider certainly did not run; empty = no retry. */
+  providerRetryDelaysMs: number[];
   /** Ad-hoc Apify webhooks, when the server is reachable from Apify. Polling runs either way. */
   webhook: { url: string; secret: string } | null;
 }
@@ -54,5 +56,6 @@ export const DEFAULT_RUNNER_CONFIG: RunnerConfig = {
   maxInFlightSteps: 4,
   googleRefreshDays: 30,
   classifierRunCapUsd: 0.5,
+  providerRetryDelaysMs: [1_000],
   webhook: null,
 };

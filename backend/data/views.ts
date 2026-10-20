@@ -1,4 +1,5 @@
 import type {
+  RunProblem,
   ApifyEventView,
   ApifyStepView,
   Company,
@@ -98,6 +99,31 @@ export async function activeRunSummaries(db: Queryable, userId: UserId): Promise
   return runSummaries(db, userId, await activeRunIds(db, userId));
 }
 
+/**
+ * Runs that ended within the last `minutes`, newest first: the live banner keeps showing how a
+ * run ended (failed, stopped, finished) for a while, so it is not missed by looking away.
+ */
+export async function recentlyEndedRunSummaries(
+  db: Queryable,
+  userId: UserId,
+  now: Date,
+  minutes = 30,
+  limit = 3,
+): Promise<RunSummary[]> {
+  const { rows } = await db.query<{ id: string }>(
+    `SELECT id FROM runs
+      WHERE user_id = $1 AND status NOT IN ('pending', 'running')
+        AND finished_at IS NOT NULL AND finished_at >= $2::timestamptz - make_interval(mins => $3)
+      ORDER BY finished_at DESC, id LIMIT $4`,
+    [userId, now, minutes, limit],
+  );
+  return runSummaries(
+    db,
+    userId,
+    rows.map((r) => r.id),
+  );
+}
+
 /** Companies per funnel stage for one run. */
 export async function runFunnel(db: Queryable, userId: UserId, runId: string): Promise<RunFunnel> {
   return (await funnels(db, userId, [runId])).get(runId)!;
@@ -145,10 +171,11 @@ export async function runSummaries(
     id: string;
     error: string | null;
     live_message: string | null;
+    problem: RunProblem | null;
     stage_total: number;
     stage_done: number;
   }>(
-    `SELECT r.id, r.error, r.live_message,
+    `SELECT r.id, r.error, r.live_message, r.problem,
             count(s.id)::integer AS stage_total,
             (count(s.id) FILTER (WHERE s.status IN ('finished', 'failed')))::integer AS stage_done
        FROM runs r
@@ -168,6 +195,8 @@ export async function runSummaries(
       funnel: f.get(id)!,
       error: e?.error ?? null,
       liveMessage: e?.live_message ?? null,
+      // Only a run still going has a problem; the watchdog clears it when the run ends.
+      problem: run.status === 'running' || run.status === 'pending' ? (e?.problem ?? null) : null,
       // Steps of the current stage that have landed; the stages with no steps count as 0.
       stageFraction: e && e.stage_total > 0 ? e.stage_done / e.stage_total : 0,
     });

@@ -35,6 +35,14 @@ export function formatDateTime(iso: string | null | undefined): string {
     .concat(' UTC');
 }
 
+/** The clock time of a moment, like "14:20 UTC". */
+export function formatClock(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return `${new Intl.DateTimeFormat('en-GB', { timeStyle: 'short', timeZone: 'UTC' }).format(d)} UTC`;
+}
+
 /** "2026-10" or a full date's month, for the costs table. */
 export function formatMonth(key: string): string {
   const d = new Date(/^\d{4}-\d{2}$/.test(key) ? `${key}-01T00:00:00Z` : key);

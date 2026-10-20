@@ -56,6 +56,9 @@ export const liveMessages = {
     `Stopped before the next step to stay under your spend cap. ${plural(f.leads, 'lead was', 'leads were')} kept.`,
   outsideRegion: (f: { outside: number; total: number; region: string }) =>
     `Stopped to protect your budget: ${f.outside} of the ${f.total} places found so far were outside ${f.region}. The searches are probably not covering the region, so no new searches were started.`,
+  searchingAgain: (f: { plain: string }) =>
+    `${f.plain}. Searching again after a provider hiccup...`,
+  providerStopped: (f: { plain: string }) => `${f.plain}.`,
   failed: (f: { reason?: string | null }) =>
     f.reason ? `This run could not finish: ${f.reason}` : 'This run could not finish.',
 };

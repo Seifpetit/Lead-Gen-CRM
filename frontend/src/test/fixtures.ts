@@ -10,6 +10,7 @@ import type {
   RunFunnel,
   RunPreview,
   RunSummary,
+  HealthView,
 } from '@lead-gen-crm/shared';
 
 // Synthetic data for tests: invented names and example.test URLs, never real contact details.
@@ -141,6 +142,7 @@ export function run(over: Partial<RunSummary> = {}): RunSummary {
     error: null,
     liveMessage: 'Done. 6 leads are ready.',
     stageFraction: 0,
+    problem: null,
     ...over,
   };
 }
@@ -266,5 +268,27 @@ export function dashboardRoutes(): Record<string, import('./fakeServer.js').Hand
     'GET /api/crm/people/facets': { total: 0, stages: [], sectors: [], runs: [] },
     'GET /api/coverage': { regions: [], sectors: [], entries: [] },
     'GET /api/regions/geometry': { items: [] },
+  };
+}
+
+/** A healthy install: every provider ok, every check fine, nothing to report. */
+export function health(over: Partial<HealthView> = {}): HealthView {
+  return {
+    providers: [
+      { provider: 'apify', state: 'ok', kind: null, reason: null, since: null, lastOkAt: null },
+      { provider: 'anthropic', state: 'ok', kind: null, reason: null, since: null, lastOkAt: null },
+    ],
+    errors: [],
+    pendingMigrations: [],
+    checks: [
+      { id: 'apify_token', status: 'ok', message: 'The Apify key is set.' },
+      { id: 'anthropic_key', status: 'ok', message: 'The Anthropic key is set.' },
+      { id: 'database', status: 'ok', message: 'The database answers.' },
+      { id: 'migrations', status: 'ok', message: 'The database is up to date.' },
+    ],
+    warnings: [],
+    notices: [],
+    checkedAt: '2026-10-19T12:00:00.000Z',
+    ...over,
   };
 }

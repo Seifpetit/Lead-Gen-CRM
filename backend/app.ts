@@ -1,12 +1,21 @@
 import Fastify, { type FastifyServerOptions } from 'fastify';
-import authPlugin from './auth/plugin.js';
+import authPlugin, { currentUser } from './auth/plugin.js';
+import type { UserId } from './data/ids.js';
 import type { AuthService } from './auth/service.js';
 import { DEFAULT_MAX_RUN_CAP_USD } from '@lead-gen-crm/shared';
 import type { Db } from './data/db.js';
 import csrfPlugin from './routes/csrf.js';
 import { ApiError } from './routes/http.js';
 import { registerRoutes } from './routes/index.js';
+import type { ErrorReporter } from './runner/errorReporter.js';
+import {
+  DEFAULT_DAILY_JUMP,
+  DEFAULT_HEALTH_FACTS,
+  type DailyJumpConfig,
+  type HealthFacts,
+} from './runner/healthView.js';
 import type { Orchestrator } from './runner/orchestrator.js';
+import { Watchdog } from './runner/watchdog.js';
 
 /** Never logged, whatever the log level: credentials travel in these. */
 export const LOG_REDACT = [
@@ -46,6 +55,11 @@ export async function buildApp(deps: {
   maxRunCapUsd?: number;
   /** API tokens and the like: hidden from run logs by value, besides the patterns. */
   secrets?: readonly (string | null | undefined)[];
+  /** Where failures are noted (see lib/errorReporter.ts). */
+  errors?: ErrorReporter | null;
+  watchdog?: Watchdog;
+  healthFacts?: HealthFacts;
+  dailyJump?: DailyJumpConfig;
   logger?: FastifyServerOptions['logger'];
 }) {
   const app = Fastify({ logger: deps.logger ?? false, trustProxy: false });
@@ -74,6 +88,17 @@ export async function buildApp(deps: {
     const status = err.statusCode ?? 500;
     if (status >= 500) {
       request.log.error({ err }, 'request failed');
+      // Noted without waiting, and never allowed to fail the answer itself.
+      let userId: UserId | null = null;
+      try {
+        userId = currentUser(request).id;
+      } catch {
+        // A public route has no user.
+      }
+      void deps.errors?.error('request', 'unhandled', err, {
+        userId,
+        step: `${request.method} ${request.routeOptions?.url ?? 'unknown route'}`,
+      });
       return reply.code(500).send({ error: 'internal' });
     }
     return reply.code(status).send({ error: 'invalid_request' });
@@ -89,6 +114,10 @@ export async function buildApp(deps: {
     noiseRetentionDays: deps.noiseRetentionDays ?? 30,
     maxRunCapUsd: deps.maxRunCapUsd ?? DEFAULT_MAX_RUN_CAP_USD,
     secrets: deps.secrets ?? [],
+    errors: deps.errors ?? null,
+    watchdog: deps.watchdog ?? new Watchdog({ db: deps.db, changes: deps.runner.changes }),
+    healthFacts: deps.healthFacts ?? DEFAULT_HEALTH_FACTS,
+    dailyJump: deps.dailyJump ?? DEFAULT_DAILY_JUMP,
   });
   return app;
 }
