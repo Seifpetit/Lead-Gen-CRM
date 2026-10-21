@@ -7,3 +7,9 @@ coverage/
 !.env.example
 test-results/
 playwright-report/
+
+# Exports and database dumps can hold real people's data. Never commit them.
+*.csv
+*.xlsx
+*.sql
+*.dump
