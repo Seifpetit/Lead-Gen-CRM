@@ -1,136 +1,81 @@
 # Lead Gen CRM
 
-B2B lead generation for Tunisian freight transporters: pick a region, get named decision-makers
-at companies that ship goods, with a contact channel and the source of every value.
+**Find the companies that ship goods in a region, and the people who decide how they ship.**
 
-## Layout
+[![CI](https://github.com/Seifpetit/Lead-Gen-CRM/actions/workflows/ci.yml/badge.svg)](https://github.com/Seifpetit/Lead-Gen-CRM/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![TypeScript](https://img.shields.io/badge/TypeScript-React%20%2B%20Fastify%20%2B%20Postgres-3178c6)
 
-```
-shared/      Types used by both sides (Lead, Company, Contact, Evidence, Run, RunStage, CrmStage)
-backend/
-  config/    Typed env loader, job-title dictionary (FR/EN), freight sectors, Tunisian governorates
-  data/      Data-access layer: the only folder allowed to import the database driver
-  lib/       Pure helpers shared by data, providers and stages (normalize, geo, sourced, cost)
-  providers/ Apify and Google Places adapters, one interface per stage (no database access)
-  stages/    Pure pipeline stages and the query grid (no database access)
-  runner/    Run orchestrator: crash-safe runs, caps, claims, coverage scheduler (see its README)
-  routes/    Authenticated HTTP endpoints
-  auth/      Sessions and password hashing (vetted library)
-  httpClient.ts
-frontend/    React + Vite app
-```
+A B2B lead generation tool built for Tunisian freight transporters. You pick a region and a spend
+cap, and it searches Google Maps for companies in freight-heavy sectors, looks for the named
+decision-makers there, and finds a contact channel for each. Everything lands on two drag-and-drop
+boards (companies and people), and every stored value shows where it came from.
 
-## Run
+<!-- GIF 1 (hero): see docs/media/README.md for the shot list.
+![Starting a run and watching leads arrive](docs/media/start-a-run.gif)
+-->
 
-Requires Node 22.13+ and Docker (for local Postgres).
+## What you can do
+
+- **Start a run** for a region with a hard spend cap and a cost estimate before anything is paid.
+- **Watch it live** through six plain-language steps, with a technical log when you need it.
+- **Work the leads** on two kanban boards: companies, then the people who decide.
+- **See coverage** of the map, so each new run goes where it will find the most new companies.
+- **Track every cent** in an append-only cost ledger with per-run and monthly caps.
+
+<!-- GIF 2: the Coverage map and matrix.
+![Coverage map by region and sector](docs/media/coverage.gif)
+-->
+
+<!-- GIF 3: the two CRM boards.
+![Moving a company to Decision-maker identified and adding a person](docs/media/crm-boards.gif)
+-->
+
+## Try it
+
+You need Node 22.13+ and PostgreSQL 16 (Docker is the easiest way to get it).
 
 ```sh
 npm install
-cp .env.example .env        # then set APIFY_TOKEN
-npm run db:up               # local Postgres on :5432
-npm run db:migrate          # create the schema and seed regions
-npm run db:seed             # optional placeholder demo data
-npm run auth:create-user -- you@example.com   # prompts for a password (min 12 chars)
-npm run dev:backend         # builds shared/ first; fails fast if APIFY_TOKEN or DATABASE_URL is missing
-npm run dev:frontend        # builds shared/ first; http://localhost:5173, proxies /api to :3000
-npm run e2e -w frontend     # browser smoke test with the fake Apify (see frontend/README.md)
+cp .env.example .env            # then set APIFY_TOKEN (and ANTHROPIC_API_KEY for the classifier)
+npm run db:up                   # local Postgres on :5432 (skip if you already run one)
+npm run db:migrate              # create the schema and load the region outlines
+npm run auth:create-user -- you@example.com
+npm run dev:backend             # API on http://localhost:3000
+npm run dev:frontend            # app on http://localhost:5173
 ```
 
-## Checks
+Real runs use paid Apify actors and are off by default: set `PAID_RUNS_ENABLED=true` in `.env` when
+you are ready, and keep the spend cap low while you test. The full setup, including running
+without Docker, is in [Development](docs/DEVELOPMENT.md).
 
-```sh
-npm run lint          # ESLint, including the database-driver boundary rule
-npm run typecheck     # tsc -b across all packages
-npm test              # Vitest across all packages (needs Postgres, see below)
-npm run format:check  # Prettier
-```
+## How it works
 
-## Tests and Postgres
+A run splits a region into map cells, searches Google Maps in each, scores and classifies the
+companies it finds, then looks up decision-makers and their contact details. Providers (Apify) sit
+behind small interfaces, and the pipeline stages are pure functions, so each part can be tested
+with fixtures and no network.
 
-Data-layer tests run against a real Postgres at `TEST_DATABASE_URL` (default
-`postgres://leadgen:leadgen@localhost:5432/leadgen_test`). Each test file drops and recreates the
-schema, so never point it at a database you care about. If Postgres is unreachable, the tests fail
-rather than skip.
+| Read this                                    | For                                                         |
+| -------------------------------------------- | ----------------------------------------------------------- |
+| [Development guide](docs/DEVELOPMENT.md)     | Setup, checks, tests, security notes and the ground rules   |
+| [Run orchestrator](backend/runner/README.md) | How runs, caps, crash recovery and coverage scheduling work |
+| [Providers](backend/providers/README.md)     | The Apify and Google Places adapters and their fixtures     |
+| [Pipeline stages](backend/stages/README.md)  | The query grid and each pipeline stage                      |
+| [HTTP API](backend/routes/README.md)         | Every route, its auth and its rules                         |
+| [Data layer](backend/data/README.md)         | The rules for database access and its commands              |
+| [Frontend](frontend/README.md)               | Folder map, UI rules and the browser smoke test             |
 
-With Docker, the compose service works: `npm run db:up`, then
-`docker compose exec postgres createdb -U leadgen leadgen_test`.
+## Known limits
 
-Without Docker (e.g. a cloud dev container), use a locally installed PostgreSQL 16:
+- It is an early prototype. One real test run so far found company contacts well but few named
+  decision-makers, and improving that is the main open work.
+- Tunisia only for now; the region list and job-title dictionary are Tunisian (FR/EN).
+- There is no hosted version, billing or multi-team support. It is meant to run on one machine.
+- The search sources have their own terms of service, and named people are personal data under
+  local law. Check both before contacting anyone.
 
-```sh
-sudo pg_ctlcluster 16 main start
-sudo -u postgres psql -c "CREATE ROLE leadgen LOGIN SUPERUSER PASSWORD 'leadgen'" \
-  -c "CREATE DATABASE leadgen OWNER leadgen" -c "CREATE DATABASE leadgen_test OWNER leadgen"
-```
+## License
 
-CI (`.github/workflows/ci.yml`) runs a `postgres:16` service container, then format check,
-lint, typecheck and tests on every pull request and push to main.
-
-## Location maps
-
-A company's page shows an OpenStreetMap close-up (drawn with [Leaflet](https://leafletjs.com),
-BSD-2) next to a small Tunisia map. The tiles are fetched by the browser straight from
-`tile.openstreetmap.org` under OpenStreetMap's [tile usage policy](https://operations.osmfoundation.org/policies/tiles/),
-with the required credit on the map: © OpenStreetMap contributors. There is no API key, nothing is
-stored but the company's latitude and longitude, and no Google service is called (the "Open in
-Google Maps" link is a plain link).
-
-## Data and licences
-
-The 24 governorate outlines come from [geoBoundaries](https://www.geoboundaries.org) (gbOpen,
-Tunisia ADM1, boundary TUN-ADM1-13205935), which is derived from OpenStreetMap and so is
-licensed under the [Open Database Licence 1.0](https://opendatacommons.org/licenses/odbl/1-0/).
-© OpenStreetMap contributors. The app credits it in the corner of the Coverage map.
-
-The processed file is committed (`backend/config/regionOutlines.json`, full precision; the map
-is served a lightly simplified copy), so nothing is downloaded at runtime. To rebuild it:
-
-```sh
-npm run regions:build        # downloads the source, checks it, rewrites config/region*
-npm run db:migrate           # loads the new outlines and bounds into the database
-```
-
-## Security
-
-- **Passwords** are hashed with argon2id (the `argon2` library); the app never stores or logs
-  them. Minimum length is 12.
-- **Sessions** live in Postgres. The cookie (`sid`) is a random 256-bit token, `HttpOnly`,
-  `Secure`, `SameSite=Strict`; only its SHA-256 is stored, so a database leak exposes no live
-  session. A session ends after 12 hours idle or 7 days in total (`SESSION_IDLE_HOURS`,
-  `SESSION_MAX_DAYS`), and logout deletes it server-side.
-- **Removed CRM cards** wait in Noise for `NOISE_RETENTION_DAYS` (default 30); a daily job in the
-  backend then deletes them and keeps a minimal marker (see `backend/routes/README.md`).
-- **A run's spend cap** is at least $0.50 and at most `MAX_RUN_CAP_USD` (default $50); the server
-  refuses anything else and the Start a run window shows the same limits.
-- **Every route requires a session** unless it is explicitly marked public (only login, sign-up
-  and logout are). Unknown routes return 401 too. Handlers pass `currentUser(request).id` to the
-  data layer, whose functions only accept that branded `UserId`. Another user's record and a
-  nonexistent one both return 404.
-- **Brute force:** 5 failed sign-ins for an email within 15 minutes lock it for 15 minutes (the
-  correct password is refused while locked); 20 failures from one IP throttle that IP. Unknown
-  emails get the same response and timing as wrong passwords.
-- **Sign-up** is invite-only by default (`SIGNUP_MODE=invite`): create users with
-  `npm run auth:create-user -- <email>` or one-time codes with `npm run auth:create-invite`
-  (7-day expiry, stored hashed). `SIGNUP_MODE=open` lets anyone sign up.
-- **Local dev shortcut** (`DEV_ADMIN_LOGIN=true`, default off): accepts the login `test` / `test`
-  on sign-in, sign-up and `npm run auth:create-user -- test`, skipping only the email-format and
-  12-character checks for that exact pair. It is stored like any user (argon2, same sessions,
-  rate limit and lockout), and sign-up still needs an invite code in invite mode. The server
-  refuses to start with it on if `NODE_ENV=production`, `HOST` is not `127.0.0.1`/`::1`, or
-  `PUBLIC_URL` is not a localhost URL, and logs a warning when it is on. To switch it off: set
-  `DEV_ADMIN_LOGIN=false` and run `npm run auth:disable-dev-user` (deletes the `test` user and its
-  sessions). While the flag is off, the `test` login is refused even if the row still exists.
-- **Logs** redact cookies, `Set-Cookie`, authorization headers and any `password`, `token` or
-  `inviteCode` field; request bodies are never logged.
-- **CSRF:** `SameSite=Strict` cookies plus JSON-only endpoints. Behind a reverse proxy, enable
-  Fastify's `trustProxy` for that proxy, or every client shares the proxy's IP for throttling.
-
-## Ground rules
-
-- Never fabricate a contact detail. Every stored value carries a source URL, a timestamp, and a
-  fact or estimate label.
-- No secrets in the repo. The Apify token lives in server-side env only.
-- No paid Apify run starts without a spend cap and explicit approval.
-- Only `backend/data/` may import the database driver, and `providers/`, `stages/` and `lib/`
-  may not import `data/` at all (both enforced by lint).
-- Provider and stage tests use fixtures and fakes only; `fetch` is stubbed to throw.
+[MIT](LICENSE). The governorate outlines come from geoBoundaries / OpenStreetMap contributors under
+the ODbL; see [Development](docs/DEVELOPMENT.md#data-and-licences).
