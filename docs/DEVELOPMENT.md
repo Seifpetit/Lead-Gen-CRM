@@ -36,6 +36,32 @@ npm run dev:frontend        # builds shared/ first; http://localhost:5173, proxi
 npm run e2e -w frontend     # browser smoke test with the fake Apify (see frontend/README.md)
 ```
 
+## Share a test session
+
+To let one person try the app from their own computer for an hour, without deploying it, open a
+temporary Cloudflare quick tunnel from your machine. It gives a throwaway `https://` address that
+works only while the command runs, and closing it turns access off.
+
+Before you start the tunnel, because the app will be reachable from the internet:
+
+1. Give the tester their own account with `npm run auth:create-user -- their@email`, and keep
+   `SIGNUP_MODE=invite`. Prefer this to the `test` / `test` shortcut: with the tunnel open, anyone
+   who got the address could try that login. If you do want to switch the shortcut off, set
+   `DEV_ADMIN_LOGIN=false`, restart the backend and run `npm run auth:disable-dev-user`.
+2. Keep `PAID_RUNS_ENABLED=false` unless the tester should start paid runs, and keep
+   `MAX_RUN_CAP_USD` low.
+
+Then, with the backend and `npm run dev:frontend` running, install
+[cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
+and run:
+
+```sh
+cloudflared tunnel --url http://localhost:5173
+```
+
+Send the printed `https://...trycloudflare.com` address to the tester. When the session ends, press
+`Ctrl+C` in that window: the address stops working at once.
+
 ## Checks
 
 ```sh

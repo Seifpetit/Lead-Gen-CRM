@@ -11,5 +11,10 @@ export default defineConfig({
   },
   // The API checks that a request's Origin matches its Host (CSRF), so the proxy must pass the
   // browser's Host through (changeOrigin: false) instead of rewriting it to the backend's.
-  server: { proxy: { '/api': { target: 'http://localhost:3000', changeOrigin: false } } },
+  // allowedHosts lets a Cloudflare quick tunnel (https://<random>.trycloudflare.com) reach the dev
+  // server for a short test session, see docs/DEVELOPMENT.md ("Share a test session").
+  server: {
+    allowedHosts: ['.trycloudflare.com'],
+    proxy: { '/api': { target: 'http://localhost:3000', changeOrigin: false } },
+  },
 });
