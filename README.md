@@ -11,9 +11,9 @@ cap, and it searches Google Maps for companies in freight-heavy sectors, looks f
 decision-makers there, and finds a contact channel for each. Everything lands on two drag-and-drop
 boards (companies and people), and every stored value shows where it came from.
 
-<!-- GIF 1 (hero): see docs/media/README.md for the shot list.
+
 ![Starting a run and watching leads arrive](docs/media/start-a-run.gif)
--->
+
 
 ## What you can do
 
@@ -23,13 +23,13 @@ boards (companies and people), and every stored value shows where it came from.
 - **See coverage** of the map, so each new run goes where it will find the most new companies.
 - **Track every cent** in an append-only cost ledger with per-run and monthly caps.
 
-<!-- GIF 2: the Coverage map and matrix.
-![Coverage map by region and sector](docs/media/coverage.gif)
--->
 
-<!-- GIF 3: the two CRM boards.
+![Coverage map by region and sector](docs/media/coverage.gif)
+
+
+
 ![Moving a company to Decision-maker identified and adding a person](docs/media/crm-boards.gif)
--->
+
 
 ## Try it
 
