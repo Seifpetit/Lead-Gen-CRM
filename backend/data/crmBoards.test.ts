@@ -1,4 +1,4 @@
-import type { CrmBoard } from '@lead-gen-crm/shared';
+import { MAX_BULK_CARDS, type CrmBoard } from '@lead-gen-crm/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { upsertCompany } from './companies.js';
 import { upsertContact } from './contacts.js';
@@ -9,13 +9,16 @@ import {
   getCompanyDetail,
   isCompanyRemoved,
   isPersonRemoved,
+  listCardRefs,
   listCards,
   loadBoard,
   loadFacets,
   moveCard,
   purgeNoise,
   removeCard,
+  removeCards,
   restoreCard,
+  restoreCards,
   setCompanyNotes,
 } from './crmBoards.js';
 import { listLeads, upsertLead } from './crmLeads.js';
@@ -317,6 +320,186 @@ describe('remove and restore', () => {
     expect(await code(restoreCard(db, user, card, 'decision_maker_identified'))).toBe(
       'decision_maker_required',
     );
+  });
+});
+
+describe('removing many cards at once', () => {
+  /** A second company with its own lead, so there is more than one card to pick. */
+  let phones = 0;
+  async function otherCard(name: string, owner: UserId = user): Promise<string> {
+    phones += 1; // companies with the same phone are the same company
+    const company = (
+      await upsertCompany(db, owner, {
+        name: fact(name),
+        governorate: fact('sfax'),
+        googlePlaceId: fact(`place-${name}`),
+        sector: fact('food'),
+        phone: fact(`74 333 ${String(400 + phones).padStart(3, '0')}`),
+      })
+    ).company.id;
+    const run = (await createRun(db, owner, { regionId: 'sfax', budgetCapUsd: 10 })).id;
+    await upsertLead(db, owner, { runId: run, companyId: company, contactId: null, score });
+    const { rows } = await db.query<{ id: string }>(
+      `SELECT id FROM crm_cards WHERE user_id = $1 AND pipeline = 'companies' AND company_id = $2`,
+      [owner, company],
+    );
+    return rows[0]!.id;
+  }
+
+  it('moves them all to Noise like single removals: restorable, dismissed for scoring', async () => {
+    const a = await companyCard();
+    const b = await otherCard('Beta');
+    const result = await removeCards(db, user, [a, b]);
+    expect(result).toEqual({ moved: expect.arrayContaining([a, b]), protected: 0, skipped: 0 });
+    for (const id of [a, b]) {
+      const c = (await getCard(db, user, id, RETENTION))!;
+      expect(c).toMatchObject({ stage: 'noise', removedFrom: 'found' });
+      expect(Date.parse(c.purgeAt!) - Date.parse(c.noiseAt!)).toBe(RETENTION * DAY);
+    }
+    expect(await listLeads(db, user, { stage: 'dismissed' })).toHaveLength(2);
+    expect((await dismissalFeedback(db, user)).bySector).toEqual({ food: 2 });
+  });
+
+  it('never deletes anything: the cards, companies and leads are all still there', async () => {
+    const a = await companyCard();
+    const b = await otherCard('Beta');
+    const count = async (table: string) =>
+      Number((await db.query<{ n: string }>(`SELECT count(*) AS n FROM ${table}`)).rows[0]!.n);
+    const before = [await count('crm_cards'), await count('companies'), await count('crm_leads')];
+    await removeCards(db, user, [a, b]);
+    expect([await count('crm_cards'), await count('companies'), await count('crm_leads')]).toEqual(
+      before,
+    );
+  });
+
+  it('leaves cards past Found alone and says how many, and never touches Opted out', async () => {
+    const a = await companyCard();
+    const working = await otherCard('Gamma');
+    const deciding = await otherCard('Delta');
+    const epsilon = await otherCard('Epsilon');
+    await moveCard(db, user, working, 'investigating');
+    await addDecisionMaker(db, user, deciding, { fullName: 'Sami', email: 'sami@delta.tn' }, 30);
+    await addDecisionMaker(db, user, epsilon, { fullName: 'Lina', email: 'lina@eps.tn' }, 30);
+    const people = (await listCards(db, user, 'people', RETENTION)).cards;
+    const sami = people.find((c) => c.person?.fullName === 'Sami')!;
+    const lina = people.find((c) => c.person?.fullName === 'Lina')!;
+    await moveCard(db, user, sami.id, 'opted_out', { reason: 'asked to stop' });
+    await moveCard(db, user, lina.id, 'contacted');
+
+    const result = await removeCards(db, user, [a, working, deciding, sami.id, lina.id]);
+    expect(result).toEqual({ moved: [a], protected: 4, skipped: 0 });
+    expect(await stageOf(working)).toBe('investigating');
+    expect(await stageOf(deciding)).toBe('decision_maker_identified');
+    expect(await stageOf(sami.id)).toBe('opted_out');
+    expect(await stageOf(lina.id)).toBe('contacted');
+    expect(await stageOf(a)).toBe('noise');
+  });
+
+  it('moves new people and counts cards already in Noise as skipped', async () => {
+    const a = await companyCard();
+    const { person } = await addDecisionMaker(
+      db,
+      user,
+      a,
+      { fullName: 'Nour', email: 'nour@alpha.tn' },
+      RETENTION,
+    );
+    await removeCard(db, user, a);
+    const result = await removeCards(db, user, [a, person.id]);
+    expect(result).toEqual({ moved: [person.id], protected: 0, skipped: 1 });
+    expect(await stageOf(person.id)).toBe('noise');
+  });
+
+  it("only touches the user's own cards: another user's ids are skipped, nothing changes", async () => {
+    const mine = await companyCard();
+    const other = await makeUser(db);
+    const theirs = await otherCard('Theirs', other);
+    const result = await removeCards(db, user, [mine, theirs]);
+    expect(result).toEqual({ moved: [mine], protected: 0, skipped: 1 });
+    expect((await getCard(db, other, theirs, RETENTION))?.stage).toBe('found');
+    expect(await listLeads(db, other, { stage: 'dismissed' })).toEqual([]);
+  });
+
+  it('is all or nothing: a failure part-way leaves every card where it was', async () => {
+    const a = await companyCard();
+    const b = await otherCard('Beta');
+    await db.query(`CREATE FUNCTION fail_on_beta() RETURNS trigger LANGUAGE plpgsql AS $f$
+      BEGIN
+        IF NEW.stage = 'dismissed' AND EXISTS (
+          SELECT 1 FROM companies WHERE id = NEW.company_id AND name = 'Beta') THEN
+          RAISE EXCEPTION 'boom';
+        END IF;
+        RETURN NEW;
+      END $f$`);
+    await db.query(
+      `CREATE TRIGGER fail_on_beta BEFORE UPDATE ON crm_leads
+         FOR EACH ROW EXECUTE FUNCTION fail_on_beta()`,
+    );
+    try {
+      await expect(removeCards(db, user, [a, b])).rejects.toThrow('boom');
+    } finally {
+      await db.query('DROP TRIGGER fail_on_beta ON crm_leads');
+      await db.query('DROP FUNCTION fail_on_beta()');
+    }
+    expect(await stageOf(a)).toBe('found');
+    expect(await stageOf(b)).toBe('found');
+    expect(await listLeads(db, user, { stage: 'dismissed' })).toEqual([]);
+  });
+
+  it(`takes at most ${MAX_BULK_CARDS} cards per request, and repeated ids count once`, async () => {
+    const a = await companyCard();
+    const many = Array.from(
+      { length: MAX_BULK_CARDS + 1 },
+      (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+    );
+    expect(await code(removeCards(db, user, many))).toBe('too_many');
+    expect(await code(restoreCards(db, user, many))).toBe('too_many');
+    expect(await stageOf(a)).toBe('found');
+    expect(await removeCards(db, user, [a, a, a])).toEqual({
+      moved: [a],
+      protected: 0,
+      skipped: 0,
+    });
+    expect(await removeCards(db, user, [])).toEqual({ moved: [], protected: 0, skipped: 0 });
+  });
+
+  it('undo puts every card back where it came from and undoes the dismissal', async () => {
+    const a = await companyCard();
+    const b = await otherCard('Beta');
+    await removeCards(db, user, [a, b]);
+    expect(await restoreCards(db, user, [a, b, a])).toEqual({ restored: 2, skipped: 0 });
+    expect(await stageOf(a)).toBe('found');
+    expect(await stageOf(b)).toBe('found');
+    expect(await listLeads(db, user, { stage: 'dismissed' })).toEqual([]);
+    expect(await restoreCards(db, user, [a, b])).toEqual({ restored: 0, skipped: 2 });
+  });
+
+  it("undo leaves another user's Noise cards alone", async () => {
+    const other = await makeUser(db);
+    const theirs = await otherCard('Theirs', other);
+    await removeCards(db, other, [theirs]);
+    expect(await restoreCards(db, user, [theirs])).toEqual({ restored: 0, skipped: 1 });
+    expect((await getCard(db, other, theirs, RETENTION))?.stage).toBe('noise');
+  });
+
+  it('lists every card matching the filters for "select all", Noise left out', async () => {
+    const a = await companyCard();
+    const b = await otherCard('Beta');
+    const gone = await otherCard('Gone');
+    await removeCard(db, user, gone);
+    const all = await listCardRefs(db, user, 'companies');
+    expect(all.total).toBe(2);
+    expect(all.truncated).toBe(false);
+    expect(all.cards).toEqual(
+      expect.arrayContaining([
+        { id: a, stage: 'found' },
+        { id: b, stage: 'found' },
+      ]),
+    );
+    expect((await listCardRefs(db, user, 'companies', { q: 'beta' })).cards).toEqual([
+      { id: b, stage: 'found' },
+    ]);
+    expect((await listCardRefs(db, user, 'companies', { minScore: 900 })).total).toBe(0);
   });
 });
 

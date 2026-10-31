@@ -617,6 +617,37 @@ export interface CrmFacets {
   sectors: { id: string; name: string; count: number }[];
   /** `id` null: found by a run that has since been deleted. */
   runs: { id: string | null; count: number }[];
+  /** How long a card stays in Noise before it is deleted (NOISE_RETENTION_DAYS). */
+  noiseRetentionDays: number;
+}
+
+/** Most cards one bulk request may name; larger selections are sent in several requests. */
+export const MAX_BULK_CARDS = 500;
+/** Most cards "select all" reads at once. */
+export const MAX_SELECTION_CARDS = 5000;
+
+/** The cards matching a view, just enough to tick them: their ids and columns. */
+export interface CardSelection {
+  /** Cards matching the filters, whether or not all are listed. */
+  total: number;
+  /** More cards match than were listed (above MAX_SELECTION_CARDS). */
+  truncated: boolean;
+  cards: { id: string; stage: BoardStageKey }[];
+}
+
+/** What a bulk removal did. Cards in a protected column are left where they are. */
+export interface BulkRemoveResult {
+  /** The cards now in Noise. */
+  moved: string[];
+  /** Left alone because they are in a protected column. */
+  protected: number;
+  /** Already in Noise (or no longer there), so nothing to do. */
+  skipped: number;
+}
+
+export interface BulkRestoreResult {
+  restored: number;
+  skipped: number;
 }
 
 export interface CrmCardPage {

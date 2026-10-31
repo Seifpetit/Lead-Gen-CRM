@@ -44,6 +44,7 @@ function facetsOf(cards: CrmCard[]): CrmFacets {
       count: n,
     })),
     runs: [...count((c) => c.runId)].map(([id, n]) => ({ id, count: n })),
+    noiseRetentionDays: 30,
   };
 }
 

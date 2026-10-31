@@ -264,9 +264,21 @@ export function dashboardRoutes(): Record<string, import('./fakeServer.js').Hand
     'GET /api/costs/budget': budget,
     'GET /api/leads': page([]),
     'GET /api/crm/companies/cards': { cards: [], total: 0, nextCursor: null },
-    'GET /api/crm/companies/facets': { total: 0, stages: [], sectors: [], runs: [] },
+    'GET /api/crm/companies/facets': {
+      total: 0,
+      stages: [],
+      sectors: [],
+      runs: [],
+      noiseRetentionDays: 30,
+    },
     'GET /api/crm/people/cards': { cards: [], total: 0, nextCursor: null },
-    'GET /api/crm/people/facets': { total: 0, stages: [], sectors: [], runs: [] },
+    'GET /api/crm/people/facets': {
+      total: 0,
+      stages: [],
+      sectors: [],
+      runs: [],
+      noiseRetentionDays: 30,
+    },
     'GET /api/coverage': { regions: [], sectors: [], entries: [] },
     'GET /api/regions/geometry': { items: [] },
   };

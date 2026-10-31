@@ -14,9 +14,18 @@ function Buttons() {
       <button type="button" onClick={() => toast.show('That failed.', 'error')}>
         bad
       </button>
+      <button
+        type="button"
+        onClick={() =>
+          toast.show('Moved it.', 'success', { action: { label: 'Undo', onClick: undo } })
+        }
+      >
+        moved
+      </button>
     </>
   );
 }
+const undo = vi.fn();
 const setup = () =>
   render(
     <I18nProvider>
@@ -60,5 +69,27 @@ describe('Toast', () => {
       ),
     ).toThrow(/ToastProvider/);
     spy.mockRestore();
+  });
+
+  it('can carry an action that runs once and closes the toast', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'moved' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(undo).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Moved it.')).toBeNull();
+  });
+
+  it('keeps a toast with an action for about 8 seconds, longer than a plain one', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'moved' }));
+    act(() => {
+      vi.advanceTimersByTime(6_000);
+    });
+    expect(screen.getByText('Moved it.')).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(3_000);
+    });
+    expect(screen.queryByText('Moved it.')).toBeNull();
   });
 });
