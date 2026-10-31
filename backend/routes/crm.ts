@@ -2,6 +2,10 @@ import {
   BOARD_PAGE_SIZE,
   MAX_NOTES_LENGTH,
   type AddDecisionMakerResult,
+  MAX_BULK_CARDS,
+  type BulkRemoveResult,
+  type BulkRestoreResult,
+  type CardSelection,
   type CompanyCardDetail,
   type CrmBoard,
   type CrmCard,
@@ -16,12 +20,15 @@ import {
   BoardError,
   getCard,
   getCompanyDetail,
+  listCardRefs,
   listCards,
   loadFacets,
   loadBoard,
   moveCard,
   removeCard,
+  removeCards,
   restoreCard,
+  restoreCards,
   setCompanyNotes,
 } from '../data/crmBoards.js';
 import { matchTitleByRules } from '../stages/matchTitle.js';
@@ -31,6 +38,7 @@ import { ApiError, body, notFound, parse, uuidParam } from './http.js';
 const Reason = z.string().trim().min(1).max(500);
 const MoveBody = z.object({ stage: z.string().min(1).max(40), reason: Reason.optional() }).strict();
 const NotesBody = z.object({ notes: z.string().max(MAX_NOTES_LENGTH) }).strict();
+const BulkBody = z.object({ ids: z.array(z.uuid()).min(1).max(MAX_BULK_CARDS) }).strict();
 const RestoreBody = z.object({ stage: z.string().min(1).max(40).optional() }).strict();
 
 /** A blank form field means "not given". */
@@ -82,6 +90,8 @@ const CardsQuery = FilterQuery.extend({
     .transform((v) => v === 'true')
     .optional(),
 });
+/** "Select all" follows the same filters as the list, the column chip included. */
+const SelectionQuery = FilterQuery.extend({ stage: z.string().min(1).max(40).optional() });
 const FacetsQuery = FilterQuery.pick({ q: true, minScore: true, foundDays: true, regionId: true });
 const PipelineParam = z.object({ pipeline: z.enum(['companies', 'people']) });
 
@@ -95,6 +105,7 @@ const BOARD_STATUS: Record<BoardError['code'], number> = {
   opted_out_is_final: 409,
   in_noise: 409,
   not_in_noise: 409,
+  too_many: 400,
   suppressed: 409,
 };
 
@@ -132,7 +143,15 @@ export async function crmRoutes(app: FastifyInstance, deps: RouteDeps): Promise<
   app.get('/api/crm/:pipeline/facets', async (request): Promise<CrmFacets> => {
     const { pipeline } = parse(PipelineParam, request.params);
     const filters = parse(FacetsQuery, request.query);
-    return guard(() => loadFacets(db, currentUser(request).id, pipeline, filters));
+    const facets = await guard(() => loadFacets(db, currentUser(request).id, pipeline, filters));
+    return { ...facets, noiseRetentionDays: days };
+  });
+
+  // "Select all": the ids and columns of every card matching the filters, Noise left out.
+  app.get('/api/crm/:pipeline/selection', async (request): Promise<CardSelection> => {
+    const { pipeline } = parse(PipelineParam, request.params);
+    const { limit: _limit, ...filters } = parse(SelectionQuery, request.query);
+    return guard(() => listCardRefs(db, currentUser(request).id, pipeline, filters));
   });
 
   // A company's page: its card, notes, history and decision-maker, found by company ID.
@@ -196,5 +215,17 @@ export async function crmRoutes(app: FastifyInstance, deps: RouteDeps): Promise<
     const { stage } = parse(RestoreBody, request.body);
     await guard(() => restoreCard(db, user, id, stage));
     return reload(user, id);
+  });
+
+  // Many removals in one request and one transaction (at most MAX_BULK_CARDS). Cards in a
+  // protected column stay where they are and are counted in the answer.
+  app.post('/api/crm/cards/bulk-remove', async (request): Promise<BulkRemoveResult> => {
+    const { ids } = body(BulkBody, request);
+    return guard(() => removeCards(db, currentUser(request).id, ids));
+  });
+
+  app.post('/api/crm/cards/bulk-restore', async (request): Promise<BulkRestoreResult> => {
+    const { ids } = body(BulkBody, request);
+    return guard(() => restoreCards(db, currentUser(request).id, ids));
   });
 }

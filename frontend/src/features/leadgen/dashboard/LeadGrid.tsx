@@ -30,6 +30,7 @@ export function LeadGrid({
   onLoadMore,
   selected,
   onToggle,
+  picking = false,
   empty,
   label,
   resetKey,
@@ -42,6 +43,8 @@ export function LeadGrid({
   /** With `onToggle`, each tile gets a checkbox. */
   selected?: ReadonlySet<string>;
   onToggle?: (id: string) => void;
+  /** Select mode: a click ticks a tile, and tiles are not rearranged. */
+  picking?: boolean;
   empty: string;
   label: string;
   /** A new value puts the cards back in the server's order (another sort or pipeline). */
@@ -117,9 +120,13 @@ export function LeadGrid({
               key={card.id}
               card={card}
               parts={parts}
-              drag={dragFor(card)}
+              {...(picking ? {} : { drag: dragFor(card) })}
               {...(selected && onToggle
-                ? { selected: selected.has(card.id), onToggle: () => onToggle(card.id) }
+                ? {
+                    selected: selected.has(card.id),
+                    onToggle: () => onToggle(card.id),
+                    toggleOnClick: picking,
+                  }
                 : {})}
             />
           ))}

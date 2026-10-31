@@ -6118,3 +6118,51 @@ a.channel:hover .channel-text {
   transform: translate(2px, 2px);
   box-shadow: var(--shadow-0);
 }
+
+/* Select mode of the lead cards: a checkbox in the corner, a click ticks, no rearranging */
+.select-bar {
+  flex-wrap: wrap;
+  margin-bottom: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: var(--bw) solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--yellow);
+  box-shadow: var(--shadow-1);
+}
+.select-bar .select-count {
+  margin-right: auto;
+  font-weight: 700;
+}
+.select-protected {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border: 2px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--yellow);
+  font-weight: 700;
+}
+.tile.is-picking {
+  cursor: pointer;
+  padding-right: calc(var(--space-2) + 24px);
+}
+.tile.is-picking:active {
+  cursor: pointer;
+}
+.tile.is-picking .tile-check {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  margin: 0;
+  accent-color: var(--ink);
+  cursor: pointer;
+}
+.tile.is-picking.is-selected {
+  background: var(--accent-tint);
+  box-shadow: var(--shadow-1);
+}
+.toast-action {
+  flex: none;
+  padding: 2px var(--space-2);
+  background: var(--surface);
+  color: var(--text);
+}

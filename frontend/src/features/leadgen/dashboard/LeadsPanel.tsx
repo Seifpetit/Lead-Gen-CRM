@@ -19,6 +19,8 @@ import {
 } from './leadsQuery.js';
 import { useLeadCards } from './useLeadCards.js';
 import { ExportButton } from '../../outreach/ExportButton.js';
+import { SelectBar, SelectButton } from './SelectBar.js';
+import { useLeadSelection } from './useLeadSelection.js';
 
 /**
  * Recent leads: the section that takes about 55% of the panel. Its view (found-in, pipeline,
@@ -32,6 +34,7 @@ export function LeadsPanel({
   refreshKey,
   runs,
   onCreateRun,
+  onChanged,
 }: {
   /** A run whose leads to show, and nothing else narrowing the list; set by "Show its leads". */
   focusRun?: string | null;
@@ -41,6 +44,8 @@ export function LeadsPanel({
   refreshKey: number;
   runs: readonly RunSummary[];
   onCreateRun: () => void;
+  /** Called after cards were moved to Noise (or put back), so counters and charts read again. */
+  onChanged?: () => void;
 }) {
   const t = useT();
   const [query, setQuery] = useState<LeadsQuery>(initialQuery);
@@ -68,6 +73,17 @@ export function LeadsPanel({
     () => new Map((data.facets?.sectors ?? []).map((s) => [s.id, s.name])),
     [data.facets],
   );
+  const { reload } = data;
+  const selection = useLeadSelection({
+    pipeline: query.pipeline,
+    filters: cardFilters(query, regionId),
+    onChanged: onChanged ?? reload,
+  });
+  // The table has its own ticking and bulk bar.
+  const { cancel: stopSelecting } = selection;
+  useEffect(() => {
+    if (view === 'table') stopSelecting();
+  }, [view, stopSelecting]);
   const fields = useLeadsFilters({
     query,
     onQuery: patch,
@@ -95,6 +111,13 @@ export function LeadsPanel({
           fields={fields}
           onReset={reset}
           onExpand={() => setExpanded(true)}
+          {...(view === 'table'
+            ? {}
+            : {
+                selectButton: (
+                  <SelectButton selection={selection} disabled={data.cards.length === 0} />
+                ),
+              })}
           exportButton={
             <ExportButton
               source={{
@@ -118,12 +141,20 @@ export function LeadsPanel({
       ) : (
         <>
           <FilterChips fields={fields} />
+          {selection.active && (
+            <SelectBar
+              selection={selection}
+              total={data.total}
+              retentionDays={data.facets?.noiseRetentionDays}
+            />
+          )}
           <LeadsBody
             data={data}
             query={query}
             onQuery={patch}
             view={view}
             parts={parts}
+            selection={selection}
             sectorNames={sectorNames}
           />
         </>

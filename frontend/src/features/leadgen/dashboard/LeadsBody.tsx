@@ -13,6 +13,7 @@ import { LeadGrid } from './LeadGrid.js';
 import { cardPath, type TileParts } from './LeadTile.js';
 import { hasFilters, type LeadsQuery } from './leadsQuery.js';
 import type { LeadCards } from './useLeadCards.js';
+import type { LeadSelection } from './useLeadSelection.js';
 
 /** The stages a bulk move offers: the others need a form or a reason, so they are one at a time. */
 const NEEDS_FORM = new Set(['noise', 'decision_maker_identified', 'opted_out']);
@@ -28,6 +29,7 @@ export function LeadsBody({
   view,
   parts,
   selectable = false,
+  selection,
   sectorNames,
 }: {
   data: LeadCards;
@@ -36,6 +38,8 @@ export function LeadsBody({
   view: LeadsView;
   parts: TileParts;
   selectable?: boolean;
+  /** Select mode of the panel: ticks come from here and a click on a card ticks it. */
+  selection?: LeadSelection;
   sectorNames: ReadonlyMap<string, string>;
 }) {
   const t = useT();
@@ -174,7 +178,18 @@ export function LeadsBody({
         empty={empty}
         label={label}
         resetKey={`${query.pipeline}|${query.sort}|${query.dir ?? ''}`}
-        {...(selectable ? { selected: chosen, onToggle: toggle } : {})}
+        {...(selection?.active
+          ? {
+              selected: new Set(selection.picked.keys()),
+              onToggle: (id: string) => {
+                const card = data.cards.find((c) => c.id === id);
+                if (card) selection.toggle(card);
+              },
+              picking: true,
+            }
+          : selectable
+            ? { selected: chosen, onToggle: toggle }
+            : {})}
       />
     </>
   );

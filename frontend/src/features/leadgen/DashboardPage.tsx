@@ -165,6 +165,7 @@ export function DashboardPage() {
           refreshKey={refreshKey}
           runs={runItems}
           onCreateRun={() => setCreating(true)}
+          onChanged={refresh}
         />
 
         <Splitter

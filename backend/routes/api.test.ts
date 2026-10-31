@@ -256,6 +256,23 @@ const CASES: RouteCase[] = [
   },
   {
     method: 'GET',
+    pattern: '/api/crm/:pipeline/selection',
+    url: () => '/api/crm/companies/selection',
+  },
+  {
+    method: 'POST',
+    pattern: '/api/crm/cards/bulk-remove',
+    url: () => '/api/crm/cards/bulk-remove',
+    body: { ids: [NO_SUCH] },
+  },
+  {
+    method: 'POST',
+    pattern: '/api/crm/cards/bulk-restore',
+    url: () => '/api/crm/cards/bulk-restore',
+    body: { ids: [NO_SUCH] },
+  },
+  {
+    method: 'GET',
     pattern: '/api/crm/cards/by-company/:companyId',
     url: (i) => `/api/crm/cards/by-company/${i.company}`,
   },
@@ -1868,6 +1885,90 @@ describe('crm boards', () => {
     const restored = (await post(alice, `/api/crm/cards/${id}/restore`)).json();
     expect(restored).toMatchObject({ stage: 'found', noiseAt: null, purgeAt: null });
     expect((await post(alice, `/api/crm/cards/${id}/restore`)).statusCode).toBe(409);
+  });
+});
+
+describe('removing many cards at once (routes)', () => {
+  const post = (who: Who, url: string, payload?: unknown) => call(who, 'POST', url, payload ?? {});
+  const cardsOf = async (who: Who, query = '') =>
+    (await call(who, 'GET', `/api/crm/companies/selection${query}`)).json() as {
+      total: number;
+      truncated: boolean;
+      cards: { id: string; stage: string }[];
+    };
+
+  it('lists the ids and columns of every card in the view, and tells the retention days', async () => {
+    const all = await cardsOf(alice);
+    expect(all.total).toBeGreaterThan(0);
+    expect(all.cards).toHaveLength(all.total);
+    expect(all.truncated).toBe(false);
+    expect(all.cards.every((c) => c.stage === 'found')).toBe(true);
+    expect((await cardsOf(alice, '?q=zzzz-no-such-company')).total).toBe(0);
+    expect((await cardsOf(bob)).total).toBe(0);
+    expect((await call(alice, 'GET', '/api/crm/companies/facets')).json().noiseRetentionDays).toBe(
+      30,
+    );
+    expect((await call(alice, 'GET', '/api/crm/companies/selection?sort=oldest')).statusCode).toBe(
+      400,
+    );
+  });
+
+  it('moves them to Noise in one request, and undo brings them back', async () => {
+    const { cards } = await cardsOf(alice);
+    const ids = cards.map((c) => c.id);
+    const res = await post(alice, '/api/crm/cards/bulk-remove', { ids });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ moved: expect.arrayContaining(ids), protected: 0, skipped: 0 });
+    expect((await cardsOf(alice)).total).toBe(0);
+    const noise = (await call(alice, 'GET', '/api/crm/companies/cards?stage=noise')).json();
+    expect(noise.total).toBe(ids.length);
+    expect(noise.cards[0]).toMatchObject({ removedFrom: 'found' });
+
+    const back = await post(alice, '/api/crm/cards/bulk-restore', { ids });
+    expect(back.json()).toEqual({ restored: ids.length, skipped: 0 });
+    expect((await cardsOf(alice)).total).toBe(ids.length);
+  });
+
+  it('skips protected columns and answers how many', async () => {
+    const { cards } = await cardsOf(alice);
+    await post(alice, `/api/crm/cards/${cards[0]!.id}/move`, { stage: 'investigating' });
+    const res = await post(alice, '/api/crm/cards/bulk-remove', { ids: cards.map((c) => c.id) });
+    expect(res.json()).toMatchObject({ protected: 1, skipped: 0 });
+    expect(res.json().moved).toHaveLength(cards.length - 1);
+    expect(res.json().moved).not.toContain(cards[0]!.id);
+  });
+
+  it("never touches another user's cards", async () => {
+    const { cards } = await cardsOf(alice);
+    const ids = cards.map((c) => c.id);
+    const res = await post(bob, '/api/crm/cards/bulk-remove', { ids });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ moved: [], protected: 0, skipped: ids.length });
+    expect((await cardsOf(alice)).total).toBe(ids.length);
+    expect((await post(bob, '/api/crm/cards/bulk-restore', { ids })).json().restored).toBe(0);
+  });
+
+  it('refuses more than 500 ids, bad ids and unknown fields, and changes nothing', async () => {
+    const { cards } = await cardsOf(alice);
+    const before = (await cardsOf(alice)).total;
+    const tooMany = Array.from(
+      { length: 501 },
+      (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+    );
+    for (const bad of [
+      { ids: tooMany },
+      { ids: [] },
+      { ids: ['not-an-id'] },
+      { ids: [cards[0]!.id], stage: 'noise' },
+      {},
+    ]) {
+      const res = await post(alice, '/api/crm/cards/bulk-remove', bad);
+      expect(res.statusCode, JSON.stringify(bad).slice(0, 60)).toBe(400);
+    }
+    expect((await post(alice, '/api/crm/cards/bulk-restore', { ids: tooMany })).statusCode).toBe(
+      400,
+    );
+    expect((await cardsOf(alice)).total).toBe(before);
   });
 });
 

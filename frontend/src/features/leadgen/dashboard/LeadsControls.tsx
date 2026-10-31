@@ -40,6 +40,7 @@ export function LeadsActions({
   fields,
   onReset,
   onExpand,
+  selectButton,
   exportButton,
 }: {
   query: LeadsQuery;
@@ -48,6 +49,8 @@ export function LeadsActions({
   onReset: () => void;
   /** Left out inside the expanded window, which is already expanded. */
   onExpand?: () => void;
+  /** Switches the cards into selection mode; left out where ticking is built in. */
+  selectButton?: ReactNode;
   /** "Export 32 leads", with the filters shown now. */
   exportButton?: ReactNode;
 }) {
@@ -69,6 +72,7 @@ export function LeadsActions({
         />
       </div>
       <FilterMenu fields={fields} onReset={onReset} />
+      {selectButton}
       {exportButton}
       {onExpand && (
         <button

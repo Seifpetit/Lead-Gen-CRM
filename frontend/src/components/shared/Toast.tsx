@@ -13,19 +13,32 @@ import { useT } from '../../i18n/index.js';
 
 export type ToastKind = 'success' | 'error' | 'warning';
 
+/** A button on a toast (Undo): it runs once and closes the toast. */
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface ToastItem {
   id: number;
   kind: ToastKind;
   message: string;
+  action?: ToastAction | undefined;
 }
 
 export interface Toasts {
-  show: (message: string, kind?: ToastKind) => void;
+  /** A toast with an action stays long enough to be used (8 seconds) unless `lifetimeMs` says. */
+  show: (
+    message: string,
+    kind?: ToastKind,
+    options?: { action?: ToastAction; lifetimeMs?: number },
+  ) => void;
 }
 
 const ToastContext = createContext<Toasts | null>(null);
 
 const LIFETIME_MS: Record<ToastKind, number> = { success: 4_000, warning: 8_000, error: 8_000 };
+const ACTION_LIFETIME_MS = 8_000;
 
 /** Short confirmations and problems in the corner. Errors and warnings are announced at once. */
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -42,12 +55,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const show = useCallback(
-    (message: string, kind: ToastKind = 'success') => {
+    (
+      message: string,
+      kind: ToastKind = 'success',
+      options: { action?: ToastAction; lifetimeMs?: number } = {},
+    ) => {
       const id = next.current++;
-      setItems((all) => [...all.slice(-3), { id, kind, message }]);
+      setItems((all) => [...all.slice(-3), { id, kind, message, action: options.action }]);
+      const lifetime =
+        options.lifetimeMs ?? (options.action ? ACTION_LIFETIME_MS : LIFETIME_MS[kind]);
       timers.current.set(
         id,
-        setTimeout(() => dismiss(id), LIFETIME_MS[kind]),
+        setTimeout(() => dismiss(id), lifetime),
       );
     },
     [dismiss],
@@ -70,6 +89,19 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             role={item.kind === 'success' ? 'status' : 'alert'}
           >
             <span>{item.message}</span>
+            {item.action && (
+              <button
+                type="button"
+                className="button toast-action"
+                onClick={() => {
+                  const run = item.action!.onClick;
+                  dismiss(item.id);
+                  run();
+                }}
+              >
+                {item.action.label}
+              </button>
+            )}
             <button
               type="button"
               className="icon-button"

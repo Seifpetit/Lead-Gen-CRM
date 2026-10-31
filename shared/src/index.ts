@@ -90,6 +90,20 @@ export type CompanyStageKey = (typeof BOARD_STAGES.companies)[number];
 export type PersonStageKey = (typeof BOARD_STAGES.people)[number];
 export type BoardStageKey = CompanyStageKey | PersonStageKey;
 
+/**
+ * Columns whose cards a bulk removal never moves: the user has already worked on them, or (Opted
+ * out) the objection is final. Removing one is still possible, one card at a time on the board.
+ */
+export const PROTECTED_STAGES: readonly BoardStageKey[] = [
+  'investigating',
+  'decision_maker_identified',
+  'contacted',
+  'replied',
+  'won',
+  'lost',
+  'opted_out',
+];
+
 export interface ScoreBreakdown {
   companyFit: number; // out of 50
   contactFit: number; // out of 30

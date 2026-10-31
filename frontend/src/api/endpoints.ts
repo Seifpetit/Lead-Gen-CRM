@@ -1,5 +1,8 @@
 import type {
   AddDecisionMakerResult,
+  BulkRemoveResult,
+  BulkRestoreResult,
+  CardSelection,
   CompanyCardDetail,
   ApifyLog,
   BoardFilters,
@@ -190,6 +193,14 @@ export function createApi(client: ApiClient) {
           body: { notes },
         }),
       remove: (id: string) => client.request<CrmCard>('POST', `/api/crm/cards/${id}/remove`),
+      selection: (pipeline: CrmPipeline, query: CardsQuery = {}, signal?: AbortSignal) =>
+        client.get<CardSelection>(`/api/crm/${pipeline}/selection`, defined(query), signal),
+      removeMany: (ids: readonly string[]) =>
+        client.request<BulkRemoveResult>('POST', '/api/crm/cards/bulk-remove', { body: { ids } }),
+      restoreMany: (ids: readonly string[]) =>
+        client.request<BulkRestoreResult>('POST', '/api/crm/cards/bulk-restore', {
+          body: { ids },
+        }),
       restore: (id: string, stage?: string) =>
         client.request<CrmCard>('POST', `/api/crm/cards/${id}/restore`, {
           body: defined({ stage }),

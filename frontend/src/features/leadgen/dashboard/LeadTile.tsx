@@ -51,6 +51,7 @@ export function LeadTile({
   parts,
   selected,
   onToggle,
+  toggleOnClick = false,
   drag,
 }: {
   card: CrmCard;
@@ -60,6 +61,8 @@ export function LeadTile({
   /** Set (with `onToggle`) when the tile can be ticked for a bulk action. */
   selected?: boolean;
   onToggle?: () => void;
+  /** Select mode: a click anywhere on the tile ticks it instead of opening the company. */
+  toggleOnClick?: boolean;
 }) {
   const t = useT();
   const navigate = useNavigate();
@@ -68,8 +71,9 @@ export function LeadTile({
   const path = cardPath(card);
 
   const open = (event: MouseEvent) => {
-    if (!path || (event.target as HTMLElement).closest('a, button, input, label')) return;
-    void navigate(path);
+    if ((event.target as HTMLElement).closest('a, button, input, label')) return;
+    if (toggleOnClick) onToggle?.();
+    else if (path) void navigate(path);
   };
   const title = person
     ? [person.title, company.name].filter(Boolean).join(' · ')
@@ -77,7 +81,7 @@ export function LeadTile({
 
   return (
     <li
-      className={`tile${parts.compact ? ' tile-compact' : ''}${selected ? ' is-selected' : ''}${path ? ' is-link' : ''}${drag?.dragging ? ' is-dragging' : ''}`}
+      className={`tile${parts.compact ? ' tile-compact' : ''}${selected ? ' is-selected' : ''}${path || toggleOnClick ? ' is-link' : ''}${toggleOnClick ? ' is-picking' : ''}${drag?.dragging ? ' is-dragging' : ''}`}
       data-card-id={card.id}
       onClick={open}
       {...(drag
@@ -105,7 +109,7 @@ export function LeadTile({
         <CompanyThumb card={card} size={parts.compact ? 36 : 48} />
       )}
       <div className="tile-main">
-        {path ? (
+        {path && !toggleOnClick ? (
           <Link to={path} className="tile-name" title={title} draggable={false}>
             {name}
           </Link>

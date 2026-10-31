@@ -17,7 +17,15 @@ import {
   type RoleClass,
   type SortDirection,
 } from '@lead-gen-crm/shared';
-import { cityFromAddress } from '@lead-gen-crm/shared';
+import {
+  cityFromAddress,
+  MAX_BULK_CARDS,
+  MAX_SELECTION_CARDS,
+  PROTECTED_STAGES,
+  type BulkRemoveResult,
+  type BulkRestoreResult,
+  type CardSelection,
+} from '@lead-gen-crm/shared';
 import { FREIGHT_SECTORS } from '../config/sectors.js';
 import { withTransaction, type Queryable } from './db.js';
 import type { UserId } from './ids.js';
@@ -50,6 +58,7 @@ export type BoardErrorCode =
   | 'opted_out_is_final'
   | 'in_noise'
   | 'not_in_noise'
+  | 'too_many'
   | 'suppressed';
 
 /** A refused board action; the route turns the code into an HTTP status. */
@@ -363,7 +372,7 @@ export async function loadFacets(
   userId: UserId,
   pipeline: CrmPipeline,
   filters: Pick<BoardFilters, 'q' | 'minScore' | 'foundDays' | 'regionId'> = {},
-): Promise<CrmFacets> {
+): Promise<Omit<CrmFacets, 'noiseRetentionDays'>> {
   const { clauses, params } = whereOf(userId, pipeline, { ...filters, excludeNoise: true });
   const from = `FROM (${CARD_SELECT}) t WHERE ${clauses.join(' AND ')}`;
   const group = async <K extends string>(column: string) =>
@@ -579,6 +588,29 @@ export async function removeCard(db: Queryable, userId: UserId, cardId: string):
   });
 }
 
+/** Restores a locked Noise card to the column it was removed from (or `to`). */
+async function restoreLocked(
+  tx: Queryable,
+  userId: UserId,
+  card: LockedCard,
+  to?: string,
+): Promise<void> {
+  if (card.stage !== 'noise')
+    throw new BoardError('not_in_noise', 'Only a card in Noise can be restored');
+  const target = to ?? card.noise_from_stage ?? BOARD_STAGES[card.pipeline][0];
+  if (
+    target === 'noise' ||
+    target === 'opted_out' ||
+    !(BOARD_STAGES[card.pipeline] as readonly string[]).includes(target)
+  ) {
+    throw new BoardError('invalid_stage', `Cannot restore into ${target}`);
+  }
+  if (card.pipeline === 'companies' && target === 'decision_maker_identified') {
+    throw new BoardError('decision_maker_required', 'Restore into Found or Investigating');
+  }
+  await leaveNoise(tx, userId, card, target as BoardStageKey);
+}
+
 /** Restores a Noise card to the column it was removed from (or `to`). */
 export async function restoreCard(
   db: Queryable,
@@ -587,22 +619,111 @@ export async function restoreCard(
   to?: string,
 ): Promise<void> {
   await withTransaction(db, async (tx) => {
-    const card = await lockCard(tx, userId, cardId);
-    if (card.stage !== 'noise')
-      throw new BoardError('not_in_noise', 'Only a card in Noise can be restored');
-    const target = to ?? card.noise_from_stage ?? BOARD_STAGES[card.pipeline][0];
-    if (
-      target === 'noise' ||
-      target === 'opted_out' ||
-      !(BOARD_STAGES[card.pipeline] as readonly string[]).includes(target)
-    ) {
-      throw new BoardError('invalid_stage', `Cannot restore into ${target}`);
-    }
-    if (card.pipeline === 'companies' && target === 'decision_maker_identified') {
-      throw new BoardError('decision_maker_required', 'Restore into Found or Investigating');
-    }
-    await leaveNoise(tx, userId, card, target as BoardStageKey);
+    await restoreLocked(tx, userId, await lockCard(tx, userId, cardId), to);
   });
+}
+
+/** The ids of one bulk request: no repeats, and no more than MAX_BULK_CARDS. */
+function bulkIds(ids: readonly string[]): string[] {
+  const unique = [...new Set(ids)];
+  if (unique.length > MAX_BULK_CARDS) {
+    throw new BoardError('too_many', `Name at most ${MAX_BULK_CARDS} cards in one request`);
+  }
+  return unique;
+}
+
+/**
+ * Removes many cards at once, all or nothing: each goes to Noise exactly as removeCard does it
+ * (restorable, purged after the retention days, its leads count as dismissed for scoring). Only
+ * the user's own cards are touched: an id that is not theirs counts as skipped, like one already
+ * in Noise. Cards in a protected column (PROTECTED_STAGES) are left where they are and counted.
+ */
+export async function removeCards(
+  db: Queryable,
+  userId: UserId,
+  ids: readonly string[],
+): Promise<BulkRemoveResult> {
+  const wanted = bulkIds(ids);
+  if (wanted.length === 0) return { moved: [], protected: 0, skipped: 0 };
+  return withTransaction(db, async (tx) => {
+    // Locked in id order, so two bulk requests over the same cards cannot wait on each other.
+    const { rows: held } = await tx.query<{ id: string; stage: BoardStageKey }>(
+      `SELECT id, stage FROM crm_cards WHERE user_id = $1 AND id = ANY($2::uuid[])
+        ORDER BY id FOR UPDATE`,
+      [userId, wanted],
+    );
+    const isProtected = (stage: BoardStageKey) => PROTECTED_STAGES.includes(stage);
+    const movable = held.filter((c) => c.stage !== 'noise' && !isProtected(c.stage));
+    const protectedCount = held.filter((c) => isProtected(c.stage)).length;
+    if (movable.length > 0) {
+      const { rows: moved } = await tx.query<{ company_id: string; contact_id: string | null }>(
+        `UPDATE crm_cards SET stage = 'noise', noise_at = now(), noise_from_stage = stage,
+                stage_entered_at = now(), updated_at = now()
+          WHERE user_id = $1 AND id = ANY($2::uuid[])
+          RETURNING company_id, contact_id`,
+        [userId, movable.map((c) => c.id)],
+      );
+      // The same dismissal feedback as one removal: scoring reads leads in 'dismissed'.
+      await tx.query(
+        `UPDATE crm_leads l SET stage = 'dismissed', stage_changed_at = now(), updated_at = now()
+           FROM (SELECT * FROM unnest($2::uuid[], $3::uuid[]) AS m(company_id, contact_id)) m
+          WHERE l.user_id = $1 AND l.company_id = m.company_id
+            AND (m.contact_id IS NULL OR l.contact_id = m.contact_id)
+            AND l.stage NOT IN ('dismissed', 'opted_out')`,
+        [userId, moved.map((m) => m.company_id), moved.map((m) => m.contact_id)],
+      );
+    }
+    return {
+      moved: movable.map((c) => c.id),
+      protected: protectedCount,
+      skipped: wanted.length - movable.length - protectedCount,
+    };
+  });
+}
+
+/** Undoes a bulk removal: every named card still in Noise goes back to where it came from. */
+export async function restoreCards(
+  db: Queryable,
+  userId: UserId,
+  ids: readonly string[],
+): Promise<BulkRestoreResult> {
+  const wanted = bulkIds(ids);
+  return withTransaction(db, async (tx) => {
+    const { rows } = await tx.query<LockedCard>(
+      `SELECT id, pipeline, stage, noise_from_stage, company_id, contact_id
+         FROM crm_cards WHERE user_id = $1 AND id = ANY($2::uuid[]) AND stage = 'noise'
+        ORDER BY id FOR UPDATE`,
+      [userId, wanted],
+    );
+    for (const card of rows) await restoreLocked(tx, userId, card);
+    return { restored: rows.length, skipped: wanted.length - rows.length };
+  });
+}
+
+/**
+ * The cards that match a view (Noise left out), as ids and columns, for "select all". The list
+ * stops at MAX_SELECTION_CARDS; `total` is still the true count.
+ */
+export async function listCardRefs(
+  db: Queryable,
+  userId: UserId,
+  pipeline: CrmPipeline,
+  options: CardListOptions = {},
+): Promise<CardSelection> {
+  if (options.stage) await assertStage(db, pipeline, options.stage);
+  const { clauses, params } = whereOf(userId, pipeline, { ...options, excludeNoise: true });
+  const { rows } = await db.query<{ id: string; stage: BoardStageKey; total: string }>(
+    `SELECT t.id, t.stage, count(*) OVER () AS total
+       FROM (${CARD_SELECT}) t WHERE ${clauses.join(' AND ')}
+      ORDER BY t.id LIMIT ${MAX_SELECTION_CARDS}`,
+    params,
+  );
+  const total = rows.length === 0 ? 0 : Number(rows[0]!.total);
+  return {
+    total,
+    truncated: total > rows.length,
+    cards: rows.map((r) => ({ id: r.id, stage: r.stage })),
+  };
 }
 
 // ---------------------------------------------------------------------------------------
