@@ -33,6 +33,7 @@ describe('ExportButton', () => {
     await waitFor(() => expect(s.to('GET /api/exports/cards/companies')).toHaveLength(1));
     const q = s.to('GET /api/exports/cards/companies')[0]!.query;
     expect(Object.fromEntries(q)).toEqual({
+      country: 'TN',
       q: 'huile',
       minScore: '40',
       excludeNoise: 'true',

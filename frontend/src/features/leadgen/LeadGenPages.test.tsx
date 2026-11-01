@@ -54,6 +54,16 @@ describe('Lead Gen sidebar and pages', () => {
     }
   });
 
+  it('puts the country switch in the Dashboard header, as one of its filters', async () => {
+    renderApp(fakeServer(signedIn), '/leadgen');
+    const header = (await screen.findByRole('heading', { name: 'Dashboard', level: 1 })).closest(
+      'header',
+    )!;
+    expect(await within(header).findByRole('button', { name: /^Country:/ })).toBeVisible();
+    // The sidebar's own switch steps aside, so there is only one.
+    expect(screen.getAllByRole('button', { name: /^Country:/ })).toHaveLength(1);
+  });
+
   it('renders the Coverage page as a world map with its own country picker', async () => {
     const server = fakeServer({
       ...signedIn,
