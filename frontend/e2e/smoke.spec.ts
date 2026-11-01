@@ -28,6 +28,8 @@ async function moveTo(page: Page, name: string, column: string) {
 }
 
 test('sign in, run, watch, open the result, and work the two CRM boards', async ({ page }) => {
+  // A run now covers every sector, so it takes about a minute here and twice that on CI.
+  test.setTimeout(300_000);
   // Signed out: everything leads to the sign-in screen.
   await page.goto('/crm');
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
@@ -102,7 +104,7 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
   await expect(
     runs.getByRole('link', { name: 'Open run for sfax' }).getByText('Completed with leads'),
   ).toBeVisible({
-    timeout: 100_000,
+    timeout: 240_000,
   });
   await side.getByRole('link', { name: 'Runs' }).click();
   // Nothing is going now, so the Runs page opens on the logs by itself.
