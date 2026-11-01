@@ -1,3 +1,5 @@
+import { COUNTRY_REGION_NAMES } from './regionNames.js';
+
 // Small pure helpers for how places are written: names of regions and cities, a Tunisian phone.
 
 /** "ben-arous", "BEN AROUS" or "ben arous" all become "Ben Arous". */
@@ -13,8 +15,9 @@ export function titleCase(text: string): string {
     );
 }
 
-/** A region id ("sidi-bouzid") as a name ("Sidi Bouzid"). */
-export const regionLabel = (regionId: string): string => titleCase(regionId);
+/** A region id ("sidi-bouzid") as a name ("Sidi Bouzid"); "fr-bretagne" is "Brittany". */
+export const regionLabel = (regionId: string): string =>
+  COUNTRY_REGION_NAMES[regionId] ?? titleCase(regionId);
 
 const COUNTRY = /^(tunisia|tunisie|tunis[ií]e|تونس)$/i;
 
@@ -39,6 +42,16 @@ export function cityFromAddress(address: string | null | undefined): string | nu
   return null;
 }
 
+/** "+33612345678" as "+33 6 12 34 56 78"; "+49…" and "+39…" as the code and the rest. Null if it is neither. */
+function formatEuropean(text: string): string | null {
+  if (!/^\+\d{8,15}$/.test(text)) return null;
+  const fr = /^\+33(\d)(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(text);
+  if (fr) return `+33 ${fr[1]} ${fr[2]} ${fr[3]} ${fr[4]} ${fr[5]}`;
+  const other = /^\+(49|39)(\d{6,12})$/.exec(text);
+  if (other) return `+${other[1]} ${other[2]}`;
+  return null;
+}
+
 /**
  * A phone number as people write it: "+216 74 679 952" for a Tunisian number in any common
  * form, and anything else as given (a foreign number is shown as typed, trimmed).
@@ -46,6 +59,8 @@ export function cityFromAddress(address: string | null | undefined): string | nu
 export function formatPhone(raw: string | null | undefined): string | null {
   const trimmed = raw?.trim() ?? '';
   if (trimmed === '') return null;
+  const european = formatEuropean(trimmed);
+  if (european) return european;
   let digits = trimmed.replace(/\D/g, '');
   if (digits.startsWith('00216')) digits = digits.slice(2);
   const national = digits.length === 11 && digits.startsWith('216') ? digits.slice(3) : digits;

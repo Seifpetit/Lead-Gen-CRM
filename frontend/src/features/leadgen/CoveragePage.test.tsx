@@ -24,6 +24,7 @@ const square = (w: number, s: number, e: number, n: number) => ({
 const geometry: { items: RegionGeometry[] } = {
   items: [
     {
+      country: 'TN',
       regionId: 'sfax',
       name: 'Sfax',
       bounds: { south: 34.5, west: 10.2, north: 35.2, east: 11.0 },
@@ -31,6 +32,7 @@ const geometry: { items: RegionGeometry[] } = {
       outlineSource: 'osm',
     },
     {
+      country: 'TN',
       regionId: 'tunis',
       name: 'Tunis',
       bounds: { south: 36.7, west: 10.0, north: 36.9, east: 10.3 },
@@ -38,6 +40,7 @@ const geometry: { items: RegionGeometry[] } = {
       outlineSource: 'osm',
     },
     {
+      country: 'TN',
       regionId: 'gabes',
       name: 'Gabès',
       bounds: { south: 33.0, west: 9.5, north: 33.9, east: 10.5 },
@@ -48,9 +51,9 @@ const geometry: { items: RegionGeometry[] } = {
 };
 const coverage: Coverage = {
   regions: [
-    { regionId: 'gabes', name: 'Gabès' },
-    { regionId: 'tunis', name: 'Tunis' },
-    { regionId: 'sfax', name: 'Sfax' },
+    { regionId: 'gabes', name: 'Gabès', country: 'TN' },
+    { regionId: 'tunis', name: 'Tunis', country: 'TN' },
+    { regionId: 'sfax', name: 'Sfax', country: 'TN' },
   ],
   sectors: [
     { id: 'agri-food', name: 'Agri-food' },

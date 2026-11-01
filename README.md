@@ -72,4 +72,5 @@ with fixtures and no network.
 ## License
 
 [MIT](LICENSE). The governorate outlines come from geoBoundaries / OpenStreetMap contributors under
-the ODbL; see [Development](docs/DEVELOPMENT.md#data-and-licences).
+the ODbL; the French, German and Italian region outlines come from geoBoundaries under the
+licences of their national agencies (Etalab 2.0, dl-de/by-2.0, CC BY 3.0); see [Development](docs/DEVELOPMENT.md#data-and-licences).

@@ -134,22 +134,25 @@ export async function listRunSummaries(
   db: Queryable,
   userId: UserId,
   page: PageQuery,
-  filter: { status?: string[] } = {},
+  filter: { status?: string[]; country?: string } = {},
 ): Promise<{ items: RunSummary[]; total: number }> {
   const status = filter.status && filter.status.length > 0 ? filter.status : null;
+  const country = filter.country ?? null;
   const { rows } = await db.query<{ id: string; total: number }>(
     `SELECT id, count(*) OVER ()::integer AS total FROM runs
       WHERE user_id = $1 AND kind = 'search' AND ($4::text[] IS NULL OR status = ANY($4))
+        AND ($5::text IS NULL OR country = $5)
       ORDER BY created_at DESC, id LIMIT $2 OFFSET $3`,
-    [userId, page.limit, page.offset, status],
+    [userId, page.limit, page.offset, status, country],
   );
   const total =
     rows[0]?.total ??
     (
       await db.query<{ n: number }>(
         `SELECT count(*)::integer AS n FROM runs
-          WHERE user_id = $1 AND kind = 'search' AND ($2::text[] IS NULL OR status = ANY($2))`,
-        [userId, status],
+          WHERE user_id = $1 AND kind = 'search' AND ($2::text[] IS NULL OR status = ANY($2))
+            AND ($3::text IS NULL OR country = $3)`,
+        [userId, status, country],
       )
     ).rows[0]!.n;
   return {
@@ -248,6 +251,7 @@ export async function listLeadIds(
         AND ($6::text IS NULL OR c.governorate = $6)
         AND ($7::int IS NULL OR l.score_total >= $7)
         AND ($8::text IS NULL OR c.name ILIKE $8 OR p.full_name ILIKE $8)
+        AND ($9::text IS NULL OR c.country = $9)
       ORDER BY l.score_total DESC, l.created_at, l.id
       LIMIT $2 OFFSET $3`,
     [
@@ -259,6 +263,7 @@ export async function listLeadIds(
       filter.regionId ?? null,
       filter.minScore ?? null,
       filter.q ? `%${filter.q.replace(/[\\%_]/g, (m) => `\\${m}`)}%` : null,
+      filter.country ?? null,
     ],
   );
   if (rows.length > 0 || page.offset === 0)
@@ -398,7 +403,7 @@ export async function costsBy(
   db: Queryable,
   userId: UserId,
   groupBy: CostGroupBy,
-  filter: { month?: Date; runId?: string },
+  filter: { month?: Date; runId?: string; country?: string },
   page: PageQuery,
 ): Promise<{ items: CostRow[]; total: number }> {
   const key = GROUP_KEY[groupBy];
@@ -408,6 +413,7 @@ export async function costsBy(
   const end = start ? new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1)) : null;
   const { rows } = await db.query<{
     key: string;
+    country: CostRow['country'];
     open_estimate: number;
     actual: number;
     total_usd: number;
@@ -415,6 +421,7 @@ export async function costsBy(
     total: number;
   }>(
     `SELECT ${key} AS key,
+            ${groupBy === 'run' || groupBy === 'region' ? 'min(r.country)' : 'NULL::text'} AS country,
             COALESCE(sum(l.amount_usd) FILTER (WHERE l.kind = 'estimated'), 0)::numeric AS open_estimate,
             COALESCE(sum(l.amount_usd) FILTER (WHERE l.kind = 'actual'), 0)::numeric AS actual,
             COALESCE(sum(l.amount_usd), 0)::numeric AS total_usd,
@@ -425,13 +432,15 @@ export async function costsBy(
         AND ($4::timestamptz IS NULL OR l.created_at >= $4)
         AND ($5::timestamptz IS NULL OR l.created_at < $5)
         AND ($6::uuid IS NULL OR l.run_id = $6)
+        AND ($7::text IS NULL OR r.country = $7)
       GROUP BY 1 ORDER BY 1 DESC LIMIT $2 OFFSET $3`,
-    [userId, page.limit, page.offset, start, end, filter.runId ?? null],
+    [userId, page.limit, page.offset, start, end, filter.runId ?? null, filter.country ?? null],
   );
   const round = (n: number) => Math.round(n * 1e6) / 1e6;
   return {
     items: rows.map((r) => ({
       key: r.key,
+      country: r.country,
       openEstimateUsd: round(r.open_estimate),
       actualUsd: round(r.actual),
       totalUsd: round(r.total_usd),

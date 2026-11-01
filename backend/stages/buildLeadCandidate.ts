@@ -1,4 +1,4 @@
-import type { RoleClass } from '@lead-gen-crm/shared';
+import type { CountryCode, RoleClass } from '@lead-gen-crm/shared';
 import type { Sourced } from '../lib/sourced.js';
 import type { EmailStatus, FoundEmail, FoundPerson } from '../providers/types.js';
 import type { TitleMatch } from './matchTitle.js';
@@ -16,6 +16,8 @@ export interface CompanyForLead {
   businessStatus: string | null;
   reviewsCount: number | null;
   qualification: Qualification;
+  /** Where the company is; its local phone numbers are read by that country's rules. Default Tunisia. */
+  country?: CountryCode;
 }
 
 export interface PersonForLead {
@@ -108,7 +110,7 @@ const channelRank = (c: Channel) =>
  */
 export function bestCompanyChannel(company: CompanyForLead): Channel | null {
   const phones = company.phones
-    .map((s) => ({ s, n: classifyPhone(s.value) }))
+    .map((s) => ({ s, n: classifyPhone(s.value, company.country) }))
     .filter((x): x is { s: Sourced<string>; n: NonNullable<typeof x.n> } => x.n !== null)
     .filter((x) => x.n.line !== 'special');
   const local = phones

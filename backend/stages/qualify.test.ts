@@ -202,3 +202,30 @@ describe('isReachable', () => {
     expect(isReachable(place('Fixture', null, { emails: [s('a@x.tn')] }))).toBe(true);
   });
 });
+
+describe('qualify by rules in a country that trades with a partner', () => {
+  it('still rejects carriers and shops, but leaves "import export" in a name to the classifier', () => {
+    expect(
+      qualifyByRules(place('Transports Dupont', 'Transport'), null, 'trades_with_partner'),
+    ).toMatchObject({ verdict: 'rejected', tradeRole: 'competitor_or_partner' });
+    expect(
+      qualifyByRules(place('Pharmacie Centrale', 'Pharmacie'), null, 'trades_with_partner'),
+    ).toMatchObject({ verdict: 'rejected', tradeRole: 'not_import_export' });
+    expect(
+      qualifyByRules(place('Lyon Import Export SARL', 'Société'), null, 'trades_with_partner'),
+    ).toBeNull();
+    // The same name qualifies in Tunisia itself.
+    expect(qualifyByRules(place('Sfax Import Export SARL', 'Société'))).toMatchObject({
+      verdict: 'qualified',
+    });
+  });
+
+  it('knows German and Italian carriers and shops', () => {
+    expect(
+      qualifyByRules(place('Müller Spedition GmbH', 'Spedition'), null, 'trades_with_partner'),
+    ).toMatchObject({ verdict: 'rejected', tradeRole: 'competitor_or_partner' });
+    expect(
+      qualifyByRules(place('Rossi Trasporti', 'Trasporti'), null, 'trades_with_partner'),
+    ).toMatchObject({ verdict: 'rejected', tradeRole: 'competitor_or_partner' });
+  });
+});

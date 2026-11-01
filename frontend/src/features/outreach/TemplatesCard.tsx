@@ -2,7 +2,9 @@ import {
   MAX_SENDER_FIELD_LENGTH,
   MAX_TEMPLATE_LENGTH,
   MAX_TEMPLATE_NAME_LENGTH,
+  TEMPLATE_LANGUAGES,
   type MessageTemplate,
+  type TemplateLanguage,
 } from '@lead-gen-crm/shared';
 import { Plus } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
@@ -31,6 +33,8 @@ export function TemplatesCard() {
   const [selected, setSelected] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [body, setBody] = useState('');
+  const [language, setLanguage] = useState<TemplateLanguage>('fr');
+  const languageId = useId();
   const [busy, setBusy] = useState(false);
 
   const current = items.find((x) => x.id === selected) ?? null;
@@ -38,6 +42,7 @@ export function TemplatesCard() {
     setSelected(template?.id ?? NEW);
     setName(template?.name ?? t('templates.newName'));
     setBody(template?.body ?? '');
+    setLanguage(template?.language ?? 'fr');
   };
   // Open the first template once the list arrives.
   useEffect(() => {
@@ -48,7 +53,9 @@ export function TemplatesCard() {
   }, [list.data, selected]);
 
   const dirty =
-    selected === NEW || (current !== null && (current.name !== name || current.body !== body));
+    selected === NEW ||
+    (current !== null &&
+      (current.name !== name || current.body !== body || current.language !== language));
   const valid =
     name.trim() !== '' &&
     name.length <= MAX_TEMPLATE_NAME_LENGTH &&
@@ -58,7 +65,7 @@ export function TemplatesCard() {
   const save = async () => {
     setBusy(true);
     try {
-      const input = { name: name.trim(), body };
+      const input = { name: name.trim(), body, language };
       const saved =
         selected === NEW || !current
           ? await api.templates.create(input)
@@ -157,6 +164,18 @@ export function TemplatesCard() {
                 dir="auto"
                 onChange={(e) => setName(e.target.value)}
               />
+              <label htmlFor={languageId}>{t('templates.language')}</label>
+              <select
+                id={languageId}
+                value={language}
+                onChange={(e) => setLanguage(e.target.value as TemplateLanguage)}
+              >
+                {TEMPLATE_LANGUAGES.map((l) => (
+                  <option key={l} value={l}>
+                    {t(`templates.language.${l}`)}
+                  </option>
+                ))}
+              </select>
               <span id={textId}>{t('templates.text')}</span>
               <ChipEditor
                 value={body}

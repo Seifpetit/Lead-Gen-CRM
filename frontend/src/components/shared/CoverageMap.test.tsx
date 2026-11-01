@@ -19,6 +19,7 @@ const square = (w: number, s: number, e: number, n: number) => ({
 });
 const regions: RegionGeometry[] = [
   {
+    country: 'TN',
     regionId: 'sfax',
     name: 'Sfax',
     bounds: { south: 34.5, west: 10.2, north: 35.2, east: 11.0 },
@@ -26,6 +27,7 @@ const regions: RegionGeometry[] = [
     outlineSource: 'osm',
   },
   {
+    country: 'TN',
     regionId: 'tunis',
     name: 'Tunis',
     bounds: { south: 36.7, west: 10.0, north: 36.9, east: 10.3 },
@@ -33,13 +35,21 @@ const regions: RegionGeometry[] = [
     outlineSource: 'osm',
   },
   {
+    country: 'TN',
     regionId: 'gabes',
     name: 'Gabès',
     bounds: { south: 33.0, west: 9.5, north: 33.9, east: 10.5 },
     outline: square(9.5, 33.0, 10.5, 33.9),
     outlineSource: 'bounds',
   },
-  { regionId: 'manouba', name: 'Manouba', bounds: null, outline: null, outlineSource: null },
+  {
+    country: 'TN',
+    regionId: 'manouba',
+    name: 'Manouba',
+    bounds: null,
+    outline: null,
+    outlineSource: null,
+  },
 ];
 const cell = {
   regionCellId: 'c1',
@@ -237,5 +247,39 @@ describe('CoverageMap', () => {
       </I18nProvider>,
     );
     expect(screen.getByText('No region has a map outline yet.')).toBeVisible();
+  });
+});
+
+describe('CoverageMap credit', () => {
+  const frRegion: RegionGeometry = {
+    country: 'FR',
+    regionId: 'fr-bretagne',
+    name: 'Brittany',
+    bounds: { south: 47.3, west: -5.2, north: 48.9, east: -1.0 },
+    outline: square(-5.2, 47.3, -1.0, 48.9),
+    outlineSource: 'osm',
+  };
+  const show = (list: RegionGeometry[]) =>
+    render(
+      <I18nProvider>
+        <CoverageMap
+          regions={list}
+          exploredIds={new Set()}
+          regionId={null}
+          onRegionChange={() => undefined}
+          cells={null}
+        />
+      </I18nProvider>,
+    );
+
+  it('credits the source of the country that is drawn, not Tunisia’s', () => {
+    show([frRegion]);
+    expect(screen.getByText(/IGN \(Etalab Open Licence 2\.0\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/ODbL/)).not.toBeInTheDocument();
+  });
+
+  it('keeps the OpenStreetMap credit for Tunisia', () => {
+    show([regions[0]!]);
+    expect(screen.getByText(/OpenStreetMap contributors \(ODbL\)/)).toBeInTheDocument();
   });
 });

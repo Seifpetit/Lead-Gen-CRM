@@ -45,7 +45,7 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
   await page.getByRole('button', { name: 'Sign in' }).click();
   // Sign-in returns to the page that was asked for: the CRM (Companies board), which starts empty.
   await expect(page.getByRole('heading', { name: 'CRM', level: 1 })).toBeVisible();
-  await expect(page).toHaveURL(/\/crm\/companies$/);
+  await expect(page).toHaveURL(/\/crm\/companies(\?country=\w+)?$/);
   await expect(page.getByText('No companies on the board yet')).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Main' });
   await expect(nav.getByRole('link')).toHaveText(['Lead Gen', 'CRM']);
@@ -147,7 +147,7 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
 
   // The Companies board: every company the run found is in Found.
   await nav.getByRole('link', { name: 'CRM' }).click();
-  await expect(page).toHaveURL(/\/crm\/companies$/);
+  await expect(page).toHaveURL(/\/crm\/companies(\?country=\w+)?$/);
   const column = (title: string) => page.getByRole('region', { name: title, exact: true });
   const cards = column('Found').getByRole('listitem');
   await expect(cards.first()).toBeVisible();
@@ -202,7 +202,7 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
 
   // The person is on the People board, in New. Work them, then opt them out.
   await page.getByRole('tab', { name: 'People' }).click();
-  await expect(page).toHaveURL(/\/crm\/people$/);
+  await expect(page).toHaveURL(/\/crm\/people(\?country=\w+)?$/);
   await expect(column('New').getByRole('group', { name: 'Amel E2E' })).toBeVisible();
   await dragTo(page, 'Amel E2E', 'Contacted');
   await expect(column('Contacted').getByRole('group', { name: 'Amel E2E' })).toBeVisible();

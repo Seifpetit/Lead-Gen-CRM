@@ -1,4 +1,5 @@
 import { QUERY_SET } from '../config/querySet.js';
+import type { CountryCode } from '@lead-gen-crm/shared';
 import type { Bounds } from '../lib/geo.js';
 import type { Queryable } from './db.js';
 import type { UserId } from './ids.js';
@@ -144,6 +145,7 @@ export async function listCellStats(
 export interface RegionStats {
   regionId: string;
   name: string;
+  country: CountryCode;
   bounds: Bounds | null;
   cellsTotal: number;
   cellsExhausted: number;
@@ -156,10 +158,15 @@ export interface RegionStats {
   lastRunAt: Date | null;
 }
 
-export async function listRegionStats(db: Queryable, userId: UserId): Promise<RegionStats[]> {
+export async function listRegionStats(
+  db: Queryable,
+  userId: UserId,
+  country?: string,
+): Promise<RegionStats[]> {
   const { rows } = await db.query<{
     id: string;
     name: string;
+    country: CountryCode;
     south: number | null;
     west: number | null;
     north: number | null;
@@ -174,7 +181,7 @@ export async function listRegionStats(db: Queryable, userId: UserId): Promise<Re
     runs: number;
     last_run_at: Date | null;
   }>(
-    `SELECT g.id, g.name, g.south, g.west, g.north, g.east,
+    `SELECT g.id, g.name, g.country, g.south, g.west, g.north, g.east,
             (SELECT count(*)::integer FROM region_cells rc WHERE rc.region_id = g.id
                AND NOT EXISTS (SELECT 1 FROM region_cells k WHERE k.parent_cell_id = rc.id)) AS cells_total,
             (SELECT count(*)::integer FROM region_coverage c JOIN region_cells rc ON rc.id = c.region_cell_id
@@ -191,12 +198,14 @@ export async function listRegionStats(db: Queryable, userId: UserId): Promise<Re
             (SELECT max(r.created_at) FROM runs r WHERE r.user_id = $1 AND r.kind = 'search' AND r.region_id = g.id) AS last_run_at
        FROM regions g
        LEFT JOIN region_status s ON s.region_id = g.id AND s.user_id = $1
+      WHERE ($3::text IS NULL OR g.country = $3)
       ORDER BY g.id`,
-    [userId, QUERY_SET],
+    [userId, QUERY_SET, country ?? null],
   );
   return rows.map((r) => ({
     regionId: r.id,
     name: r.name,
+    country: r.country,
     bounds:
       r.south === null || r.west === null || r.north === null || r.east === null
         ? null

@@ -104,6 +104,7 @@ const beta = companyCard({
   leadId: 'lead-b',
   foundAt: ago(20),
   company: {
+    country: 'TN',
     id: 'co-b',
     name: 'Second Freight',
     sector: 'food',
@@ -258,6 +259,7 @@ describe('Recent leads cards', () => {
       name: 'Pictured Co',
       leadId: 'lead-i',
       company: {
+        country: 'TN',
         id: 'co-img',
         name: 'Pictured Co',
         sector: 'textile',

@@ -91,6 +91,7 @@ export function AppShell({
   expandLabel,
   profileName,
   profile,
+  countrySwitch,
   banner,
   children,
 }: {
@@ -108,6 +109,8 @@ export function AppShell({
   profileName: string;
   /** What the profile menu holds (sign out). */
   profile: ReactNode;
+  /** The country switch: at the top of the sidebar, or in the top bar on pages without one. */
+  countrySwitch?: ReactNode;
   /** Fixed to the bottom edge of the top bar, above every page (the live run banner). */
   banner?: ReactNode;
   children: ReactNode;
@@ -146,6 +149,7 @@ export function AppShell({
         </nav>
         {!sideNav && (
           <div className="topbar-user">
+            {countrySwitch}
             <ProfileMenu name={profileName}>{profile}</ProfileMenu>
           </div>
         )}
@@ -154,6 +158,7 @@ export function AppShell({
       {sideNav ? (
         <div className={`shell${collapsed ? ' is-collapsed' : ''}`}>
           <aside className="sidebar">
+            {countrySwitch}
             <div className="sidebar-top">
               <ProfileMenu name={profileName}>{profile}</ProfileMenu>
               <button

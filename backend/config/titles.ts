@@ -24,6 +24,12 @@ export const TITLE_DICTIONARY: Record<RoleClass, readonly string[]> = {
     'logistics coordinator',
     'logistics supervisor',
     'warehouse manager',
+    // German and Italian titles, for the countries that trade with Tunisia.
+    'leiter logistik',
+    'logistikleiter',
+    'logistikleiterin',
+    'responsabile logistica',
+    'direttore logistica',
   ],
   transport: [
     'responsable transport',
@@ -66,6 +72,17 @@ export const TITLE_DICTIONARY: Record<RoleClass, readonly string[]> = {
     'head of export',
     'head of import',
     'international sales manager',
+    // German and Italian titles, for the countries that trade with Tunisia.
+    'leiter import',
+    'leiter export',
+    'leiter import export',
+    'exportleiter',
+    'importleiter',
+    'responsabile import',
+    'responsabile export',
+    'responsabile import export',
+    'direttore export',
+    'direttore import',
   ],
   supply_chain: [
     'directeur supply chain',
@@ -80,6 +97,9 @@ export const TITLE_DICTIONARY: Record<RoleClass, readonly string[]> = {
     'responsable planification',
     'demand planner',
     'supply planner',
+    // German and Italian titles, for the countries that trade with Tunisia.
+    'leiter supply chain',
+    'responsabile supply chain',
   ],
   purchasing: [
     'directeur achats',
@@ -97,6 +117,17 @@ export const TITLE_DICTIONARY: Record<RoleClass, readonly string[]> = {
     'buyer',
     'senior buyer',
     'sourcing manager',
+    // German and Italian titles, for the countries that trade with Tunisia.
+    'einkaufsleiter',
+    'einkaufsleiterin',
+    'leiter einkauf',
+    'leiterin einkauf',
+    'einkaufer',
+    'einkauferin',
+    'responsabile acquisti',
+    'direttore acquisti',
+    'responsabile approvvigionamenti',
+    'addetto acquisti',
   ],
   operations: [
     'directeur des operations',
@@ -116,6 +147,11 @@ export const TITLE_DICTIONARY: Record<RoleClass, readonly string[]> = {
     'chief operating officer',
     'plant manager',
     'production manager',
+    // German and Italian titles, for the countries that trade with Tunisia.
+    'betriebsleiter',
+    'produktionsleiter',
+    'direttore operativo',
+    'direttore di produzione',
   ],
   general_manager: [
     'directeur general',
@@ -141,6 +177,15 @@ export const TITLE_DICTIONARY: Record<RoleClass, readonly string[]> = {
     'co founder',
     'owner',
     'country manager',
+    // German and Italian titles, for the countries that trade with Tunisia.
+    'geschaftsfuhrer',
+    'geschaftsfuhrerin',
+    'inhaber',
+    'inhaberin',
+    'vorstand',
+    'amministratore delegato',
+    'titolare',
+    'direttore generale',
   ],
 };
 

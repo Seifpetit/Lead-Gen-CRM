@@ -1,3 +1,4 @@
+import type { CountryCode } from '@lead-gen-crm/shared';
 import { outlineFromBounds, simplifyOutline, type Bounds, type Outline } from '../lib/geo.js';
 import type { Queryable } from './db.js';
 
@@ -6,7 +7,7 @@ export interface Region {
   id: string;
   name: string;
   nameFr: string;
-  country: string;
+  country: CountryCode;
 }
 
 export interface RegionGeometry {
@@ -70,10 +71,25 @@ async function dropUnusedCells(db: Queryable, regionId: string): Promise<void> {
   await db.query('DELETE FROM region_cells WHERE region_id = $1', [regionId]);
 }
 
-export async function listRegions(db: Queryable): Promise<Region[]> {
-  const { rows } = await db.query<{ id: string; name: string; name_fr: string; country: string }>(
-    'SELECT * FROM regions ORDER BY name',
+/** The country of a region; null when the region does not exist. */
+export async function getRegionCountry(
+  db: Queryable,
+  regionId: string,
+): Promise<CountryCode | null> {
+  const { rows } = await db.query<{ country: CountryCode }>(
+    'SELECT country FROM regions WHERE id = $1',
+    [regionId],
   );
+  return rows[0]?.country ?? null;
+}
+
+export async function listRegions(db: Queryable): Promise<Region[]> {
+  const { rows } = await db.query<{
+    id: string;
+    name: string;
+    name_fr: string;
+    country: CountryCode;
+  }>('SELECT * FROM regions ORDER BY name');
   return rows.map((r) => ({ id: r.id, name: r.name, nameFr: r.name_fr, country: r.country }));
 }
 
@@ -119,6 +135,7 @@ export async function getRegionOutline(db: Queryable, regionId: string): Promise
 export interface RegionShape {
   regionId: string;
   name: string;
+  country: CountryCode;
   bounds: Bounds | null;
   outline: Outline | null;
   outlineSource: 'osm' | 'bounds' | null;
@@ -138,10 +155,11 @@ function drawnOutline(regionId: string, outline: Outline, size: number): Outline
 }
 
 /** Every region's bounds and drawn shape (stored outline, else its bounds as a rectangle). */
-export async function listRegionShapes(db: Queryable): Promise<RegionShape[]> {
+export async function listRegionShapes(db: Queryable, country?: string): Promise<RegionShape[]> {
   const { rows } = await db.query<{
     id: string;
     name: string;
+    country: CountryCode;
     south: number | null;
     west: number | null;
     north: number | null;
@@ -149,7 +167,9 @@ export async function listRegionShapes(db: Queryable): Promise<RegionShape[]> {
     outline: Outline | null;
     outline_size: number | null;
   }>(
-    'SELECT id, name, south, west, north, east, outline, length(outline::text) AS outline_size FROM regions ORDER BY name',
+    `SELECT id, name, country, south, west, north, east, outline, length(outline::text) AS outline_size
+       FROM regions WHERE ($1::text IS NULL OR country = $1) ORDER BY name`,
+    [country ?? null],
   );
   return rows.map((r) => {
     const bounds: Bounds | null =
@@ -159,6 +179,7 @@ export async function listRegionShapes(db: Queryable): Promise<RegionShape[]> {
     return {
       regionId: r.id,
       name: r.name,
+      country: r.country,
       bounds,
       outline: r.outline
         ? drawnOutline(r.id, r.outline, r.outline_size ?? 0)

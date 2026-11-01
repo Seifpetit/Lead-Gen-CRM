@@ -55,7 +55,7 @@ export function RunsPage() {
             ? 'live'
             : 'logs';
 
-  const past = useResource(() => api.runs.list({ limit: 50 }), { deps: [ended] });
+  const past = useResource(() => api.runs.list({ limit: 50, country: 'ALL' }), { deps: [ended] });
   const linked = useResource(() => api.runs.get(runId), {
     enabled: runId !== '',
     deps: [runId, ended],

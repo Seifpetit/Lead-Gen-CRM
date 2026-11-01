@@ -43,11 +43,11 @@ describe('which regions are greyed out', () => {
 
 describe('coverageRows', () => {
   const regions = [
-    { regionId: 'gabes', name: 'Gabès' },
-    { regionId: 'tunis', name: 'Tunis' },
-    { regionId: 'beja', name: 'Béja' },
-    { regionId: 'sfax', name: 'Sfax' },
-    { regionId: 'ariana', name: 'Ariana' },
+    { regionId: 'gabes', name: 'Gabès', country: 'TN' as const },
+    { regionId: 'tunis', name: 'Tunis', country: 'TN' as const },
+    { regionId: 'beja', name: 'Béja', country: 'TN' as const },
+    { regionId: 'sfax', name: 'Sfax', country: 'TN' as const },
+    { regionId: 'ariana', name: 'Ariana', country: 'TN' as const },
   ];
   const summaries = [
     region({ regionId: 'sfax', name: 'Sfax', coverage: 0.6 }),

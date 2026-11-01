@@ -284,3 +284,12 @@
 .logs-actions button {
   white-space: nowrap;
 }
+.logs-country {
+  margin-left: var(--space-1);
+  padding: 0 6px;
+  border: 1.5px solid var(--ink);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  vertical-align: middle;
+}

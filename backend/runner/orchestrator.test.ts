@@ -1103,3 +1103,41 @@ describe('orchestrator: removed CRM cards', () => {
     );
   });
 });
+
+describe('orchestrator: a run in France', () => {
+  it('stores the country, searches with the partner words and asks the classifier about trade with Tunisia', async () => {
+    const BRETAGNE: Bounds = { south: 47.3, west: -5.2, north: 48.9, east: -1.0 };
+    await createRegionGrid(db, 'fr-bretagne', BRETAGNE, 1, 2);
+    await db.query("UPDATE regions SET outline = NULL WHERE id = 'fr-bretagne'");
+    const classifier = new FakeCompanyClassifier({}, { fallback: 'importer', free: true });
+    const w = world({}, {}, { companyClassifier: classifier });
+    const run = await w.orchestrator.startRun(user, {
+      regionId: 'fr-bretagne',
+      sectorIds: ['olive-oil'],
+      budgetCapUsd: 10,
+    });
+    expect(run.country).toBe('FR');
+    await drive(w.orchestrator, user, run.id);
+    const { rows } = await db.query<{ query_text: string; country: string }>(
+      'SELECT DISTINCT query_text, country FROM search_queries WHERE run_id = $1',
+      [run.id],
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.country === 'FR' && /Tunisie/.test(r.query_text))).toBe(true);
+    for (const facts of classifier.calls) {
+      expect(facts).toMatchObject({ mode: 'trades_with_partner', partnerCountry: 'Tunisia' });
+    }
+    const companies = await db.query<{ country: string }>(
+      'SELECT DISTINCT country FROM companies WHERE user_id = $1',
+      [user],
+    );
+    expect(companies.rows.every((c) => c.country === 'FR')).toBe(true);
+  });
+
+  it('refuses a run in a country that is switched off', async () => {
+    const w = world();
+    await expect(
+      w.orchestrator.startRun(user, { regionId: 'de-bayern', budgetCapUsd: 5 }),
+    ).rejects.toMatchObject({ code: 'country_disabled' });
+  });
+});

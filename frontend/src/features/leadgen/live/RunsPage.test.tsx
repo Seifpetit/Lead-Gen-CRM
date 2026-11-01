@@ -91,7 +91,7 @@ describe('Runs page', () => {
     }
     // Sfax is on its third checkpoint, half way: 2.5 of 6.
     expect(within(cardA).getAllByRole('progressbar')[0]).toHaveAttribute('aria-valuenow', '42');
-    expect(within(cardA).getByText('Sfax · started 18 Oct 2026, 09:00 UTC')).toBeVisible();
+    expect(within(cardA).getByText('Sfax (TN) · started 18 Oct 2026, 09:00 UTC')).toBeVisible();
     expect(top.textContent).not.toMatch(/discover|enrich|unreachable/i);
   });
 

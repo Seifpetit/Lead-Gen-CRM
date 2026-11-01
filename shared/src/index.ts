@@ -184,12 +184,19 @@ export const RUN_STATUSES = [
 ] as const;
 export type RunStatus = (typeof RUN_STATUSES)[number];
 
+/** The countries the app knows. Their settings (words, mode, on or off) are in the backend's config/countries.ts. */
+export const COUNTRY_CODES = ['TN', 'FR', 'DE', 'IT'] as const;
+export type CountryCode = (typeof COUNTRY_CODES)[number];
+export const DEFAULT_COUNTRY: CountryCode = 'TN';
+
 export const RUN_MODES = ['normal', 'maintenance'] as const;
 export type RunMode = (typeof RUN_MODES)[number];
 
 export interface Run {
   id: string;
   region: string;
+  /** The country of the region the run searches. */
+  country: CountryCode;
   sectors: string[];
   /** Search only the extra wordings, no sector wordings (sectors is then empty). */
   customOnly: boolean;
@@ -215,6 +222,7 @@ export interface Run {
 export * from './api.js';
 export * from './checkpoints.js';
 export * from './places.js';
+export * from './regionNames.js';
 export * from './runOutcome.js';
 export * from './exports.js';
 export * from './messages.js';

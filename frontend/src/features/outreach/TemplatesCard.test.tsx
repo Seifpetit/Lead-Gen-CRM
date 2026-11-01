@@ -9,9 +9,17 @@ describe('TemplatesCard', () => {
   it('lists the templates, edits one and saves it', async () => {
     const s = fakeServer({
       'GET /api/templates': {
-        items: [{ id: 't1', name: 'Premier contact', body: 'Bonjour {person}', updatedAt: '' }],
+        items: [
+          {
+            id: 't1',
+            name: 'Premier contact',
+            body: 'Bonjour {person}',
+            updatedAt: '',
+            language: 'fr',
+          },
+        ],
       },
-      'PUT /api/templates/t1': (req) => ({ id: 't1', ...req.body, updatedAt: '' }),
+      'PUT /api/templates/t1': (req) => ({ id: 't1', ...req.body, updatedAt: '', language: 'fr' }),
     });
     renderWith(<TemplatesCard />, s);
     const name = await screen.findByLabelText('Name');
@@ -25,14 +33,32 @@ describe('TemplatesCard', () => {
     expect(s.to('PUT /api/templates/t1')[0]!.body).toEqual({
       name: 'Premier',
       body: 'Bonjour {person}',
+      language: 'fr',
     });
     expect(await screen.findByText('Template saved')).toBeInTheDocument();
+  });
+
+  it('lets the language of a template be chosen and sends it along', async () => {
+    const s = fakeServer({
+      'GET /api/templates': {
+        items: [{ id: 't1', name: 'Hallo', body: 'Guten Tag', updatedAt: '', language: 'de' }],
+      },
+      'PUT /api/templates/t1': (req) => ({ id: 't1', ...req.body, updatedAt: '' }),
+    });
+    renderWith(<TemplatesCard />, s);
+    const language = await screen.findByLabelText('Language of the message');
+    expect(language).toHaveValue('de');
+    expect(screen.getByRole('button', { name: 'Save template' })).toBeDisabled();
+    await userEvent.selectOptions(language, 'it');
+    await userEvent.click(screen.getByRole('button', { name: 'Save template' }));
+    await waitFor(() => expect(s.to('PUT /api/templates/t1')).toHaveLength(1));
+    expect(s.to('PUT /api/templates/t1')[0]!.body).toMatchObject({ language: 'it' });
   });
 
   it('will not save a text over 1000 characters', async () => {
     const s = fakeServer({
       'GET /api/templates': {
-        items: [{ id: 't1', name: 'Long', body: 'x'.repeat(1001), updatedAt: '' }],
+        items: [{ id: 't1', name: 'Long', body: 'x'.repeat(1001), updatedAt: '', language: 'fr' }],
       },
     });
     renderWith(<TemplatesCard />, s);

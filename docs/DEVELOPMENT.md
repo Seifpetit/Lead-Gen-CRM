@@ -116,6 +116,31 @@ npm run regions:build        # downloads the source, checks it, rewrites config/
 npm run db:migrate           # loads the new outlines and bounds into the database
 ```
 
+### Other countries (France, Germany, Italy)
+
+Each country has its own committed file, `backend/config/regionOutlines.<cc>.json`, with its
+regions, their boxes, a lightly simplified outline and the licence of the source. Region ids start
+with the country (`fr-bretagne`); Tunisia's ids stay as they were. The lists of regions are in
+`backend/config/countryRegions.ts`.
+
+| Country | Regions                   | Source layer                        | Source            | Licence                               |
+| ------- | ------------------------- | ----------------------------------- | ----------------- | ------------------------------------- |
+| France  | 13 (mainland and Corsica) | ADM1                                | IGN Admin Express | Etalab Open Licence 2.0               |
+| Germany | 16 Länder                 | ADM1                                | BKG               | Data licence Germany, attribution 2.0 |
+| Italy   | 20 regions                | ADM2 (its ADM1 is five macro-areas) | ISTAT             | CC BY 3.0                             |
+
+These are not the ODbL, so the map credit is per country (`map.attribution.<cc>`). To rebuild one:
+
+```sh
+npm run regions:build -- FR            # also DE, IT; add a path to use a file you already have
+npm run format
+npm run db:migrate
+```
+
+The words each country searches with and the job titles it looks for are in
+`backend/config/countries.ts`. Every list there for France, Germany and Italy is a first draft
+that nobody has tried on real results yet; a country is switched on with `enabled: true`.
+
 ## Security
 
 - **Passwords** are hashed with argon2id (the `argon2` library); the app never stores or logs

@@ -1,6 +1,6 @@
 import type { FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import type { Page } from '@lead-gen-crm/shared';
+import { COUNTRY_CODES, type Page } from '@lead-gen-crm/shared';
 
 /** A handled failure: the status, a stable code for clients, and optional details. */
 export class ApiError extends Error {
@@ -32,6 +32,8 @@ export const query = <S extends z.ZodType>(schema: S, request: FastifyRequest) =
   parse(schema, request.query);
 
 export const UUID = z.uuid();
+/** The country switch: one country, or left out for all countries. */
+export const CountryParam = z.enum(COUNTRY_CODES).optional();
 /** Route params that must be UUIDs; anything else is a 404 so IDs can't be probed. */
 export function uuidParam(request: FastifyRequest, name: string): string {
   const value = (request.params as Record<string, string>)[name];

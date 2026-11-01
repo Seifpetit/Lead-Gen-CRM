@@ -36,7 +36,7 @@ import {
 } from '../data/crmBoards.js';
 import { matchTitleByRules } from '../stages/matchTitle.js';
 import type { RouteDeps } from './deps.js';
-import { ApiError, body, notFound, parse, uuidParam } from './http.js';
+import { ApiError, body, CountryParam, notFound, parse, uuidParam } from './http.js';
 
 const Reason = z.string().trim().min(1).max(500);
 const MoveBody = z.object({ stage: z.string().min(1).max(40), reason: Reason.optional() }).strict();
@@ -81,6 +81,7 @@ const FilterQuery = z.object({
   foundDays: z.coerce.number().int().min(1).max(3650).optional(),
   runId: z.uuid().optional(),
   regionId: z.string().trim().min(1).max(60).optional(),
+  country: CountryParam,
   /** Comma-separated: yes, unchecked, no. Left out means yes + unchecked. */
   trade: z
     .string()
@@ -106,6 +107,7 @@ const FacetsQuery = FilterQuery.pick({
   minScore: true,
   foundDays: true,
   regionId: true,
+  country: true,
   trade: true,
 });
 const PipelineParam = z.object({ pipeline: z.enum(['companies', 'people']) });

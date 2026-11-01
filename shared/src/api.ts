@@ -2,6 +2,7 @@
 // Every amount is in USD. Anything computed from assumptions is labelled an estimate.
 import type {
   BoardStageKey,
+  CountryCode,
   TradeFilter,
   TradeRole,
   CrmPipeline,
@@ -136,7 +137,8 @@ export type StartBlockerCode =
   | 'concurrent_run_limit'
   | 'no_bounds'
   | 'no_free_cells'
-  | 'budget_below_minimum';
+  | 'budget_below_minimum'
+  | 'country_disabled';
 
 export interface StartBlocker {
   code: StartBlockerCode;
@@ -238,6 +240,7 @@ export interface RunPreview {
 export interface RegionSummary {
   regionId: string;
   name: string;
+  country: CountryCode;
   hasBounds: boolean;
   status: 'active' | 'saturated';
   saturatedAt: string | null;
@@ -308,6 +311,8 @@ export interface LeadFilter {
   stage?: CrmStage[];
   runId?: string;
   regionId?: string;
+  /** Only companies of this country; left out means all. */
+  country?: CountryCode;
   minScore?: number;
   /** Matches company or contact name. */
   q?: string;
@@ -336,6 +341,8 @@ export type CostGroupBy = 'run' | 'region' | 'provider' | 'month';
 
 export interface CostRow {
   key: string;
+  /** The country of the run or region this row is for; null for rows grouped by provider or month. */
+  country: CountryCode | null;
   /** Estimates not yet replaced by an actual. */
   openEstimateUsd: number;
   actualUsd: number;
@@ -473,7 +480,7 @@ export interface CoverageEntry {
 }
 
 export interface Coverage {
-  regions: { regionId: string; name: string }[];
+  regions: { regionId: string; name: string; country: CountryCode }[];
   sectors: { id: string; name: string }[];
   entries: CoverageEntry[];
 }
@@ -488,6 +495,7 @@ export interface MapOutline {
 export interface RegionGeometry {
   regionId: string;
   name: string;
+  country: CountryCode;
   bounds: { south: number; west: number; north: number; east: number } | null;
   outline: MapOutline | null;
   outlineSource: 'osm' | 'bounds' | null;
@@ -520,6 +528,7 @@ export interface CrmCard {
     sector: string | null;
     /** Null: not checked for import/export. */
     tradeRole: TradeRole | null;
+    country: CountryCode;
     website: string | null;
     phone: string | null;
     email: string | null;
@@ -581,6 +590,8 @@ export interface BoardFilters {
   runId?: string | undefined;
   /** Only companies in this region (and their people). */
   regionId?: string | undefined;
+  /** Only companies of this country; left out means all countries. */
+  country?: CountryCode | undefined;
   /** Import/export: yes, not yet checked, no. Several allowed; left out means yes + not checked. */
   trade?: readonly TradeFilter[] | undefined;
   sort?: BoardSort | undefined;
@@ -824,4 +835,25 @@ export interface TradeCheckStatus {
   capUsd: number;
   /** A plain sentence when the check ended early. */
   message: string | null;
+}
+
+// ---------------------------------------------------------------------------------------
+// Countries
+
+/** What the app says about a country: its mode, whether it can start runs, and why not. */
+export interface CountryInfo {
+  code: CountryCode;
+  name: string;
+  nameFr: string;
+  /** own_trade: companies of this country that import or export; trades_with_partner: companies that trade with the partner country. */
+  mode: 'own_trade' | 'trades_with_partner';
+  partnerCountry: CountryCode | null;
+  enabled: boolean;
+  disabledReason: string | null;
+  /** The word lists are a draft nobody has tried on real results yet. */
+  unverified: boolean;
+  /** Show the one-time data-protection notice before the first run here. */
+  gdprNotice: boolean;
+  /** How many regions the country has. */
+  regions: number;
 }

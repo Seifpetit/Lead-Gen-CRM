@@ -3,6 +3,7 @@ import {
   MAX_SENDER_FIELD_LENGTH,
   MAX_TEMPLATE_LENGTH,
   MAX_TEMPLATE_NAME_LENGTH,
+  TEMPLATE_LANGUAGES,
   type MessageTemplate,
   type SenderProfile,
 } from '@lead-gen-crm/shared';
@@ -28,6 +29,7 @@ import { ApiError, body, notFound, uuidParam, UUID } from './http.js';
 const TemplateBody = z
   .object({
     name: z.string().trim().min(1).max(MAX_TEMPLATE_NAME_LENGTH),
+    language: z.enum(TEMPLATE_LANGUAGES).optional(),
     // Kept as typed (Arabic, line breaks); only blank text is refused.
     body: z
       .string()

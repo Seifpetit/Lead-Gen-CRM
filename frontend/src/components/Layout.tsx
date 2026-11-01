@@ -11,6 +11,9 @@ import { useApi } from '../api/context.js';
 import { useAuth } from '../features/auth/AuthContext.js';
 import { HealthNotice } from '../features/leadgen/health/HealthNotice.js';
 import { LiveBanner } from '../features/leadgen/live/LiveBanner.js';
+import { CountryProvider, useCountry } from '../features/country/CountryContext.js';
+import { CountrySwitch } from '../features/country/CountrySwitch.js';
+import { GdprNotice } from '../features/country/GdprNotice.js';
 import { useT } from '../i18n/index.js';
 import { useResource } from '../lib/useResource.js';
 import { AppShell } from './shared/AppShell.js';
@@ -21,6 +24,16 @@ const BADGE_POLL_MS = 15_000;
 
 /** Wires the app frame to our strings and the signed-in user; Lead Gen pages get the sidebar. */
 export function Layout() {
+  return (
+    <CountryProvider>
+      <Frame />
+    </CountryProvider>
+  );
+}
+
+function Frame() {
+  const { country, showsAll } = useCountry();
+  const scopeKey = showsAll ? 'ALL' : country;
   const t = useT();
   const auth = useAuth();
   const api = useApi();
@@ -30,11 +43,13 @@ export function Layout() {
   const waiting = useResource(() => api.leads.list({ stage: ['system_suggested'], limit: 1 }), {
     enabled: inLeadGen,
     pollMs: BADGE_POLL_MS,
+    deps: [scopeKey],
   });
-  const active = useResource(() => api.runs.list({ status: ['pending', 'running'], limit: 10 }), {
-    enabled: inLeadGen,
-    pollMs: BADGE_POLL_MS,
-  });
+  // Runs in progress count across countries: the limit of two at a time is for the whole app.
+  const active = useResource(
+    () => api.runs.list({ status: ['pending', 'running'], limit: 10, country: 'ALL' }),
+    { enabled: inLeadGen, pollMs: BADGE_POLL_MS },
+  );
   const newLeads = waiting.data?.total ?? 0;
   const activeRuns = active.data?.items.length ?? 0;
 
@@ -109,6 +124,7 @@ export function Layout() {
               ],
             }
           : {})}
+        countrySwitch={<CountrySwitch />}
         banner={<LiveBanner />}
         profileName={auth.user?.email ?? ''}
         profile={
@@ -118,7 +134,9 @@ export function Layout() {
         }
       >
         <HealthNotice />
-        <Outlet />
+        <GdprNotice />
+        {/* A new key draws the page again for the other country: instant, no reload. */}
+        <Outlet key={scopeKey} />
       </AppShell>
     </ToastProvider>
   );

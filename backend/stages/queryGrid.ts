@@ -1,3 +1,4 @@
+import { getCountry, partnerWordings } from '../config/countries.js';
 import { FREIGHT_SECTORS } from '../config/sectors.js';
 import { splitBounds, type Bounds } from '../lib/geo.js';
 import { normalizeQuery } from '../lib/normalize.js';
@@ -13,6 +14,8 @@ export interface GridCell {
 export interface QueryGridInput {
   regionId: string;
   bounds: Bounds;
+  /** The region's country: a country that trades with a partner searches its own words. Default Tunisia. */
+  country?: string;
   /** Sectors to search; all active import/export sectors when omitted, none when empty. */
   sectorIds?: readonly string[];
   /** Extra wordings typed in by the user; searched as given, with no sector. */
@@ -86,8 +89,9 @@ export function buildQueryGrid(input: QueryGridInput): QueryGrid {
   // One entry per distinct wording; the first sector that lists it owns it.
   const wordings: { sectorId: string | null; textQuery: string; normalizedQuery: string }[] = [];
   const seenWordings = new Set<string>();
+  const country = getCountry(input.country);
   for (const sector of sectors) {
-    for (const term of sector.searchTermsFr) {
+    for (const term of partnerWordings(country, sector.id) ?? sector.searchTermsFr) {
       const normalizedQuery = normalizeQuery(term);
       if (seenWordings.has(normalizedQuery)) continue;
       seenWordings.add(normalizedQuery);

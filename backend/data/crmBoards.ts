@@ -13,6 +13,7 @@ import {
   type CrmCard,
   type CrmCardPage,
   type CrmFacets,
+  type CountryCode,
   type CrmPipeline,
   type RoleClass,
   type SortDirection,
@@ -108,6 +109,7 @@ interface CardRow {
   governorate: string;
   image_url: string | null;
   image_source: 'og' | 'maps' | null;
+  country: CountryCode;
   created_at: Date;
   found_at: Date;
   run_id: string | null;
@@ -120,7 +122,7 @@ interface CardRow {
 const CARD_SELECT = `
   SELECT k.id, k.user_id, k.pipeline, k.stage, k.stage_entered_at, k.noise_at, k.noise_from_stage,
          k.company_id, k.contact_id,
-         c.name AS company_name, c.sector, c.trade_role, c.website, c.phone AS company_phone, c.email AS company_email,
+         c.name AS company_name, c.sector, c.trade_role, c.country, c.website, c.phone AS company_phone, c.email AS company_email,
          c.image_url, c.image_source, c.category, c.address, c.lat, c.lng,
          p.full_name, p.title, p.email AS person_email, p.phone AS person_phone, p.linkedin_url,
          p.photo_url, k.created_at, c.governorate,
@@ -159,6 +161,7 @@ function toCard(r: CardRow, retentionDays: number): CrmCard {
       name: r.company_name,
       sector: r.sector,
       tradeRole: r.trade_role,
+      country: r.country,
       website: r.website,
       phone: r.company_phone,
       email: r.company_email,
@@ -296,6 +299,7 @@ function whereOf(
   }
   if (o.runId) add((n) => `t.run_id = $${n}::uuid`, o.runId);
   if (o.regionId) add((n) => `t.governorate = $${n}`, o.regionId);
+  if (o.country) add((n) => `t.country = $${n}`, o.country);
   clauses.push(tradeClause(o.trade ?? DEFAULT_TRADE_FILTERS));
   return { clauses, params };
 }
@@ -400,7 +404,10 @@ export async function loadFacets(
   db: Queryable,
   userId: UserId,
   pipeline: CrmPipeline,
-  filters: Pick<BoardFilters, 'q' | 'minScore' | 'foundDays' | 'regionId' | 'trade'> = {},
+  filters: Pick<
+    BoardFilters,
+    'q' | 'minScore' | 'foundDays' | 'regionId' | 'trade' | 'country'
+  > = {},
 ): Promise<Omit<CrmFacets, 'noiseRetentionDays'>> {
   const { clauses, params } = whereOf(userId, pipeline, { ...filters, excludeNoise: true });
   const from = `FROM (${CARD_SELECT}) t WHERE ${clauses.join(' AND ')}`;

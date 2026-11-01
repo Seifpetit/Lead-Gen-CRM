@@ -23,8 +23,8 @@ const entry = (sectorId: string, over = {}) => ({
 
 const startCoverage: Coverage = {
   regions: [
-    { regionId: 'sfax', name: 'Sfax' },
-    { regionId: 'tunis', name: 'Tunis' },
+    { regionId: 'sfax', name: 'Sfax', country: 'TN' },
+    { regionId: 'tunis', name: 'Tunis', country: 'TN' },
   ],
   sectors: [
     { id: 'road-freight', name: 'Road freight' },

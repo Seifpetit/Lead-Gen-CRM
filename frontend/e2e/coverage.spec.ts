@@ -186,7 +186,7 @@ test('the matrix scrolls on its own while the map stays fixed, and a pick zooms 
   await page.getByRole('button', { name: 'Region Region 03' }).click();
   await expect(page.getByRole('table', { name: 'Region 03 by sector' })).toBeVisible();
   await expect.poll(() => svg.getAttribute('viewBox')).not.toBe(wide);
-  await expect(page).toHaveURL(/region=region-2$/);
+  await expect(page).toHaveURL(/region=region-2(&country=\w+)?$/);
   expect(await docFits(page)).toBe(true);
   if (process.env.COVERAGE_SHOTS)
     await page.screenshot({ path: `${process.env.COVERAGE_SHOTS}/table.png` });

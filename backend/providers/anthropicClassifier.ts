@@ -69,16 +69,26 @@ const LABELS = [
 /** The classifier question for a country mode. Exported for tests. */
 export function companySystem(
   mode: 'own_trade' | 'trades_with_partner' = 'own_trade',
-  partnerCountry = 'TN',
+  partnerCountry = 'Tunisia',
 ): string {
   const question =
     mode === 'own_trade'
       ? 'Does this company regularly import or export physical goods as part of its business?'
       : `Does this company import physical goods from ${partnerCountry} or export them to ${partnerCountry}?`;
+  // For a country that trades with a partner the labels are about the partner, not about trade in general.
+  const meaning =
+    mode === 'own_trade'
+      ? []
+      : [
+          `Here "importer" means it brings goods in from ${partnerCountry}, "exporter" means it sends`,
+          `goods to ${partnerCountry}, "both" means both. A company that trades only with other`,
+          `countries is "not_import_export".`,
+        ];
   return [
     'You help a Tunisian transporter decide whether a business found on a map is a likely customer:',
     'a company that ships goods across borders.',
     question,
+    ...meaning,
     'Pick one label:',
     ...LABELS,
     'Give one short evidence sentence taken from the listing (category, name, website). Never',

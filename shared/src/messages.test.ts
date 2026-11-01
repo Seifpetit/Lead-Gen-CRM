@@ -54,7 +54,7 @@ describe('whatsappNumber', () => {
       '74 123 456',
       '+216 71 000 000',
       '80 100 200',
-      '+33 6 12 34 56 78',
+      '+44 7700 900123',
       'poste 12',
       '',
       null,
@@ -72,5 +72,26 @@ describe('googleMapsUrl', () => {
     expect(googleMapsUrl('Huilerie Baccar', null, 'Sfax')).toBe(
       'https://www.google.com/maps/search/?api=1&query=Huilerie%20Baccar%2C%20Sfax',
     );
+  });
+});
+
+describe('whatsappNumber in Europe', () => {
+  it('accepts French, German and Italian mobiles written with their country code', () => {
+    expect(whatsappNumber('+33 6 12 34 56 78')).toBe('33612345678');
+    expect(whatsappNumber('+33712345678')).toBe('33712345678');
+    expect(whatsappNumber('0049 171 2345678')).toBe('491712345678');
+    expect(whatsappNumber('+39 347 123 4567')).toBe('393471234567');
+  });
+
+  it('gives null for their landlines and special numbers', () => {
+    expect(whatsappNumber('+33 1 23 45 67 89')).toBeNull();
+    expect(whatsappNumber('+49 30 1234567')).toBeNull();
+    expect(whatsappNumber('+39 02 1234 5678')).toBeNull();
+    expect(whatsappNumber('+33 8 05 12 34 56')).toBeNull();
+  });
+
+  it('still reads Tunisian numbers as before', () => {
+    expect(whatsappNumber('98 123 456')).toBe('21698123456');
+    expect(whatsappNumber('+216 74 123 456')).toBeNull();
   });
 });

@@ -8,7 +8,7 @@ import { getMonthlyBudget, setMonthlyCap } from '../data/userBudget.js';
 import { costsBy, ledgerPage } from '../data/views.js';
 import { reconcileRun } from '../runner/reconcile.js';
 import type { RouteDeps } from './deps.js';
-import { body, notFound, PageQuery, query, toPage, uuidParam } from './http.js';
+import { body, CountryParam, notFound, PageQuery, query, toPage, uuidParam } from './http.js';
 
 const Month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Use YYYY-MM');
 const monthStart = (m: string) => new Date(`${m}-01T00:00:00Z`);
@@ -16,6 +16,7 @@ const monthStart = (m: string) => new Date(`${m}-01T00:00:00Z`);
 const CostQuery = PageQuery.extend({
   groupBy: z.enum(['run', 'region', 'provider', 'month']).default('month'),
   month: Month.optional(),
+  country: CountryParam,
 });
 const BudgetQuery = z.object({ month: Month.optional() });
 const SetCapBody = z
@@ -45,7 +46,10 @@ export async function costRoutes(app: FastifyInstance, deps: RouteDeps): Promise
       db,
       currentUser(request).id,
       q.groupBy,
-      q.month ? { month: monthStart(q.month) } : {},
+      {
+        ...(q.month ? { month: monthStart(q.month) } : {}),
+        ...(q.country ? { country: q.country } : {}),
+      },
       q,
     );
     return toPage(items, total, q);
