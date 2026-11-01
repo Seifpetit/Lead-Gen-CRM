@@ -201,6 +201,9 @@ test('picking France flies there, opens its regions, and lights a region and its
   // Escape steps back: first the region, then the country.
   await page.keyboard.press('Escape');
   await expect(page).not.toHaveURL(/region=/);
+  // The address changes a moment before the page is redrawn; wait for the redraw so the second
+  // press is read against the country, not the region that was just closed.
+  await expect(page.getByRole('button', { name: /^Start a run in / })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(page).not.toHaveURL(/focus=/);
   await expect.poll(async () => (await view(host)).zoom).toBeLessThanOrEqual(3);
