@@ -227,3 +227,4 @@ export * from './runOutcome.js';
 export * from './exports.js';
 export * from './messages.js';
 export * from './redact.js';
+export * from './devConsole.js';

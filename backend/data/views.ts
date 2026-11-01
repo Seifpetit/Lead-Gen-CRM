@@ -414,6 +414,7 @@ export async function costsBy(
   const { rows } = await db.query<{
     key: string;
     country: CostRow['country'];
+    run_kind: CostRow['runKind'];
     open_estimate: number;
     actual: number;
     total_usd: number;
@@ -422,6 +423,7 @@ export async function costsBy(
   }>(
     `SELECT ${key} AS key,
             ${groupBy === 'run' || groupBy === 'region' ? 'min(r.country)' : 'NULL::text'} AS country,
+            ${groupBy === 'run' ? 'min(r.kind)' : 'NULL::text'} AS run_kind,
             COALESCE(sum(l.amount_usd) FILTER (WHERE l.kind = 'estimated'), 0)::numeric AS open_estimate,
             COALESCE(sum(l.amount_usd) FILTER (WHERE l.kind = 'actual'), 0)::numeric AS actual,
             COALESCE(sum(l.amount_usd), 0)::numeric AS total_usd,
@@ -441,6 +443,7 @@ export async function costsBy(
     items: rows.map((r) => ({
       key: r.key,
       country: r.country,
+      ...(groupBy === 'run' && r.run_kind ? { runKind: r.run_kind } : {}),
       openEstimateUsd: round(r.open_estimate),
       actualUsd: round(r.actual),
       totalUsd: round(r.total_usd),

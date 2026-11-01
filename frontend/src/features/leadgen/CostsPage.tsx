@@ -134,6 +134,11 @@ function RowName({ group, row }: { group: CostGroupBy; row: CostRow }) {
   const t = useT();
   if (group === 'month') return <>{formatMonth(row.key)}</>;
   if (group === 'run') {
+    // These have no run page: they are a console call or a check of old leads.
+    if (row.runKind === 'dev_step') return <>{t('costs.run.dev', { id: row.key.slice(0, 8) })}</>;
+    if (row.runKind === 'trade_check') {
+      return <>{t('costs.run.tradeCheck', { id: row.key.slice(0, 8) })}</>;
+    }
     return (
       <Link to={`/leadgen/runs/${row.key}`}>{t('costs.run', { id: row.key.slice(0, 8) })}</Link>
     );

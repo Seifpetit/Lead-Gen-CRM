@@ -20,6 +20,7 @@ describe('loadEnv', () => {
       MAX_RUN_CAP_USD: 50,
       HOST: '127.0.0.1',
       DEV_ADMIN_LOGIN: false,
+      DEV_CONSOLE: false,
       CLASSIFIER_MODEL: 'claude-haiku-5-5',
       CLASSIFIER_RUN_CAP_USD: 0.5,
       STUCK_RUN_MINUTES: 20,
@@ -118,6 +119,26 @@ describe('DEV_ADMIN_LOGIN guards', () => {
     expect(loadDevAdminLogin({})).toBe(false);
     expect(() => loadDevAdminLogin({ DEV_ADMIN_LOGIN: 'true', NODE_ENV: 'production' })).toThrow(
       'NODE_ENV is production',
+    );
+  });
+});
+
+describe('DEV_CONSOLE guards', () => {
+  const dev = { ...valid, DEV_CONSOLE: 'true' };
+
+  it('is off by default and starts on a loopback host in development', () => {
+    expect(loadEnv(valid).DEV_CONSOLE).toBe(false);
+    expect(loadEnv(dev).DEV_CONSOLE).toBe(true);
+    expect(loadEnv({ ...dev, PUBLIC_URL: 'http://localhost:3000' }).DEV_CONSOLE).toBe(true);
+  });
+
+  it.each([
+    ['NODE_ENV is production', { NODE_ENV: 'production' }],
+    ['HOST is not a loopback address', { HOST: '0.0.0.0' }],
+    ['PUBLIC_URL is not a localhost URL', { PUBLIC_URL: 'https://app.example.com' }],
+  ])('refuses to start when %s', (message, extra) => {
+    expect(() => loadEnv({ ...dev, ...extra })).toThrow(
+      `DEV_CONSOLE=true is refused because ${message}`,
     );
   });
 });

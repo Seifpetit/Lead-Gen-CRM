@@ -4,7 +4,7 @@ import fp from 'fastify-plugin';
 import type { AuthConfig } from '@lead-gen-crm/shared';
 import { z } from 'zod';
 import type { UserId } from '../data/ids.js';
-import type { AuthService } from './service.js';
+import { isDevAdminEmail, type AuthService } from './service.js';
 
 export const SESSION_COOKIE = 'sid';
 
@@ -68,7 +68,10 @@ function clearSessionCookie(reply: FastifyReply): void {
   });
 }
 
-async function authPlugin(app: FastifyInstance, opts: { auth: AuthService }): Promise<void> {
+async function authPlugin(
+  app: FastifyInstance,
+  opts: { auth: AuthService; devConsole?: boolean },
+): Promise<void> {
   const { auth } = opts;
   await app.register(cookie);
   app.decorateRequest('user', null);
@@ -135,7 +138,11 @@ async function authPlugin(app: FastifyInstance, opts: { auth: AuthService }): Pr
     };
   });
 
-  app.get('/api/auth/me', async (request) => currentUser(request));
+  // devConsole says whether the page may show its "Dev console" button: only for the dev admin.
+  app.get('/api/auth/me', async (request) => {
+    const user = currentUser(request);
+    return { ...user, devConsole: Boolean(opts.devConsole) && isDevAdminEmail(user.email) };
+  });
 }
 
 export default fp(authPlugin, { name: 'auth' });

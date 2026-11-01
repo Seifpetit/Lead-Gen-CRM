@@ -78,3 +78,8 @@ export function useAuth(): AuthValue {
   if (!value) throw new Error('useAuth needs an <AuthProvider>');
   return value;
 }
+
+/** The sign-in state, or null where there is no <AuthProvider> (a component shown on its own). */
+export function useOptionalAuth(): AuthValue | null {
+  return useContext(AuthContext);
+}

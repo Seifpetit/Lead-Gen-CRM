@@ -4,6 +4,7 @@ import { countryRoutes } from './countries.js';
 import { crmRoutes } from './crm.js';
 import { costRoutes } from './costs.js';
 import { coverageRoutes } from './coverage.js';
+import { devConsoleRoutes } from './devConsole.js';
 import { exportRoutes } from './exports.js';
 import type { RouteDeps } from './deps.js';
 import { healthRoutes } from './health.js';
@@ -31,4 +32,6 @@ export async function registerRoutes(app: FastifyInstance, deps: RouteDeps): Pro
   await app.register(healthRoutes, deps);
   await app.register(exportRoutes, deps);
   await app.register(messageRoutes, deps);
+  if (deps.devConsole)
+    await app.register(devConsoleRoutes, { ...deps, devConsole: deps.devConsole });
 }

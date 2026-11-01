@@ -14,6 +14,7 @@ import {
   type DailyJumpConfig,
   type HealthFacts,
 } from './runner/healthView.js';
+import type { DevConsole } from './runner/devConsole.js';
 import type { Orchestrator } from './runner/orchestrator.js';
 import { Watchdog } from './runner/watchdog.js';
 
@@ -60,6 +61,8 @@ export async function buildApp(deps: {
   watchdog?: Watchdog;
   healthFacts?: HealthFacts;
   dailyJump?: DailyJumpConfig;
+  /** The developer console (DEV_CONSOLE); left out, its routes do not exist. */
+  devConsole?: DevConsole | null;
   logger?: FastifyServerOptions['logger'];
 }) {
   const app = Fastify({ logger: deps.logger ?? false, trustProxy: false });
@@ -104,7 +107,7 @@ export async function buildApp(deps: {
     return reply.code(status).send({ error: 'invalid_request' });
   });
 
-  await app.register(authPlugin, { auth: deps.auth });
+  await app.register(authPlugin, { auth: deps.auth, devConsole: Boolean(deps.devConsole) });
   await app.register(csrfPlugin);
   await registerRoutes(app, {
     db: deps.db,
@@ -118,6 +121,7 @@ export async function buildApp(deps: {
     watchdog: deps.watchdog ?? new Watchdog({ db: deps.db, changes: deps.runner.changes }),
     healthFacts: deps.healthFacts ?? DEFAULT_HEALTH_FACTS,
     dailyJump: deps.dailyJump ?? DEFAULT_DAILY_JUMP,
+    devConsole: deps.devConsole ?? null,
   });
   return app;
 }

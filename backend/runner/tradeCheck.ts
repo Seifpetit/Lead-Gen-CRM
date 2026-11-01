@@ -14,8 +14,8 @@ import type { CompanyClassifier, CompanyFacts } from '../stages/classifier.js';
 // classifier's tokens, which are capped. Companies the user has worked on are never touched.
 
 /** A deliberately high size of one classifier call, so the estimate is never too low. */
-const EST_INPUT_TOKENS = 450;
-const EST_OUTPUT_TOKENS = 120;
+export const EST_INPUT_TOKENS = 450;
+export const EST_OUTPUT_TOKENS = 120;
 
 const sqlList = (items: readonly string[]) => items.map((i) => `'${i}'`).join(', ');
 

@@ -1,9 +1,10 @@
 import { CountryFilter } from '../country/CountryFilter.js';
 import { Select } from '../../components/shared/Select.js';
 import type { Coverage, Lead, RunSummary } from '@lead-gen-crm/shared';
-import { Plus } from 'lucide-react';
+import { Plus, Terminal } from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useState, type CSSProperties } from 'react';
-import { useSearchParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
+import { useOptionalAuth } from '../auth/AuthContext.js';
 import { Splitter } from '../../components/shared/Splitter.js';
 import { useApi } from '../../api/context.js';
 import { SectionTitle } from '../../components/shared/SectionTitle.js';
@@ -53,6 +54,8 @@ export function DashboardPage() {
   const api = useApi();
   const toast = useToast();
   const regionSelect = useId();
+  // The Dev console button is for the dev admin while DEV_CONSOLE is on; nobody else sees it.
+  const devConsole = useOptionalAuth()?.user?.devConsole === true;
   // Starting a run changes what every section shows; bumping this makes them reload.
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = useCallback(() => setRefreshKey((n) => n + 1), []);
@@ -129,6 +132,12 @@ export function DashboardPage() {
         <header className="dp-header">
           <SectionTitle level={1}>{t('side.dashboard')}</SectionTitle>
           <div className="dp-header-controls">
+            {devConsole && (
+              <Link to="/dev/console" className="button button-icon-text">
+                <Terminal size={14} aria-hidden="true" />
+                {t('devc.open')}
+              </Link>
+            )}
             <CountryFilter />
             <label htmlFor={regionSelect} className="visually-hidden">
               {t('dash.region')}
