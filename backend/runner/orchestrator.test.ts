@@ -18,6 +18,7 @@ import { listSteps } from '../data/runSteps.js';
 import { listCellStats, listRegionStats } from '../data/saturation.js';
 import { makeUser, openTestDb, resetData } from '../data/testDb.js';
 import { setMonthlyCap } from '../data/userBudget.js';
+import { FakeCompanyClassifier } from '../test/fakeClassifiers.js';
 import type { Bounds, Outline } from '../lib/geo.js';
 import { FREIGHT_SECTORS } from '../config/sectors.js';
 import { AnthropicClassifier } from '../providers/anthropicClassifier.js';
@@ -73,6 +74,12 @@ function world(
       people: fake.people,
       emails: fake.emails,
       config: { cellsPerRun: 2, ...config },
+      // Sector words no longer qualify a place by themselves; the classifier says it trades.
+      ...('companyClassifier' in extra
+        ? {}
+        : {
+            companyClassifier: new FakeCompanyClassifier({}, { fallback: 'exporter', free: true }),
+          }),
       ...extra,
       ...more,
     });
@@ -112,8 +119,8 @@ describe('orchestrator: a full run', () => {
     const end = await drive(w.orchestrator, user, run.id);
     expect(end.status).toBe('finished');
 
-    // 2 cells x 2 textile wordings; the 2 places per cell are found by the first wording only.
-    expect(w.apify.startsFor(GOOGLE_MAPS_ACTOR)).toHaveLength(4);
+    // 2 cells x 3 textile wordings; the 2 places per cell are found by the first wording only.
+    expect(w.apify.startsFor(GOOGLE_MAPS_ACTOR)).toHaveLength(6);
     const companies = await listRunCompanies(db, user, run.id);
     expect(companies.filter((c) => c.isNew)).toHaveLength(4);
     expect(companies.filter((c) => c.state === 'scored')).toHaveLength(4);
@@ -666,7 +673,7 @@ describe('orchestrator: the Claude classifier', () => {
         content: [
           {
             type: 'text',
-            text: '{"verdict":"qualified","reasons":["makes goods"],"fields":["name"]}',
+            text: '{"tradeRole":"exporter","evidence":"makes goods","fields":["name"]}',
           },
         ],
         usage: { input_tokens: 500, output_tokens: 40 },
@@ -702,6 +709,12 @@ describe('orchestrator: the Claude classifier', () => {
     const evidence = await listEvidence(db, user, { companyId: companies[0]!.companyId });
     expect(evidence.find((e) => e.field === 'classifier_name')?.kind).toBe('estimate');
     expect(evidence.find((e) => e.field === 'classifier_verdict')?.value).toMatch(/^qualified:/);
+    // The company keeps the label the classifier gave it.
+    const label = await db.query<{ trade_role: string }>(
+      'SELECT trade_role FROM companies WHERE id = $1',
+      [companies[0]!.companyId],
+    );
+    expect(label.rows[0]!.trade_role).toBe('exporter');
   });
 
   it('stops calling the classifier once its spend cap for the run is reached', async () => {
@@ -727,7 +740,7 @@ describe('orchestrator: the Claude classifier', () => {
   });
 
   it('is not used at all when no classifier is configured', async () => {
-    const w = world({ undecided: true });
+    const w = world({ undecided: true }, {}, { companyClassifier: undefined as never });
     const run = await w.orchestrator.startRun(user, {
       regionId: 'sfax',
       sectorIds: TEXTILE,
@@ -773,9 +786,9 @@ describe('orchestrator: places outside the governorate', () => {
 
   it('drops places whose coordinates are outside the outline before they are stored, and counts them', async () => {
     const { run, companies } = await runWith((_cell, i) => (i === 0 ? INSIDE : OUTSIDE));
-    // The east cell has no area inside the outline, so it is not searched: 1 cell x 2 wordings
-    // x 2 places = 4 sightings; the second place of each is outside.
-    expect((await getRun(db, user, run.id))?.placesDroppedOutside).toBe(2);
+    // The east cell has no area inside the outline, so it is not searched: 1 cell x 3 wordings
+    // x 2 places = 6 sightings; the second place of each is outside.
+    expect((await getRun(db, user, run.id))?.placesDroppedOutside).toBe(3);
     expect(companies).toHaveLength(1);
     expect(companies.every((c) => c.state === 'scored')).toBe(true);
     const names = await db.query<{ n: number }>(

@@ -1,4 +1,4 @@
-import type { RoleClass } from '@lead-gen-crm/shared';
+import type { RoleClass, TradeRole } from '@lead-gen-crm/shared';
 import type { CostEntry } from '../lib/cost.js';
 
 // Pluggable classifiers (an LLM in production, a fake in tests). Stages call them only when
@@ -19,6 +19,8 @@ export interface Classification<V> {
   model: string;
   /** What the call cost; empty for a free or fake classifier. */
   costs: CostEntry[];
+  /** For company classifiers: what the company does in international trade. */
+  tradeRole?: TradeRole;
 }
 
 export type QualifyVerdict = 'qualified' | 'rejected' | 'review';
@@ -33,7 +35,26 @@ export interface CompanyFacts {
   /** The sector whose search found the place, when known: the first sector candidate. */
   querySectorId?: string | null;
   sourceUrl: string;
+  /**
+   * own_trade (default): does the company import or export? trades_with_partner: does it trade
+   * with `partnerCountry`?
+   */
+  mode?: 'own_trade' | 'trades_with_partner';
+  partnerCountry?: string;
 }
+
+/** The trade role a classifier gave, as the pipeline verdict: traders qualify, the rest do not. */
+export function verdictOfTradeRole(role: TradeRole): QualifyVerdict {
+  if (role === 'unclear') return 'review';
+  return TRADING.has(role) ? 'qualified' : 'rejected';
+}
+
+const TRADING: ReadonlySet<TradeRole> = new Set<TradeRole>([
+  'exporter',
+  'importer',
+  'both',
+  'trader',
+]);
 
 export interface CompanyClassifier {
   classifyCompany(facts: CompanyFacts): Promise<Classification<QualifyVerdict>>;

@@ -1,3 +1,4 @@
+import { QUERY_SET } from '../config/querySet.js';
 import type {
   RunProblem,
   ApifyEventView,
@@ -112,7 +113,7 @@ export async function recentlyEndedRunSummaries(
 ): Promise<RunSummary[]> {
   const { rows } = await db.query<{ id: string }>(
     `SELECT id FROM runs
-      WHERE user_id = $1 AND status NOT IN ('pending', 'running')
+      WHERE user_id = $1 AND kind = 'search' AND status NOT IN ('pending', 'running')
         AND finished_at IS NOT NULL AND finished_at >= $2::timestamptz - make_interval(mins => $3)
       ORDER BY finished_at DESC, id LIMIT $4`,
     [userId, now, minutes, limit],
@@ -138,7 +139,7 @@ export async function listRunSummaries(
   const status = filter.status && filter.status.length > 0 ? filter.status : null;
   const { rows } = await db.query<{ id: string; total: number }>(
     `SELECT id, count(*) OVER ()::integer AS total FROM runs
-      WHERE user_id = $1 AND ($4::text[] IS NULL OR status = ANY($4))
+      WHERE user_id = $1 AND kind = 'search' AND ($4::text[] IS NULL OR status = ANY($4))
       ORDER BY created_at DESC, id LIMIT $2 OFFSET $3`,
     [userId, page.limit, page.offset, status],
   );
@@ -147,7 +148,7 @@ export async function listRunSummaries(
     (
       await db.query<{ n: number }>(
         `SELECT count(*)::integer AS n FROM runs
-          WHERE user_id = $1 AND ($2::text[] IS NULL OR status = ANY($2))`,
+          WHERE user_id = $1 AND kind = 'search' AND ($2::text[] IS NULL OR status = ANY($2))`,
         [userId, status],
       )
     ).rows[0]!.n;
@@ -640,8 +641,8 @@ export async function regionQueryTotals(
     `SELECT rc.region_id, count(*)::integer AS q, COALESCE(sum(results_returned), 0)::integer AS p,
             COALESCE(sum(new_places_found), 0)::integer AS n
        FROM search_queries s JOIN region_cells rc ON rc.id = s.region_cell_id
-      WHERE s.user_id = $1 GROUP BY 1`,
-    [userId],
+      WHERE s.user_id = $1 AND s.query_set = $2 GROUP BY 1`,
+    [userId, QUERY_SET],
   );
   return new Map(rows.map((r) => [r.region_id, { queries: r.q, places: r.p, newPlaces: r.n }]));
 }

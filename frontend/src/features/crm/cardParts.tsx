@@ -45,6 +45,15 @@ export function ScoreBadge({ score }: { score: number }) {
   );
 }
 
+/** "Exportateur", "Importateur", "Les deux" or "Négociant"; nothing for the other labels. */
+export function TradeBadge({ role }: { role: CrmCard['company']['tradeRole'] }) {
+  const t = useT();
+  if (role !== 'exporter' && role !== 'importer' && role !== 'both' && role !== 'trader') {
+    return null;
+  }
+  return <span className="badge badge-trade">{t(`trade.role.${role}`)}</span>;
+}
+
 /** The domain of an email address ("amel@acme.example" shows "acme.example"). */
 export const emailDomain = (email: string): string => email.split('@').pop() ?? email;
 

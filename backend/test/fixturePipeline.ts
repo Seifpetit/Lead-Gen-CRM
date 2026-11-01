@@ -61,7 +61,9 @@ export async function runFixturePipeline(): Promise<FixturePipelineResult> {
   );
   const emails = new EmailFinderVerifier(client, clock);
   const companyClassifier = new FakeCompanyClassifier({
-    'Société Fixture Industries': 'qualified',
+    'Huilerie El Fixture': 'exporter',
+    'Textiles Fixture Sud SARL': 'both',
+    'Société Fixture Industries': 'trader',
   });
   const titleClassifier = new FakeTitleClassifier({ 'Directeur Commercial Export': null });
 

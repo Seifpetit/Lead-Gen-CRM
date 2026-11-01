@@ -19,7 +19,6 @@ import {
 } from './startrun/AdvancedSection.js';
 import { EstimateCard } from './startrun/EstimateCard.js';
 import { RegionChips } from './startrun/RegionChips.js';
-import { SectorChips } from './startrun/SectorChips.js';
 import { sectorLook } from '../crm/sectorLook.js';
 import {
   QUICK_CAPS_USD,
@@ -35,7 +34,6 @@ import {
   regionProgress,
   runsToStart,
   saveCap,
-  suggestedSectors,
 } from './startrun/startPlan.js';
 import type { StartPrefill } from './prefill.js';
 
@@ -71,8 +69,7 @@ export function StartRunWidget({
   // Opened from a sector: any number of regions, one run each.
   const [many, setMany] = useState(false);
   const [regionIds, setRegionIds] = useState<string[]>([]);
-  // null = untouched: the default for the region (the coverage prefill, else the suggested sector).
-  const [picked, setPicked] = useState<string[] | null>(null);
+  // A sector only arrives from the coverage page; otherwise every search combination is used.
   const [prefilledSectors, setPrefilledSectors] = useState<string[] | null>(null);
   const [cellKeys, setCellKeys] = useState<string[]>([]);
   const [capText, setCapText] = useState(() => formatCap(readCap()));
@@ -101,36 +98,22 @@ export function StartRunWidget({
     setRegionIds(prefill.regionIds ?? []);
     setRegion(prefill.regionId ?? '');
     setPrefilledSectors(prefill.sectorIds ?? null);
-    setPicked(null);
     setCellKeys(prefill.cellKeys ?? []);
     setConfirming(false);
   }, [prefill]);
 
-  // From the coverage page, the chosen sector is where the focus starts.
-  const focused = useRef(false);
-  useEffect(() => {
-    if (focused.current || !prefill?.sectorIds?.length || !coverage.data) return;
-    const chip = root.current?.querySelector<HTMLElement>(
-      `[data-chip-id="${prefill.sectorIds[0]}"]`,
-    );
-    if (chip) {
-      chip.focus();
-      focused.current = true;
-    }
-  }, [prefill, coverage.data]);
-
   const sectors = coverage.data?.sectors ?? [];
-  const suggested = useMemo(
-    () => (coverage.data && region ? suggestedSectors(coverage.data, region) : []),
-    [coverage.data, region],
+  // Empty = no sector named: the server searches every import/export combination.
+  const selected = useMemo(() => prefilledSectors ?? [], [prefilledSectors]);
+  const sectorBody = useMemo(
+    () => (selected.length > 0 ? { sectorIds: selected } : {}),
+    [selected],
   );
-  const selected = picked ?? prefilledSectors ?? suggested;
 
   const capIssue = capProblem(capText, maxCap);
   const cap = parseCap(capText, maxCap);
   const wordings = useMemo(() => parseWordings(wordingsText), [wordingsText]);
   const problem = wordingsProblem(wordings);
-  const planned = selected.length > 0 || wordings.length > 0;
   const targets = many ? regionIds : region ? [region] : [];
   const planKey = JSON.stringify([selected, wordings, cellKeys, targets]);
   const debouncedCap = useDebounced(cap, PREVIEW_DEBOUNCE_MS);
@@ -140,10 +123,7 @@ export function StartRunWidget({
     (r) => r.regionId === region,
   );
   const canPreview =
-    targets.length > 0 &&
-    (many || selectedRegion?.hasBounds !== false) &&
-    planned &&
-    problem === null;
+    targets.length > 0 && (many || selectedRegion?.hasBounds !== false) && problem === null;
   // One estimate per region that a start could begin, asked in the same way as for one region.
   // The first answer says how many runs can go at once, so no more are asked for than can start.
   const previews = useResource<RunPreview[]>(
@@ -157,7 +137,7 @@ export function StartRunWidget({
       const one = (regionId: string) =>
         api.runs.preview({
           regionId,
-          sectorIds: ids,
+          ...(ids.length > 0 ? { sectorIds: ids } : {}),
           ...(words.length > 0 ? { customWordings: words } : {}),
           ...(cells.length > 0 ? { cellKeys: cells } : {}),
           ...(debouncedCap !== null ? { budgetCapUsd: debouncedCap } : {}),
@@ -184,7 +164,6 @@ export function StartRunWidget({
   let reason: string | null = null;
   if (targets.length === 0) reason = t(many ? 'start.reason.regions' : 'start.reason.region');
   else if (!many && selectedRegion && !selectedRegion.hasBounds) reason = t('start.noBounds');
-  else if (!planned) reason = t('start.reason.sector');
   else if (problem !== null) reason = t('start.reason.wordings');
   else if (cap === null) reason = capMessage(capIssue ?? 'invalid');
   else if (estimating) reason = t('start.reason.estimating');
@@ -234,7 +213,7 @@ export function StartRunWidget({
         started.push(
           await api.runs.start({
             regionId: target,
-            sectorIds: selected,
+            ...sectorBody,
             ...(wordings.length > 0 ? { customWordings: wordings } : {}),
             ...(cellKeys.length > 0 ? { cellKeys } : {}),
             budgetCapUsd: cap,
@@ -319,7 +298,6 @@ export function StartRunWidget({
                   ]}
                   onChange={(v) => {
                     setRegion(v);
-                    setPicked(null);
                     setPrefilledSectors(null);
                     setCellKeys([]);
                     setConfirming(false);
@@ -333,8 +311,6 @@ export function StartRunWidget({
 
             {coverage.error !== null && !coverage.data ? (
               <ErrorState error={coverage.error} onRetry={coverage.reload} />
-            ) : sectors.length === 0 ? (
-              <p className="muted">{t('plan.sectors.loading')}</p>
             ) : many ? (
               // From a sector: that sector is fixed, and only the regions can be many.
               <div className="form-field sr-fixed-sector">
@@ -352,15 +328,15 @@ export function StartRunWidget({
                 </ul>
                 <small className="muted">{t('start.sector.fixed.help')}</small>
               </div>
+            ) : selected.length > 0 ? (
+              // From the coverage page: that one sector, shown, not chosen here.
+              <p className="muted sr-all-sectors">
+                {t('start.sector.one', {
+                  sector: sectors.find((x) => x.id === selected[0])?.name ?? selected[0]!,
+                })}
+              </p>
             ) : (
-              <SectorChips
-                sectors={sectors}
-                selected={selected}
-                onChange={(ids) => {
-                  setPicked(ids);
-                  setConfirming(false);
-                }}
-              />
+              <p className="muted sr-all-sectors">{t('start.sector.all')}</p>
             )}
 
             <div className="form-field sr-cap">
@@ -425,7 +401,6 @@ export function StartRunWidget({
                     onClick={() => {
                       setMany(false);
                       setRegion(sugg.regionId!);
-                      setPicked(null);
                       setPrefilledSectors(null);
                       setCellKeys([]);
                     }}

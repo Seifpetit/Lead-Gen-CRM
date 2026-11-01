@@ -2,6 +2,8 @@
 // Every amount is in USD. Anything computed from assumptions is labelled an estimate.
 import type {
   BoardStageKey,
+  TradeFilter,
+  TradeRole,
   CrmPipeline,
   CrmStage,
   Lead,
@@ -516,6 +518,8 @@ export interface CrmCard {
     id: string;
     name: string;
     sector: string | null;
+    /** Null: not checked for import/export. */
+    tradeRole: TradeRole | null;
     website: string | null;
     phone: string | null;
     email: string | null;
@@ -577,6 +581,8 @@ export interface BoardFilters {
   runId?: string | undefined;
   /** Only companies in this region (and their people). */
   regionId?: string | undefined;
+  /** Import/export: yes, not yet checked, no. Several allowed; left out means yes + not checked. */
+  trade?: readonly TradeFilter[] | undefined;
   sort?: BoardSort | undefined;
   /** Defaults per sort: newest, score and days run newest/highest/longest first; the rest A to Z. */
   dir?: SortDirection | undefined;
@@ -781,4 +787,41 @@ export interface HealthView {
   /** The notices shown across the app: a provider down or a key problem. Empty when all is well. */
   notices: { id: string; message: string }[];
   checkedAt: string;
+}
+
+// ---------------------------------------------------------------------------------------
+// Import/export check of old leads
+
+/** What a check of old leads would do, before the user confirms it. */
+export interface TradeCheckPreview {
+  /** Companies on the Found column never checked for import/export, not yet worked on. */
+  unchecked: number;
+  /** How many of them this check would actually send to the classifier (the cap may cut it short). */
+  willCheck: number;
+  /** A deliberately high estimate of the cost for `willCheck` companies; Apify costs nothing. */
+  estimatedCostUsd: number;
+  /** The most one check may spend. */
+  capUsd: number;
+  /** False when no classifier key is set: there is nothing to check with. */
+  classifierConfigured: boolean;
+}
+
+export type TradeCheckState = 'idle' | 'running' | 'finished' | 'stopped' | 'capped' | 'failed';
+
+export interface TradeCheckStatus {
+  state: TradeCheckState;
+  /** Companies this check set out to look at. */
+  total: number;
+  /** Companies looked at so far. */
+  done: number;
+  /** Found to import or export (kept where they are). */
+  yes: number;
+  /** Not import/export, or a competitor: moved to Noise (restorable). */
+  noise: number;
+  /** The classifier could not tell; left as they were. */
+  unclear: number;
+  spentUsd: number;
+  capUsd: number;
+  /** A plain sentence when the check ended early. */
+  message: string | null;
 }

@@ -1,4 +1,4 @@
-import type { EvidenceKind } from '@lead-gen-crm/shared';
+import type { EvidenceKind, TradeRole } from '@lead-gen-crm/shared';
 import { CARRIER_KEYWORDS, FREIGHT_SECTORS } from '../config/sectors.js';
 import type { CostEntry } from '../lib/cost.js';
 import type { DiscoveredPlace } from '../providers/types.js';
@@ -12,8 +12,10 @@ import { findPhrase, padded } from './text.js';
 
 export interface Qualification {
   verdict: QualifyVerdict;
-  /** The freight sector the company was matched to, when known. */
+  /** The sector the company was matched to, when known. */
   sectorId: string | null;
+  /** What the company does in international trade, when something decided it. */
+  tradeRole: TradeRole | null;
   method: 'rules' | 'classifier' | 'none';
   /** Rule verdicts are facts about the sourced name and category; classifier verdicts aren't. */
   kind: EvidenceKind;
@@ -58,6 +60,34 @@ const NON_SHIPPER_WORDS = [
   'station service',
 ];
 
+// A name or Google category that says outright what the company does in foreign trade.
+const TRADE_NAME_WORDS: { role: TradeRole; words: readonly string[] }[] = [
+  {
+    role: 'both',
+    words: ['import export', 'import-export', 'importexport', 'import/export', 'import et export'],
+  },
+  {
+    role: 'exporter',
+    words: ['exportateur', 'exportatrice', 'exporter', 'exportations', 'مصدر', 'تصدير'],
+  },
+  {
+    role: 'importer',
+    words: ['importateur', 'importatrice', 'importer', 'importations', 'مستورد', 'توريد'],
+  },
+  {
+    role: 'trader',
+    words: ['negoce', 'commerce international', 'international trading', 'trading'],
+  },
+];
+
+const tradeRoleByWords = (text: string): { role: TradeRole; word: string } | null => {
+  for (const { role, words } of TRADE_NAME_WORDS) {
+    const word = findPhrase(text, words);
+    if (word) return { role, word };
+  }
+  return null;
+};
+
 const evidenceOf = (place: DiscoveredPlace): ClassifierEvidence[] => [
   { field: 'name', value: place.name.value, sourceUrl: place.name.sourceUrl },
   ...(place.category
@@ -86,7 +116,13 @@ export function qualifyByRules(
   const evidence = evidenceOf(place);
   const base = { method: 'rules' as const, kind: 'fact' as const, evidence, costs: [] };
   if (place.businessStatus === 'CLOSED_PERMANENTLY') {
-    return { ...base, verdict: 'rejected', sectorId: null, reasons: ['permanently closed'] };
+    return {
+      ...base,
+      verdict: 'rejected',
+      sectorId: null,
+      tradeRole: null,
+      reasons: ['permanently closed'],
+    };
   }
   const nameAndCategory = padded(`${place.name.value} ${place.category?.value ?? ''}`);
   const withTypes = padded(
@@ -98,6 +134,7 @@ export function qualifyByRules(
       ...base,
       verdict: 'rejected',
       sectorId: null,
+      tradeRole: 'competitor_or_partner',
       reasons: [`looks like a freight carrier or forwarder ("${carrier}"), a competitor`],
     };
   }
@@ -107,23 +144,34 @@ export function qualifyByRules(
       ...base,
       verdict: 'rejected',
       sectorId: null,
-      reasons: [`not a freight buyer ("${nonShipper}")`],
+      tradeRole: 'not_import_export',
+      reasons: [`not an import/export business ("${nonShipper}")`],
     };
   }
-  return matchSector(place, querySectorId, base);
+  // A sector keyword alone proves nothing about foreign trade: it only labels the sector.
+  // The name or category must say the trade outright for the rules to qualify a place.
+  const trade = tradeRoleByWords(nameAndCategory);
+  if (!trade) return null;
+  const sector = matchSector(place, querySectorId);
+  return {
+    ...base,
+    verdict: 'qualified',
+    sectorId: sector?.id ?? querySectorId,
+    tradeRole: trade.role,
+    reasons: [`name or category says ${trade.role} ("${trade.word}")`],
+  };
 }
 
 /**
- * When the name matches the keywords of two sectors ("Poulina Textile Food"), the category
- * field decides: it is Google's own label for what the place is, where a name can be anything.
- * Order of preference: a sector the category matches, then the sector of the query that found
- * the place, then the config order.
+ * The sector of a place, for labels and filters only. When the name matches the keywords of
+ * two sectors ("Poulina Textile Food"), the category field decides: it is Google's own label
+ * for what the place is. Order of preference: a sector the category matches, then the sector of
+ * the query that found the place, then the config order.
  */
 function matchSector(
   place: DiscoveredPlace,
   querySectorId: string | null,
-  base: { method: 'rules'; kind: 'fact'; evidence: ClassifierEvidence[]; costs: never[] },
-): Qualification | null {
+): { id: string; name: string } | null {
   const inName = padded(place.name.value);
   const inCategory = padded(place.category?.value ?? '');
   const matches = FREIGHT_SECTORS.map((sector, order) => ({
@@ -136,31 +184,18 @@ function matchSector(
   const rank = (m: (typeof matches)[number]) => [
     Number(!m.byCategory),
     Number(m.sector.id !== querySectorId),
-    m.order,
+    // The general import/export sector only wins when no product sector matches.
+    m.sector.id === 'import-export' ? Infinity : m.order,
   ];
   matches.sort((a, b) => {
     const [ra, rb] = [rank(a), rank(b)];
     return ra[0]! - rb[0]! || ra[1]! - rb[1]! || ra[2]! - rb[2]!;
   });
-  const [best, ...others] = matches;
-  const word = best!.byCategory ?? best!.byName!;
-  const where = best!.byCategory ? 'category' : 'name';
-  const conflict =
-    others.length > 0
-      ? `; also matched ${others.map((o) => o.sector.name).join(', ')}, ${
-          best!.byCategory ? 'but the category decides' : 'kept by the query sector or config order'
-        }`
-      : '';
-  return {
-    ...base,
-    verdict: 'qualified',
-    sectorId: best!.sector.id,
-    reasons: [`${where} matches ${best!.sector.name} ("${word}")${conflict}`],
-  };
+  return matches[0]!.sector;
 }
 
 /**
- * Rules first (closed, carrier, non-shipper, sector keyword); the classifier decides the
+ * Rules first (closed, carrier, non-shipper, a trade word in the name); the classifier decides the
  * rest. With no classifier, undecided places go to manual review rather than being guessed.
  */
 export async function qualify(
@@ -170,14 +205,19 @@ export async function qualify(
     classifier?: CompanyClassifier;
     /** Why a classifier that exists was not used (for example its spend cap); shown as the reason. */
     classifierSkipped?: string;
+    mode?: 'own_trade' | 'trades_with_partner';
+    partnerCountry?: string;
   } = {},
 ): Promise<Qualification> {
   const byRules = qualifyByRules(place, options.querySectorId ?? null);
   if (byRules) return byRules;
+  const guessedSector =
+    matchSector(place, options.querySectorId ?? null)?.id ?? options.querySectorId ?? null;
   if (!options.classifier) {
     return {
       verdict: 'review',
-      sectorId: options.querySectorId ?? null,
+      sectorId: guessedSector,
+      tradeRole: null,
       method: 'none',
       kind: 'estimate',
       reasons: [options.classifierSkipped ?? 'no rule matched and no classifier configured'],
@@ -193,11 +233,14 @@ export async function qualify(
     address: place.address?.value ?? null,
     querySectorId: options.querySectorId ?? null,
     sourceUrl: place.name.sourceUrl,
+    ...(options.mode ? { mode: options.mode } : {}),
+    ...(options.partnerCountry ? { partnerCountry: options.partnerCountry } : {}),
   };
   const c = await options.classifier.classifyCompany(facts);
   return {
     verdict: c.verdict,
-    sectorId: options.querySectorId ?? null,
+    sectorId: guessedSector,
+    tradeRole: c.tradeRole ?? null,
     method: 'classifier',
     kind: 'estimate',
     reasons: c.reasons.map((r) => `${c.model}: ${r}`),

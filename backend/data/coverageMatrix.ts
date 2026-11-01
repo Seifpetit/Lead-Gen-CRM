@@ -1,3 +1,4 @@
+import { QUERY_SET } from '../config/querySet.js';
 import type { Queryable } from './db.js';
 import type { UserId } from './ids.js';
 
@@ -28,8 +29,8 @@ export async function queryTotalsByRegionSector(
             COALESCE(sum(q.new_places_found), 0)::integer AS new_places,
             max(q.created_at) AS last_at
        FROM search_queries q JOIN region_cells rc ON rc.id = q.region_cell_id
-      WHERE q.user_id = $1 GROUP BY 1, 2`,
-    [userId],
+      WHERE q.user_id = $1 AND q.query_set = $2 GROUP BY 1, 2`,
+    [userId, QUERY_SET],
   );
   return rows.map((r) => ({
     regionId: r.region_id,

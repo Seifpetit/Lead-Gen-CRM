@@ -1,3 +1,4 @@
+import { QUERY_SET } from '../config/querySet.js';
 import type { Bounds } from '../lib/geo.js';
 import type { Queryable } from './db.js';
 import type { UserId } from './ids.js';
@@ -109,11 +110,11 @@ export async function listCellStats(
             (SELECT count(*)::integer FROM crm_leads cl JOIN companies co ON co.id = cl.company_id
               WHERE cl.user_id = $1 AND co.region_cell_id = rc.id) AS leads,
             (SELECT count(*)::integer FROM search_queries q
-              WHERE q.user_id = $1 AND q.region_cell_id = rc.id) AS queries,
+              WHERE q.user_id = $1 AND q.query_set = $3 AND q.region_cell_id = rc.id) AS queries,
             COALESCE((SELECT sum(results_returned)::integer FROM search_queries q
-              WHERE q.user_id = $1 AND q.region_cell_id = rc.id), 0) AS places,
+              WHERE q.user_id = $1 AND q.query_set = $3 AND q.region_cell_id = rc.id), 0) AS places,
             COALESCE((SELECT sum(new_places_found)::integer FROM search_queries q
-              WHERE q.user_id = $1 AND q.region_cell_id = rc.id), 0) AS new_places,
+              WHERE q.user_id = $1 AND q.query_set = $3 AND q.region_cell_id = rc.id), 0) AS new_places,
             cov.last_run_at, cov.exhausted_at,
             (SELECT run_id FROM cell_claims k
               WHERE k.user_id = $1 AND k.region_cell_id = rc.id AND k.expires_at >= now()) AS claimed_by
@@ -122,7 +123,7 @@ export async function listCellStats(
       WHERE rc.region_id = $2
         AND NOT EXISTS (SELECT 1 FROM region_cells k WHERE k.parent_cell_id = rc.id)
       ORDER BY rc.cell_key`,
-    [userId, regionId],
+    [userId, regionId, QUERY_SET],
   );
   return rows.map((r) => ({
     regionCellId: r.id,
@@ -180,18 +181,18 @@ export async function listRegionStats(db: Queryable, userId: UserId): Promise<Re
               WHERE c.user_id = $1 AND rc.region_id = g.id AND c.exhausted_at IS NOT NULL) AS cells_exhausted,
             (SELECT count(DISTINCT q.region_cell_id)::integer FROM search_queries q
                JOIN region_cells rc ON rc.id = q.region_cell_id
-              WHERE q.user_id = $1 AND rc.region_id = g.id) AS cells_searched,
+              WHERE q.user_id = $1 AND q.query_set = $2 AND rc.region_id = g.id) AS cells_searched,
             s.mode, s.saturated_at,
             COALESCE((SELECT sum(l.amount_usd) FROM cost_ledger l JOIN runs r ON r.id = l.run_id
                        WHERE l.user_id = $1 AND r.region_id = g.id), 0) AS spend,
             (SELECT count(*)::integer FROM crm_leads cl JOIN runs r ON r.id = cl.run_id
               WHERE cl.user_id = $1 AND r.region_id = g.id) AS leads,
-            (SELECT count(*)::integer FROM runs r WHERE r.user_id = $1 AND r.region_id = g.id) AS runs,
-            (SELECT max(r.created_at) FROM runs r WHERE r.user_id = $1 AND r.region_id = g.id) AS last_run_at
+            (SELECT count(*)::integer FROM runs r WHERE r.user_id = $1 AND r.kind = 'search' AND r.region_id = g.id) AS runs,
+            (SELECT max(r.created_at) FROM runs r WHERE r.user_id = $1 AND r.kind = 'search' AND r.region_id = g.id) AS last_run_at
        FROM regions g
        LEFT JOIN region_status s ON s.region_id = g.id AND s.user_id = $1
       ORDER BY g.id`,
-    [userId],
+    [userId, QUERY_SET],
   );
   return rows.map((r) => ({
     regionId: r.id,

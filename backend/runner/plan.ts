@@ -1,5 +1,5 @@
 import type { PlannedQuery, SectorInfo } from '@lead-gen-crm/shared';
-import { FREIGHT_SECTORS } from '../config/sectors.js';
+import { ACTIVE_SECTORS } from '../config/sectors.js';
 import { cellOverlap, MIN_CELL_OVERLAP, type Bounds, type Outline } from '../lib/geo.js';
 import type { DiscoveryQuery } from '../providers/types.js';
 
@@ -27,7 +27,7 @@ export const plannedQuery = (q: DiscoveryQuery): PlannedQuery => ({
 
 /** Every sector with the French wordings the grid searches for it. */
 export function sectorList(): SectorInfo[] {
-  return FREIGHT_SECTORS.map((s) => ({
+  return ACTIVE_SECTORS.map((s) => ({
     id: s.id,
     name: s.name,
     wordings: [...s.searchTermsFr],

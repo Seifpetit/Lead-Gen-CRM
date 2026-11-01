@@ -1,3 +1,4 @@
+import { QUERY_SET } from '../config/querySet.js';
 import type { Queryable } from './db.js';
 import type { UserId } from './ids.js';
 import { normalizeQuery } from './normalize.js';
@@ -84,8 +85,8 @@ export async function recordSearchQuery(
   const { rows } = await db.query<Row>(
     `INSERT INTO search_queries (user_id, run_id, run_step_id, region_cell_id, provider, query_text,
        normalized_query, sector_id, requests_used, results_returned, new_places_found, cost_usd,
-       created_at)
-     SELECT $1, r.id, $3, $4, $5, $6, $7, $13, $8, $9, $10, $11, COALESCE($12, now())
+       created_at, query_set)
+     SELECT $1, r.id, $3, $4, $5, $6, $7, $13, $8, $9, $10, $11, COALESCE($12, now()), $14
        FROM runs r WHERE r.user_id = $1 AND r.id = $2
      RETURNING *`,
     [
@@ -102,6 +103,7 @@ export async function recordSearchQuery(
       input.costUsd,
       input.at ?? null,
       input.sectorId ?? null,
+      QUERY_SET,
     ],
   );
   return rows[0] ? toQuery(rows[0]) : null;
@@ -133,10 +135,10 @@ export async function queryYieldForCell(
             (array_agg(new_places_found ORDER BY created_at DESC, id DESC))[1] AS last_new_places_found,
             max(created_at) AS last_run_at
        FROM search_queries
-      WHERE user_id = $1 AND region_cell_id = $2
+      WHERE user_id = $1 AND region_cell_id = $2 AND query_set = $3
       GROUP BY provider, normalized_query
       ORDER BY provider, normalized_query`,
-    [userId, regionCellId],
+    [userId, regionCellId, QUERY_SET],
   );
   return rows.map((r) => ({
     provider: r.provider,

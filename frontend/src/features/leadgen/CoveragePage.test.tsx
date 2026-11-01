@@ -181,13 +181,10 @@ describe('Coverage page', () => {
     await user.click(await screen.findByRole('button', { name: 'Start a run in Sfax' }));
     const dialog = await screen.findByRole('dialog', { name: 'Start a run' });
     await waitFor(() => expect(within(dialog).getByLabelText('Region')).toHaveTextContent('Sfax'));
-    // The sector chips are there to choose from; one region, so no region chips.
-    expect(within(dialog).getByRole('group', { name: 'Sectors to search' })).toBeVisible();
+    // No sector chips any more (every sector is searched); one region, so no region chips.
+    expect(within(dialog).queryByRole('group', { name: 'Sectors to search' })).toBeNull();
     expect(within(dialog).queryByRole('group', { name: 'Regions to search' })).toBeNull();
-    expect(within(dialog).getByRole('button', { name: 'Agri-food' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
+    expect(within(dialog).queryByRole('button', { name: 'Agri-food' })).toBeNull();
     await waitFor(() =>
       expect(server.to('POST /api/runs/preview').at(-1)!.body).toMatchObject({
         regionId: 'sfax',

@@ -30,23 +30,34 @@ const place = (name: string, category: string | null, extra: Partial<DiscoveredP
     ...extra,
   }) satisfies DiscoveredPlace;
 
-describe('qualify', () => {
+describe('qualify by rules', () => {
   it.each([
-    ['Huilerie El Fixture', 'Huilerie', 'qualified', 'olive-oil'],
-    ['Textiles Fixture Sud', 'Usine textile', 'qualified', 'textile'],
-    ['Cartonnerie du Sud', null, 'qualified', 'plastics-packaging'],
-    ['Société Générale de Conserves', 'Conserverie', 'qualified', 'agri-food'],
-    ['Transports Ben Fixture', 'Entreprise de transport', 'rejected', null],
-    ['Trans-Fixture', 'Transitaire', 'rejected', null],
-    ['Café des Délices', 'Café', 'rejected', null],
-    ['Pharmacie Centrale', 'Pharmacie', 'rejected', null],
-  ])('%s (%s) -> %s by rules', (name, category, verdict, sectorId) => {
+    ['Transports Ben Fixture', 'Entreprise de transport', 'rejected', 'competitor_or_partner'],
+    ['Trans-Fixture', 'Transitaire', 'rejected', 'competitor_or_partner'],
+    ['Café des Délices', 'Café', 'rejected', 'not_import_export'],
+    ['Pharmacie Centrale', 'Pharmacie', 'rejected', 'not_import_export'],
+    ['Sfax Import Export SARL', 'Société commerciale', 'qualified', 'both'],
+    ['Olivia Exportateur', 'Exportateur', 'qualified', 'exporter'],
+    ['Tunis Importateur de thé', null, 'qualified', 'importer'],
+    ['Maghreb Commerce International', 'Commerce', 'qualified', 'trader'],
+  ])('%s (%s) -> %s, %s', (name, category, verdict, tradeRole) => {
     expect(qualifyByRules(place(name, category))).toMatchObject({
       verdict,
-      sectorId,
+      tradeRole,
       method: 'rules',
       kind: 'fact',
     });
+  });
+
+  it('does not decide on a sector word alone: an oil mill may sell only at home', () => {
+    for (const [name, category] of [
+      ['Huilerie El Fixture', 'Huilerie'],
+      ['Textiles Fixture Sud', 'Usine textile'],
+      ['Cartonnerie du Sud', null],
+      ['Société Générale de Conserves', 'Conserverie'],
+    ] as const) {
+      expect(qualifyByRules(place(name, category))).toBeNull();
+    }
   });
 
   it('rejects a permanently closed place', () => {
@@ -57,64 +68,18 @@ describe('qualify', () => {
   });
 
   it('cites the sourced values it used', () => {
-    const q = qualifyByRules(place('Huilerie El Fixture', 'Huilerie'))!;
+    const q = qualifyByRules(place('Olivia Exportateur', 'Exportateur'))!;
     expect(q.evidence).toEqual([
-      { field: 'name', value: 'Huilerie El Fixture', sourceUrl: src },
-      { field: 'category', value: 'Huilerie', sourceUrl: src },
+      { field: 'name', value: 'Olivia Exportateur', sourceUrl: src },
+      { field: 'category', value: 'Exportateur', sourceUrl: src },
     ]);
   });
 
   it('prefers the sector of the query that found the place', () => {
     // "export" matches import-export and "huile" matches olive-oil.
-    const p = place("Huile d'olive Export Fixture", null);
+    const p = place("Huile d'olive Exportateur Fixture", null);
     expect(qualifyByRules(p)!.sectorId).toBe('olive-oil');
     expect(qualifyByRules(p, 'import-export')!.sectorId).toBe('import-export');
-  });
-
-  it('asks the classifier only when rules do not decide, as an estimate', async () => {
-    const classifier = new FakeCompanyClassifier({ 'Société Fixture Industries': 'qualified' });
-    const decided = await qualify(place('Huilerie El Fixture', 'Huilerie'), { classifier });
-    expect(decided.method).toBe('rules');
-    expect(classifier.calls).toEqual([]);
-
-    const q = await qualify(place('Société Fixture Industries', 'Entreprise'), {
-      classifier,
-      querySectorId: 'chemicals',
-    });
-    expect(q).toMatchObject({
-      verdict: 'qualified',
-      method: 'classifier',
-      kind: 'estimate',
-      sectorId: 'chemicals',
-      reasons: ['fake-classifier: fake verdict for Société Fixture Industries'],
-    });
-    expect(q.costs).toHaveLength(1);
-    expect(classifier.calls[0]).toMatchObject({
-      name: 'Société Fixture Industries',
-      category: 'Entreprise',
-    });
-  });
-
-  it('sends undecided places to review when no classifier is configured', async () => {
-    expect(await qualify(place('Société Fixture Industries', 'Entreprise'))).toMatchObject({
-      verdict: 'review',
-      method: 'none',
-    });
-  });
-});
-
-describe('import and export sector', () => {
-  it('qualifies an importer or exporter', () => {
-    for (const [name, category] of [
-      ['Sfax Import Export SARL', 'Société commerciale'],
-      ['Olivia Exportateur', 'Exportateur'],
-      ['Maghreb Commerce International', 'Commerce'],
-    ] as const) {
-      expect(qualifyByRules(place(name, category))).toMatchObject({
-        verdict: 'qualified',
-        sectorId: 'import-export',
-      });
-    }
   });
 
   it('rejects forwarders (transitaires) as competitors, even with import-export words in the name', () => {
@@ -125,28 +90,104 @@ describe('import and export sector', () => {
     ] as const) {
       expect(qualifyByRules(place(name, category))).toMatchObject({
         verdict: 'rejected',
+        tradeRole: 'competitor_or_partner',
         reasons: [expect.stringContaining('freight carrier or forwarder')],
       });
     }
   });
 });
 
+describe('qualify with the classifier', () => {
+  const classifier = () =>
+    new FakeCompanyClassifier({
+      'Société Fixture Industries': 'exporter',
+      'Usine Offshore Fixture': 'exporter',
+      'Epicerie du Coin': 'not_import_export',
+      'Agence Maritime Fixture': 'competitor_or_partner',
+      'Mystère SARL': 'unclear',
+      'Acheteur Fixture': 'importer',
+    });
+
+  it('asks only when rules do not decide, and labels the answer as an estimate', async () => {
+    const c = classifier();
+    const decided = await qualify(place('Olivia Exportateur', 'Exportateur'), { classifier: c });
+    expect(decided.method).toBe('rules');
+    expect(c.calls).toEqual([]);
+
+    const q = await qualify(place('Société Fixture Industries', 'Entreprise'), {
+      classifier: c,
+      querySectorId: 'chemicals',
+    });
+    expect(q).toMatchObject({
+      verdict: 'qualified',
+      tradeRole: 'exporter',
+      method: 'classifier',
+      kind: 'estimate',
+      sectorId: 'chemicals',
+      reasons: ['fake-classifier: fake verdict for Société Fixture Industries'],
+    });
+    expect(q.costs).toHaveLength(1);
+    expect(c.calls[0]).toMatchObject({
+      name: 'Société Fixture Industries',
+      category: 'Entreprise',
+    });
+  });
+
+  it.each([
+    ['an offshore factory', 'Usine Offshore Fixture', 'qualified', 'exporter'],
+    ['a buyer of foreign goods', 'Acheteur Fixture', 'qualified', 'importer'],
+    ['a local shop', 'Epicerie du Coin', 'rejected', 'not_import_export'],
+    ['a shipping agent', 'Agence Maritime Fixture', 'rejected', 'competitor_or_partner'],
+    ['a listing with too little to go on', 'Mystère SARL', 'review', 'unclear'],
+  ])('maps %s to a pipeline verdict', async (_what, name, verdict, tradeRole) => {
+    expect(await qualify(place(name, null), { classifier: classifier() })).toMatchObject({
+      verdict,
+      tradeRole,
+    });
+  });
+
+  it('tells the classifier which question to ask for the country mode', async () => {
+    const c = classifier();
+    await qualify(place('Société Fixture Industries', null), { classifier: c });
+    await qualify(place('Acheteur Fixture', null), {
+      classifier: c,
+      mode: 'trades_with_partner',
+      partnerCountry: 'TN',
+    });
+    expect(c.calls[0]?.mode).toBeUndefined();
+    expect(c.calls[1]).toMatchObject({ mode: 'trades_with_partner', partnerCountry: 'TN' });
+  });
+
+  it('sends undecided places to review when no classifier is configured', async () => {
+    expect(await qualify(place('Société Fixture Industries', 'Entreprise'))).toMatchObject({
+      verdict: 'review',
+      method: 'none',
+      tradeRole: null,
+    });
+  });
+
+  it('keeps the sector the name suggests when the classifier decides', async () => {
+    const q = await qualify(place('Textiles Fixture Sud', 'Usine textile'), {
+      classifier: new FakeCompanyClassifier({ 'Textiles Fixture Sud': 'both' }),
+    });
+    expect(q).toMatchObject({ verdict: 'qualified', tradeRole: 'both', sectorId: 'textile' });
+  });
+});
+
 describe('a name that matches two sectors', () => {
-  it('prefers the sector the category field matches, over the query sector and the config order', () => {
+  it('prefers the sector the category field matches, over the query sector and the config order', async () => {
     // "textile" and "huilerie" are both in the name; Google files the place as an oil mill.
-    const p = place('Textile Huilerie Fixture', 'Huilerie');
+    const p = place('Textile Huilerie Exportateur', 'Huilerie');
     for (const querySector of [null, 'textile', 'olive-oil']) {
       expect(qualifyByRules(p, querySector)).toMatchObject({
         verdict: 'qualified',
         sectorId: 'olive-oil',
       });
     }
-    const q = qualifyByRules(p, 'textile');
-    expect(q?.reasons.join(' ')).toContain('also matched');
   });
 
   it('falls back to the query sector when the category settles nothing', () => {
-    const p = place('Textile Huilerie Fixture', 'Société');
+    const p = place('Textile Huilerie Exportateur', 'Société');
     expect(qualifyByRules(p, 'olive-oil')).toMatchObject({ sectorId: 'olive-oil' });
     expect(qualifyByRules(p, 'textile')).toMatchObject({ sectorId: 'textile' });
   });

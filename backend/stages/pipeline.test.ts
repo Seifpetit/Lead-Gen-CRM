@@ -13,10 +13,10 @@ const leadsFor = (company: string) =>
   result.leads.filter((l) => l.candidate.company.name.value === company);
 
 describe('fixture pipeline: qualify, people, emails, lead candidates, score', () => {
-  it('qualifies shippers and rejects carriers, restaurants and closed places', () => {
+  it('qualifies importers and exporters and rejects carriers, restaurants and closed places', () => {
     expect(result.qualifications.map(({ name, q }) => [name, q.verdict, q.method])).toEqual([
-      ['Huilerie El Fixture', 'qualified', 'rules'],
-      ['Textiles Fixture Sud SARL', 'qualified', 'rules'],
+      ['Huilerie El Fixture', 'qualified', 'classifier'],
+      ['Textiles Fixture Sud SARL', 'qualified', 'classifier'],
       ['Trans-Fixture Logistique', 'rejected', 'rules'],
       ['Restaurant Le Fixture', 'rejected', 'rules'],
       ['Société Fixture Industries', 'qualified', 'classifier'],
@@ -31,13 +31,14 @@ describe('fixture pipeline: qualify, people, emails, lead candidates, score', ()
     ).toEqual([
       ['Salma Fixture', 'verified'],
       ['Karim Testeur', 'catch_all'],
+      // "Directeur Commercial Export" runs the foreign sales, so he is a decision-maker now.
+      ['Mehdi Commercial', 'listed'],
     ]);
     const skipped = Object.fromEntries(leads[0]!.candidate.skipped.map((s) => [s.name, s.reason]));
     expect(skipped['Nabil Ancien']).toBe(
       'not current at the company: position at this company ended 2024-06',
     );
     expect(skipped['Ines Assistante']).toMatch(/not a decision-maker/);
-    expect(skipped['Mehdi Commercial']).toMatch(/not a decision-maker/);
   });
 
   it('never marks a contact with an end date as current', () => {
@@ -93,8 +94,10 @@ describe('fixture pipeline: qualify, people, emails, lead candidates, score', ()
       contactFit: 30,
       reachability: 20,
       total: 100,
-      estimatePoints: 22, // review-count size signal 10 + found email 12
-      factPoints: 78,
+      // The classifier's trade role 20 and the sector 10, the review-count size signal 10 and
+      // the found email 12 are estimates; operational, website, title and the rest are facts.
+      estimatePoints: 52,
+      factPoints: 48,
     });
     // Catch-all scores lower than verified.
     expect(karim!.score.reachability).toBe(5 + 3 + 3 + 2);
@@ -115,7 +118,7 @@ describe('fixture pipeline: qualify, people, emails, lead candidates, score', ()
   it('scores a classifier-qualified, company-only lead lower and mostly as estimate', () => {
     const [only] = leadsFor('Société Fixture Industries');
     expect(only!.score.contactFit).toBe(0);
-    const qualifiedPoint = only!.score.points.find((p) => p.reason.startsWith('qualified'))!;
+    const qualifiedPoint = only!.score.points.find((p) => p.reason.startsWith('trader'))!;
     expect(qualifiedPoint.kind).toBe('estimate');
     expect(only!.score.total).toBeLessThan(leadsFor('Huilerie El Fixture')[0]!.score.total);
   });

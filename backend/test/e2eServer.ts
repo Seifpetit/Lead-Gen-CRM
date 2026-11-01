@@ -9,8 +9,8 @@ import { testRunner } from './testRunner.js';
 // the test database on start, so never point TEST_DATABASE_URL at data you care about.
 
 const PORT = Number(process.env.E2E_PORT ?? 3000);
-/** How often runs advance one poll. Slow enough for the log widget to catch a run mid-way. */
-const TICK_MS = Number(process.env.E2E_TICK_MS ?? 700);
+/** How often runs advance one poll. Fast enough that a run over every sector finishes in a minute, slow enough to catch mid-way. */
+const TICK_MS = Number(process.env.E2E_TICK_MS ?? 200);
 
 export const E2E_USER = { email: 'e2e@example.test', password: 'e2e-password-123' };
 

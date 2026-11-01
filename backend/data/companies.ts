@@ -1,3 +1,4 @@
+import type { TradeRole } from '@lead-gen-crm/shared';
 import { withTransaction, type Queryable } from './db.js';
 import { haversineKm } from '../lib/geo.js';
 import { insertEvidence } from './evidence.js';
@@ -21,6 +22,8 @@ export interface CompanyRecord {
   normalizedName: string;
   governorate: string;
   sector: string | null;
+  /** What the company does in international trade; null until it has been checked. */
+  tradeRole: TradeRole | null;
   googlePlaceId: string | null;
   domain: string | null;
   website: string | null;
@@ -86,6 +89,7 @@ interface Row {
   normalized_name: string;
   governorate: string;
   sector: string | null;
+  trade_role: TradeRole | null;
   google_place_id: string | null;
   domain: string | null;
   website: string | null;
@@ -113,6 +117,7 @@ const toCompany = (r: Row): CompanyRecord => ({
   normalizedName: r.normalized_name,
   governorate: r.governorate,
   sector: r.sector,
+  tradeRole: r.trade_role,
   googlePlaceId: r.google_place_id,
   domain: r.domain,
   website: r.website,
@@ -425,4 +430,21 @@ export async function setCompanySector(
     await insertEvidence(tx, userId, { companyId }, 'sector', sector, runId);
     return true;
   });
+}
+
+/**
+ * Records what the company does in international trade. Evidence for it is the classifier's
+ * evidence rows (or the name and category for a rule), written by the caller.
+ */
+export async function setCompanyTradeRole(
+  db: Queryable,
+  userId: UserId,
+  companyId: string,
+  tradeRole: TradeRole,
+): Promise<boolean> {
+  const res = await db.query(
+    'UPDATE companies SET trade_role = $3, updated_at = now() WHERE user_id = $1 AND id = $2',
+    [userId, companyId, tradeRole],
+  );
+  return (res.rowCount ?? 0) > 0;
 }

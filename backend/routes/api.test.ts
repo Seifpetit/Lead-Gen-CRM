@@ -259,6 +259,10 @@ const CASES: RouteCase[] = [
     pattern: '/api/crm/:pipeline/selection',
     url: () => '/api/crm/companies/selection',
   },
+  { method: 'GET', pattern: '/api/trade-check/preview', url: () => '/api/trade-check/preview' },
+  { method: 'GET', pattern: '/api/trade-check', url: () => '/api/trade-check' },
+  { method: 'POST', pattern: '/api/trade-check', url: () => '/api/trade-check' },
+  { method: 'POST', pattern: '/api/trade-check/stop', url: () => '/api/trade-check/stop' },
   {
     method: 'POST',
     pattern: '/api/crm/cards/bulk-remove',
@@ -576,9 +580,9 @@ describe('POST /api/runs/preview', () => {
 
     it('lists the actual queries per cell and the sector list', async () => {
       const p = await preview({ sectorIds: ['textile'] });
-      // 2 cells x 2 textile wordings.
-      expect(p.queriesTotal).toBe(4);
-      expect(p.queries).toHaveLength(4);
+      // 2 cells x 3 textile wordings.
+      expect(p.queriesTotal).toBe(6);
+      expect(p.queries).toHaveLength(6);
       expect(p.queries[0]).toEqual({
         wording: expect.any(String),
         sectorId: 'textile',
@@ -587,11 +591,13 @@ describe('POST /api/runs/preview', () => {
       expect(new Set(p.queries.map((q: { cellKey: string }) => q.cellKey))).toEqual(
         new Set(p.cells.map((c: { cellKey: string }) => c.cellKey)),
       );
-      expect(p.sectors).toHaveLength(15);
+      // The retired domestic sectors are no longer offered.
+      expect(p.sectors).toHaveLength(12);
       expect(p.sectors.find((s: { id: string }) => s.id === 'import-export')).toMatchObject({
-        name: 'Import and export',
-        wordings: ['import export', "société d'import", 'exportateur', 'commerce international'],
+        name: 'Import and export (general)',
+        wordings: expect.arrayContaining(['import export', 'exportateur', 'مستورد']),
       });
+      expect(p.sectors.some((s: { id: string }) => s.id === 'wholesale')).toBe(false);
     });
 
     it('shows the first 50 queries and the total', async () => {
@@ -608,10 +614,10 @@ describe('POST /api/runs/preview', () => {
           '  Entrepôt   frigorifique ',
           'entrepot frigorifique',
           'ENTREPÔT FRIGORIFIQUE',
-          'usine textile',
+          'textile confection exportateur',
         ],
       });
-      // One new wording ('usine textile' already belongs to textile): 2 cells x 1 more.
+      // One new wording (the textile one already belongs to textile): 2 cells x 1 more.
       expect(p.queriesTotal).toBe(base.queriesTotal + 2);
       const custom = p.queries.filter((q: { sectorId: unknown }) => q.sectorId === null);
       expect(custom.map((q: { wording: string }) => q.wording)).toEqual([
@@ -637,7 +643,7 @@ describe('POST /api/runs/preview', () => {
       const one = all.cells[0].cellKey;
       const p = await preview({ sectorIds: ['textile'], cellKeys: [one] });
       expect(p.cells.map((c: { cellKey: string }) => c.cellKey)).toEqual([one]);
-      expect(p.queriesTotal).toBe(2);
+      expect(p.queriesTotal).toBe(3);
       const none = await preview({ sectorIds: ['textile'], cellKeys: ['r9c9'] });
       expect(none.blockers.map((b: { code: string }) => b.code)).toContain('no_free_cells');
     });
@@ -854,8 +860,8 @@ describe('POST /api/runs with a search plan', () => {
     const steps = (await listSteps(db, alice.id, res.json().id)).filter(
       (s) => s.stage === 'discover',
     );
-    // 2 cells x (2 textile wordings + 1 typed in).
-    expect(steps).toHaveLength(6);
+    // 2 cells x (3 textile wordings + 1 typed in).
+    expect(steps).toHaveLength(8);
     expect(steps.filter((s) => s.stepKey.endsWith('|entrepot frigorifique'))).toHaveLength(2);
   });
 
@@ -899,16 +905,16 @@ describe('GET /api/coverage', () => {
   it('reports queries, new places, leads, spend, cost per lead and a state per region and sector', async () => {
     const c = await coverage(alice);
     expect(c.regions).toHaveLength(24);
-    expect(c.sectors).toHaveLength(15);
+    expect(c.sectors).toHaveLength(12);
     const textile = entry(c, 'sfax', 'textile');
-    // 2 cells x 2 textile wordings.
-    expect(textile).toMatchObject({ queriesRun: 4, leads: 4, newPlaces: 4 });
+    // 2 cells x 3 textile wordings.
+    expect(textile).toMatchObject({ queriesRun: 6, leads: 4, newPlaces: 4 });
     expect(['yielding', 'saturated']).toContain(textile.state);
     expect(textile.spendUsd).toBeGreaterThan(0);
     expect(textile.costPerLeadUsd).toBeCloseTo(textile.spendUsd / 4, 5);
     // The searches just ran, so the last-run date is now.
     expect(Date.now() - new Date(textile.lastRunAt!).getTime()).toBeLessThan(10 * 60_000);
-    expect(entry(c, 'sfax', 'wholesale')).toMatchObject({
+    expect(entry(c, 'sfax', 'furniture')).toMatchObject({
       queriesRun: 0,
       leads: 0,
       spendUsd: 0,
@@ -933,7 +939,11 @@ describe('GET /api/coverage', () => {
   it('marks a sector saturated once every wording is exhausted in every cell', async () => {
     const cells = await listCells(db, 'sfax', { leafOnly: true });
     for (const cell of cells) {
-      for (const w of ['usine textile', 'confection']) {
+      for (const w of [
+        'textile confection exportateur',
+        'textile confection importateur',
+        'textile confection import export',
+      ]) {
         await db.query(
           'INSERT INTO exhausted_queries (user_id, region_cell_id, normalized_query) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
           [alice.id, cell.id, w],
@@ -946,7 +956,11 @@ describe('GET /api/coverage', () => {
   it('moves a saturated sector to maintenance once its last search is older than the interval', async () => {
     const cells = await listCells(db, 'sfax', { leafOnly: true });
     for (const cell of cells) {
-      for (const w of ['usine textile', 'confection']) {
+      for (const w of [
+        'textile confection exportateur',
+        'textile confection importateur',
+        'textile confection import export',
+      ]) {
         await db.query(
           'INSERT INTO exhausted_queries (user_id, region_cell_id, normalized_query) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
           [alice.id, cell.id, w],
@@ -1187,12 +1201,12 @@ describe('regions and coverage', () => {
     const cells = (await call(alice, 'GET', '/api/regions/sfax/cells')).json();
     expect(cells).toMatchObject({ total: 2, nextOffset: null });
     const cell = cells.items[0];
-    expect(cell).toMatchObject({ queriesRun: 2, claimedByRunId: null, exhaustedAt: null });
+    expect(cell).toMatchObject({ queriesRun: 3, claimedByRunId: null, exhaustedAt: null });
     expect(cell.bounds.north).toBeGreaterThan(cell.bounds.south);
     const detail = (
       await call(alice, 'GET', `/api/regions/sfax/cells/${cell.regionCellId}`)
     ).json();
-    expect(detail.queries).toHaveLength(2);
+    expect(detail.queries).toHaveLength(3);
     expect(detail.queries[0]).toMatchObject({
       provider: expect.any(String),
       resultsReturned: expect.any(Number),
@@ -1632,8 +1646,8 @@ describe('POST /api/webhooks/apify', () => {
         await db.query<{ n: number; usd: string }>(
           `SELECT count(*)::integer AS n, coalesce(sum(l.amount_usd), 0)::text AS usd
              FROM cost_ledger l JOIN run_steps s ON s.id = l.run_step_id
-            WHERE l.run_id = $1 AND s.stage = 'discover'`,
-          [run.id],
+            WHERE l.run_id = $1 AND s.stage = 'discover' AND s.id = $2`,
+          [run.id, step.id],
         )
       ).rows[0]!;
     await hook(body(alice.id, step.id));
@@ -2201,5 +2215,44 @@ describe('POST /api/crm/contacts', () => {
     expect(
       (await call(alice, 'POST', '/api/crm/contacts', { ...body, channel: 'sms' })).statusCode,
     ).toBe(400);
+  });
+});
+
+describe('import/export on the boards and the check of old leads (routes)', () => {
+  const trade = async (who: Who, query = '') =>
+    (await call(who, 'GET', `/api/crm/companies/cards${query}`)).json() as {
+      total: number;
+      cards: { company: { tradeRole: string | null } }[];
+    };
+
+  it('filters by Import/export, defaulting to yes and not checked', async () => {
+    // The seeded run labelled its companies; start from the old state, nothing checked.
+    await db.query('UPDATE companies SET trade_role = NULL WHERE user_id = $1', [alice.id]);
+    const before = await trade(alice);
+    expect(before.total).toBeGreaterThan(0);
+    expect(before.cards.every((c) => c.company.tradeRole === null)).toBe(true);
+    // Nothing is labelled yet, so "no" shows nothing and "yes" shows nothing.
+    expect((await trade(alice, '?trade=no')).total).toBe(0);
+    expect((await trade(alice, '?trade=yes')).total).toBe(0);
+    expect((await trade(alice, '?trade=unchecked')).total).toBe(before.total);
+    expect((await trade(alice, '?trade=yes,unchecked,no')).total).toBe(before.total);
+    await db.query("UPDATE companies SET trade_role = 'exporter' WHERE user_id = $1", [alice.id]);
+    expect((await trade(alice, '?trade=yes')).total).toBe(before.total);
+    expect((await trade(alice, '?trade=yes')).cards[0]!.company.tradeRole).toBe('exporter');
+    expect((await trade(alice)).total).toBe(before.total);
+    expect((await call(alice, 'GET', '/api/crm/companies/cards?trade=maybe')).statusCode).toBe(400);
+  });
+
+  it('previews the check without spending, and starts nothing it cannot pay for', async () => {
+    const p = (await call(alice, 'GET', '/api/trade-check/preview')).json();
+    expect(p).toMatchObject({ unchecked: expect.any(Number), capUsd: expect.any(Number) });
+    expect(p.estimatedCostUsd).toBeLessThanOrEqual(p.capUsd);
+    expect((await call(alice, 'GET', '/api/trade-check')).json()).toMatchObject({ state: 'idle' });
+    const stop = await call(alice, 'POST', '/api/trade-check/stop', {});
+    expect(stop.statusCode).toBe(200);
+  });
+
+  it('shows another user nothing of it', async () => {
+    expect((await call(bob, 'GET', '/api/trade-check/preview')).json().unchecked).toBe(0);
   });
 });

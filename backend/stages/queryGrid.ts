@@ -13,7 +13,7 @@ export interface GridCell {
 export interface QueryGridInput {
   regionId: string;
   bounds: Bounds;
-  /** Sectors to search; all freight sectors when omitted, none when empty. */
+  /** Sectors to search; all active import/export sectors when omitted, none when empty. */
   sectorIds?: readonly string[];
   /** Extra wordings typed in by the user; searched as given, with no sector. */
   customWordings?: readonly string[];
@@ -76,7 +76,8 @@ export function cleanWordings(wordings: readonly string[]): string[] {
 export function buildQueryGrid(input: QueryGridInput): QueryGrid {
   const target = input.targetQueries ?? 150;
   const sectorIds = input.sectorIds ? new Set(input.sectorIds) : null;
-  const sectors = FREIGHT_SECTORS.filter((s) => !sectorIds || sectorIds.has(s.id));
+  // No list means every active import/export sector; an explicit id is honoured even for a retired sector.
+  const sectors = FREIGHT_SECTORS.filter((s) => (sectorIds ? sectorIds.has(s.id) : s.active));
   if (sectorIds && sectors.length !== sectorIds.size) {
     const known = new Set<string>(FREIGHT_SECTORS.map((s) => s.id));
     throw new Error(`Unknown sector: ${[...sectorIds].filter((id) => !known.has(id)).join(', ')}`);

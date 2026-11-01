@@ -107,6 +107,7 @@ const beta = companyCard({
     id: 'co-b',
     name: 'Second Freight',
     sector: 'food',
+    tradeRole: null,
     website: null,
     phone: null,
     email: null,
@@ -129,7 +130,12 @@ const chartLead = (i: number, daysAgo: number) =>
       sector: i % 2 ? 'food' : 'textile',
       evidence: [fresh('placeId', new Date(Date.now() - daysAgo * DAY).toISOString())],
     }),
-    contact: contact({ id: `ct-${i}` }),
+    // The contact's own facts must be as fresh as the company's: a lead counts as found at the
+    // earliest of them, so a fixed fixture date would pull it out of the 7-day window over time.
+    contact: contact({
+      id: `ct-${i}`,
+      evidence: [fresh('linkedinUrl', new Date(Date.now() - daysAgo * DAY).toISOString())],
+    }),
   });
 
 const routes = (cards: CrmCard[] = [alpha, beta], extra = {}) => ({
@@ -255,6 +261,7 @@ describe('Recent leads cards', () => {
         id: 'co-img',
         name: 'Pictured Co',
         sector: 'textile',
+        tradeRole: null,
         website: null,
         phone: null,
         email: null,
@@ -838,7 +845,6 @@ describe('Create run', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(server.to('POST /api/runs')[0]!.body).toEqual({
       regionId: 'sfax',
-      sectorIds: ['textile'],
       budgetCapUsd: 2,
       confirm: true,
     });

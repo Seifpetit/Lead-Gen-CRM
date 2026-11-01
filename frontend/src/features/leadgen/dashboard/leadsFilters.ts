@@ -10,6 +10,7 @@ import {
   LEAD_SORTS,
   SCORE_MAX,
   SCORE_STEP,
+  TRADE_CHOICES,
   type Density,
   type LeadsQuery,
 } from './leadsQuery.js';
@@ -27,6 +28,7 @@ export const NO_FILTERS = {
   minScore: 0,
   sector: null,
   runId: null,
+  trade: 'default',
 } as const satisfies Partial<LeadsQuery>;
 
 /**
@@ -109,6 +111,19 @@ export function useLeadsFilters({
           active: query.minScore > 0,
           chip: t('filters.chip.score', { value: scoreText(query.minScore) }),
           clear: () => onQuery({ minScore: 0 }),
+        },
+      },
+      {
+        id: 'trade',
+        type: 'choice',
+        label: t('filters.trade'),
+        value: query.trade,
+        options: TRADE_CHOICES.map((c) => ({ value: c, label: t(`filters.trade.${c}`) })),
+        onChange: (trade) => onQuery({ trade: trade as LeadsQuery['trade'] }),
+        filter: {
+          active: query.trade !== 'default',
+          chip: t('filters.chip.trade', { value: t(`filters.trade.${query.trade}`) }),
+          clear: () => onQuery({ trade: 'default' }),
         },
       },
       {

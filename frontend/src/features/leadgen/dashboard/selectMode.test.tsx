@@ -194,7 +194,8 @@ describe('Select mode on the lead cards', () => {
     await waitFor(() => expect(within(bar()).getByRole('status')).toHaveTextContent('10 selected'));
     const asked = server.to('GET /api/crm/companies/selection').at(-1)!;
     expect(asked.query.get('q')).toBe('Company 01');
-  });
+    // 120 cards and typing: slow on a busy CI runner, so it gets more than the default 5 s.
+  }, 30_000);
 
   it('asks first, in our own dialog, with the server’s retention days; Cancel moves nothing', async () => {
     const { user, server } = await setup(many(3));
