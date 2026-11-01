@@ -1,13 +1,18 @@
-import type { Coverage, RegionGeometry } from '@lead-gen-crm/shared';
+import type { MapPin, RegionGeometry } from '@lead-gen-crm/shared';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes, useLocation } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
-import { dashboardRoutes, page, preview, region, run } from '../../test/fixtures.js';
 import { fakeServer } from '../../test/fakeServer.js';
+import { dashboardRoutes, page, preview, region } from '../../test/fixtures.js';
 import { renderWith } from '../../test/render.js';
-import { chooseOption } from '../../test/select.js';
 import { CoveragePage } from './CoveragePage.js';
+
+// jsdom cannot draw a Leaflet map: the page is tested against a stand-in that reports what it was
+// told and clicks like the real one.
+vi.mock('./worldmap/WorldMap.js', async () => ({
+  WorldMap: (await import('../../test/fakeWorldMap.js')).FakeWorldMap,
+}));
 
 const square = (w: number, s: number, e: number, n: number) => ({
   type: 'Polygon' as const,
@@ -21,498 +26,297 @@ const square = (w: number, s: number, e: number, n: number) => ({
     ],
   ],
 });
-const geometry: { items: RegionGeometry[] } = {
-  items: [
-    {
-      country: 'TN',
-      regionId: 'sfax',
-      name: 'Sfax',
-      bounds: { south: 34.5, west: 10.2, north: 35.2, east: 11.0 },
-      outline: square(10.2, 34.5, 11.0, 35.2),
-      outlineSource: 'osm',
-    },
-    {
-      country: 'TN',
-      regionId: 'tunis',
-      name: 'Tunis',
-      bounds: { south: 36.7, west: 10.0, north: 36.9, east: 10.3 },
-      outline: square(10.0, 36.7, 10.3, 36.9),
-      outlineSource: 'osm',
-    },
-    {
-      country: 'TN',
-      regionId: 'gabes',
-      name: 'Gabès',
-      bounds: { south: 33.0, west: 9.5, north: 33.9, east: 10.5 },
-      outline: square(9.5, 33.0, 10.5, 33.9),
-      outlineSource: 'bounds',
-    },
-  ],
-};
-const coverage: Coverage = {
-  regions: [
-    { regionId: 'gabes', name: 'Gabès', country: 'TN' },
-    { regionId: 'tunis', name: 'Tunis', country: 'TN' },
-    { regionId: 'sfax', name: 'Sfax', country: 'TN' },
-  ],
-  sectors: [
-    { id: 'agri-food', name: 'Agri-food' },
-    { id: 'textile', name: 'Textile' },
-  ],
-  entries: [
-    {
-      regionId: 'sfax',
-      sectorId: 'textile',
-      queriesRun: 12,
-      newPlaces: 40,
-      leads: 5,
-      spendUsd: 2.5,
-      costPerLeadUsd: 0.5,
-      lastRunAt: '2026-10-17T10:00:00.000Z',
-      state: 'yielding',
-    },
-  ],
-};
-const regions = [
-  region({ regionId: 'sfax', name: 'Sfax', coverage: 0.5 }),
-  region({ regionId: 'tunis', name: 'Tunis', coverage: 0.1, runs: 0, leads: 0 }),
-  // No bounds, never run, no leads: greyed out.
-  region({ regionId: 'gabes', name: 'Gabès', hasBounds: false, runs: 0, leads: 0, coverage: null }),
-];
-const runs = [
-  run({ id: 'old', region: 'sfax', sectors: ['textile'], createdAt: '2026-10-10T09:00:00.000Z' }),
-  run({ id: 'new', region: 'tunis', sectors: [], createdAt: '2026-10-18T09:00:00.000Z' }),
+const shape = (
+  country: 'TN' | 'FR',
+  regionId: string,
+  name: string,
+  box: [number, number, number, number],
+): RegionGeometry => ({
+  country,
+  regionId,
+  name,
+  bounds: { west: box[0], south: box[1], east: box[2], north: box[3] },
+  outline: square(...box),
+  outlineSource: 'osm',
+});
+const geometry = (country: string) => ({
+  items:
+    country === 'FR'
+      ? [shape('FR', 'fr-bretagne', 'Bretagne', [-5, 47.5, -1, 49])]
+      : [
+          shape('TN', 'sfax', 'Sfax', [10.2, 34.5, 11, 35.2]),
+          shape('TN', 'tunis', 'Tunis', [10, 36.7, 10.3, 36.9]),
+        ],
+});
+
+const summaries = [
+  region({ regionId: 'sfax', name: 'Sfax', country: 'TN', coverage: 0.5, leads: 4, spendUsd: 1.5 }),
+  region({
+    regionId: 'tunis',
+    name: 'Tunis',
+    country: 'TN',
+    coverage: 0.2,
+    leads: 1,
+    spendUsd: 0.5,
+  }),
+  region({
+    regionId: 'fr-bretagne',
+    name: 'Bretagne',
+    country: 'FR',
+    coverage: 0.1,
+    leads: 2,
+    spendUsd: 2,
+  }),
 ];
 
-function Where() {
-  const loc = useLocation();
-  return <output data-testid="where">{loc.search}</output>;
+const pin = (over: Partial<MapPin> = {}): MapPin => ({
+  companyId: 'c1',
+  name: 'Huilerie Baccar',
+  lat: 34.7,
+  lng: 10.7,
+  country: 'TN',
+  regionId: 'sfax',
+  sector: 'olive-oil',
+  tradeRole: 'exporter',
+  category: 'Olive oil producer',
+  city: 'Sfax',
+  phone: '+21674123456',
+  website: 'https://www.baccar.example',
+  stage: 'found',
+  score: 71,
+  runId: 'run-1',
+  leadId: 'lead-1',
+  ...over,
+});
+const pins = [
+  pin(),
+  pin({ companyId: 'c2', name: 'Sans Lead', runId: null, leadId: null, score: null }),
+];
+
+function routes(over: Record<string, unknown> = {}) {
+  return {
+    ...dashboardRoutes(),
+    'GET /api/map/pins': { body: { items: pins, total: pins.length } },
+    'GET /api/regions': { body: page(summaries) },
+    'GET /api/regions/geometry': (req: { query: URLSearchParams }) => ({
+      body: geometry(req.query.get('country') ?? 'TN'),
+    }),
+    ...over,
+  } as Parameters<typeof fakeServer>[0];
 }
 
-function setup(route = '/leadgen/coverage') {
-  const server = fakeServer({
-    ...dashboardRoutes(),
-    'GET /api/regions': page(regions),
-    'GET /api/coverage': coverage,
-    'GET /api/regions/geometry': geometry,
-    'GET /api/regions/sfax/cells': page([]),
-    'GET /api/runs': page(runs),
-    'POST /api/runs/preview': { body: preview() },
-    'POST /api/runs': (req) => ({
-      status: 201,
-      body: run({ id: `new-${req.body.regionId}`, region: req.body.regionId }),
-    }),
-  });
+function Where() {
+  const location = useLocation();
+  return <p data-testid="where">{location.pathname + location.search}</p>;
+}
+function renderPage(server = fakeServer(routes()), route = '/leadgen/coverage') {
   renderWith(
     <>
       <Routes>
         <Route path="/leadgen/coverage" element={<CoveragePage />} />
+        <Route path="/leadgen/runs/:runId/leads/:leadId" element={<p>Lead page</p>} />
       </Routes>
       <Where />
     </>,
     server,
     route,
   );
-  return { server, user: userEvent.setup() };
+  return server;
 }
+const map = () => screen.getByTestId('world-map');
 
-const where = () => screen.getByTestId('where').textContent;
-const map = () => screen.getByRole('group', { name: 'Coverage map' });
-
-describe('Coverage page', () => {
-  it('is one panel: a slim header, the matrix and the map, with no history in it', async () => {
-    setup();
-    expect(await screen.findByRole('heading', { name: 'Coverage', level: 1 })).toBeVisible();
-    const header = screen.getByRole('heading', { name: 'Coverage', level: 1 }).closest('header')!;
-    expect(within(header).getByRole('radio', { name: 'Status' })).toBeChecked();
-    expect(within(header).getByRole('button', { name: 'Expand' })).toBeVisible();
-    expect(await screen.findByRole('region', { name: 'Coverage by sector' })).toBeVisible();
-    expect(screen.getByRole('region', { name: 'Coverage map' })).toBeVisible();
-    expect(screen.queryByText('History results')).toBeNull();
-    expect(document.querySelectorAll('.dash-panel')).toHaveLength(1);
+describe('Coverage world map', () => {
+  it('shows the whole world first, with every company as a pin and the region panel closed', async () => {
+    const server = renderPage();
+    expect(await screen.findByRole('heading', { name: 'Coverage', level: 1 })).toBeInTheDocument();
+    await waitFor(() => expect(map()).toHaveAttribute('data-pins', '2'));
+    expect(map()).toHaveAttribute('data-country', '');
+    expect(map()).toHaveAttribute('data-supported', 'TN,FR');
+    // Pins and regions of every country, asked for at once.
+    expect(server.to('GET /api/map/pins')[0]!.query.get('country')).toBeNull();
+    const head = screen.getByRole('button', { name: /Coverage by region/ });
+    expect(head).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('list', { name: /regions/i })).toBeNull();
   });
 
-  it('shows every region, explored first by coverage and the greyed one last', async () => {
-    setup();
-    await screen.findByRole('grid', { name: 'Coverage by sector' });
-    const names = screen
-      .getAllByRole('rowheader')
-      .map((h) => h.textContent)
-      .filter((n) => n !== 'Total');
-    expect(names).toEqual(['Sfax', 'Tunis', 'Gabès']);
-    expect(
-      screen.getByRole('button', { name: 'Gabès, Textile, Not explored yet' }),
-    ).toHaveAttribute('aria-disabled', 'true');
+  it('opens the totals of every country when the closed panel is clicked', async () => {
+    renderPage();
+    await waitFor(() => expect(map()).toHaveAttribute('data-pins', '2'));
+    await userEvent.click(screen.getByRole('button', { name: /Coverage by region/ }));
+    expect(screen.getByRole('button', { name: /^Tunisia/ })).toBeEnabled();
+    const off = screen.getByRole('button', { name: /^Germany/ });
+    expect(off).toBeDisabled();
+    expect(off).toHaveTextContent('Switched off');
+    expect(screen.getByText('Companies').nextElementSibling).toHaveTextContent('2');
   });
 
-  it('switches the metric the squares show', async () => {
-    const { user } = setup();
-    const cell = await screen.findByRole('button', { name: 'Sfax, Textile, Partial' });
-    expect(cell).toHaveAttribute('data-metric', 'status');
-    await user.click(screen.getByRole('radio', { name: 'Leads' }));
-    expect(screen.getByRole('button', { name: 'Sfax, Textile, Partial' })).toHaveTextContent('5');
-    await user.click(screen.getByRole('radio', { name: 'Cost' }));
-    expect(screen.getByRole('button', { name: 'Sfax, Textile, Partial' })).toHaveTextContent('2.5');
-  });
-
-  it('opens a detail card under the matrix when a square is clicked, and keeps it in the address', async () => {
-    const { user } = setup();
-    await user.click(await screen.findByRole('button', { name: 'Sfax, Textile, Partial' }));
-    const card = screen.getByRole('region', { name: 'Sfax, Textile' });
-    expect(within(card).getByText('$2.50')).toBeVisible();
-    expect(within(card).getByText('17 Oct 2026')).toBeVisible();
-    expect(where()).toBe('?region=sfax&sector=textile');
-    // Still the matrix, not the table: the page does not change shape.
-    expect(screen.getByRole('grid', { name: 'Coverage by sector' })).toBeVisible();
-    await user.click(within(card).getByRole('button', { name: 'Clear the selected sector' }));
-    expect(screen.queryByRole('region', { name: 'Sfax, Textile' })).toBeNull();
-    expect(where()).toBe('?region=sfax');
-  });
-
-  it('has no "Plan a run here" button anywhere: not on the detail card, not in a table', async () => {
-    const { user } = setup();
-    await user.click(await screen.findByRole('button', { name: 'Sfax, Textile, Partial' }));
-    expect(screen.getByRole('region', { name: 'Sfax, Textile' })).toBeVisible();
-    expect(screen.queryByRole('button', { name: /plan a run/i })).toBeNull();
-    await user.click(screen.getByRole('button', { name: 'Region Sfax' }));
-    await screen.findByRole('table', { name: 'Sfax by sector' });
-    expect(screen.queryByRole('button', { name: /plan a run/i })).toBeNull();
-  });
-
-  it('opens Start a run on a region when its title in the matrix is clicked', async () => {
-    const { server, user } = setup();
-    await user.click(await screen.findByRole('button', { name: 'Start a run in Sfax' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Start a run' });
-    await waitFor(() => expect(within(dialog).getByLabelText('Region')).toHaveTextContent('Sfax'));
-    // No sector chips any more (every sector is searched); one region, so no region chips.
-    expect(within(dialog).queryByRole('group', { name: 'Sectors to search' })).toBeNull();
-    expect(within(dialog).queryByRole('group', { name: 'Regions to search' })).toBeNull();
-    expect(within(dialog).queryByRole('button', { name: 'Agri-food' })).toBeNull();
-    await waitFor(() =>
-      expect(server.to('POST /api/runs/preview').at(-1)!.body).toMatchObject({
-        regionId: 'sfax',
-      }),
-    );
-    // Opening the window did not pick the region on the page.
-    expect(where()).toBe('');
-  });
-
-  it('opens Start a run on a sector, with region chips, when its icon in the matrix is clicked', async () => {
-    const { user } = setup();
-    await user.click(await screen.findByRole('button', { name: 'Start a run for Textile' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Start a run' });
-    expect(within(dialog).queryByLabelText('Region')).toBeNull();
-    const regionChips = within(dialog).getByRole('group', { name: 'Regions to search' });
-    // Name and coverage state on each chip; one with no map area cannot be chosen.
-    expect(
-      within(regionChips).getByRole('button', { name: /Sfax.*partly covered/ }),
-    ).toHaveAttribute('aria-pressed', 'false');
-    expect(
-      within(regionChips).getByRole('button', { name: /Tunis.*partly covered/ }),
-    ).toBeVisible();
-    expect(within(regionChips).getByRole('button', { name: /Gabès.*no map area/ })).toHaveAttribute(
-      'aria-disabled',
+  it('moves to a country picked in the picker and opens the region panel by itself', async () => {
+    const server = renderPage();
+    await waitFor(() => expect(map()).toHaveAttribute('data-pins', '2'));
+    await userEvent.click(screen.getByRole('button', { name: /Country: All countries/ }));
+    const menu = screen.getByRole('list', { name: 'Country' });
+    await userEvent.click(within(menu).getByRole('button', { name: /^France/ }));
+    expect(screen.getByTestId('where')).toHaveTextContent('?focus=FR');
+    await waitFor(() => expect(map()).toHaveAttribute('data-country', 'FR'));
+    await waitFor(() => expect(map()).toHaveAttribute('data-regions', 'fr-bretagne'));
+    expect(server.to('GET /api/regions/geometry').at(-1)!.query.get('country')).toBe('FR');
+    expect(screen.getByRole('button', { name: /Coverage by region: France/ })).toHaveAttribute(
+      'aria-expanded',
       'true',
     );
-    // The sector is fixed (shown, not a chip to untick), so only the regions can be many.
-    expect(within(dialog).getByText('Textile')).toBeVisible();
-    expect(within(dialog).queryByRole('button', { name: 'Textile' })).toBeNull();
-    expect(within(dialog).getByText('0 of 2 regions selected')).toBeVisible();
+    expect(screen.getByRole('button', { name: /^Bretagne/ })).toBeEnabled();
   });
 
-  it('runs one sector in several regions: one estimate for all, one run per region', async () => {
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const { server, user } = setup();
-    // Each region's preview names its own region, as the real server's does.
-    server.set('POST /api/runs/preview', (req) => ({
-      body: preview({ regionId: String((req.body as { regionId: string }).regionId) }),
-    }));
-    await user.click(await screen.findByRole('button', { name: 'Start a run for Textile' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Start a run' });
-    await user.click(within(dialog).getByRole('button', { name: 'Select all' }));
-    // Select all skips the region that cannot be searched.
-    expect(within(dialog).getByText('2 of 2 regions selected')).toBeVisible();
-    await waitFor(() =>
-      expect(
-        server
-          .to('POST /api/runs/preview')
-          .map((c) => c.body.regionId)
-          .sort(),
-      ).toEqual(['sfax', 'tunis']),
+  it('moves to a supported country clicked on the map, and ignores a click on the same one', async () => {
+    renderPage();
+    await waitFor(() => expect(map()).toHaveAttribute('data-pins', '2'));
+    await userEvent.click(screen.getByRole('button', { name: 'map country TN' }));
+    await waitFor(() => expect(map()).toHaveAttribute('data-country', 'TN'));
+    expect(screen.getByRole('button', { name: /Coverage by region: Tunisia/ })).toHaveAttribute(
+      'aria-expanded',
+      'true',
     );
-    // Two runs at $3.50 each: the combined estimate and the cap for each run.
-    expect(await within(dialog).findByText('$7.00')).toBeVisible();
-    expect(within(dialog).getByLabelText('Spend cap for each run (USD)')).toBeVisible();
-    // Both regions plan the same cell names; each keeps its own list, under its own heading.
-    await user.click(within(dialog).getByText('Advanced'));
-    expect(within(dialog).getByRole('heading', { name: 'Cell Sfax r0c0' })).toBeInTheDocument();
-    expect(within(dialog).getByRole('heading', { name: 'Cell Tunis r0c0' })).toBeInTheDocument();
-    const start = within(dialog).getByRole('button', { name: /Start 2 runs, up to \$2.00 each/ });
-    await waitFor(() => expect(start).toHaveAttribute('aria-disabled', 'false'));
-    await user.click(start);
-    // Above the caps ($7.00 against two $2.00 caps): asks once more, then starts both.
-    await user.click(await within(dialog).findByRole('button', { name: 'Yes, start the run' }));
-    await waitFor(() => expect(server.to('POST /api/runs')).toHaveLength(2));
-    expect(server.to('POST /api/runs').map((c) => [c.body.regionId, c.body.sectorIds])).toEqual([
-      ['sfax', ['textile']],
-      ['tunis', ['textile']],
-    ]);
-    expect(await screen.findByText('2 runs started: Sfax, Tunis.')).toBeVisible();
-    // No "same key" warnings from React.
-    expect(errors.mock.calls.filter((c) => String(c[0]).includes('same key'))).toEqual([]);
-    errors.mockRestore();
+    await userEvent.click(screen.getByRole('button', { name: 'map country TN' }));
+    expect(screen.getByTestId('where')).toHaveTextContent('/leadgen/coverage?focus=TN');
   });
 
-  it('starts only as many runs as can go at once, and names the regions left', async () => {
-    const { server, user } = setup();
-    server.set('POST /api/runs/preview', {
-      body: preview({
-        limits: {
-          budgetCapUsd: null,
-          monthCapUsd: null,
-          monthSpentUsd: 0,
-          monthRemainingUsd: null,
-          activeRuns: 1,
-          maxActiveRuns: 2,
-          maxRunCapUsd: 50,
-        },
-      }),
-    });
-    await user.click(await screen.findByRole('button', { name: 'Start a run for Textile' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Start a run' });
-    await user.click(within(dialog).getByRole('button', { name: 'Select all' }));
-    expect(
-      await within(dialog).findByText(
-        'Only 2 runs can go at once (1 running now), so 1 will start. Not started: Tunis. Start those again when a run finishes.',
-      ),
-    ).toBeVisible();
-    await waitFor(() => expect(server.to('POST /api/runs/preview')).toHaveLength(1));
-    const start = within(dialog).getByRole('button', { name: /^Start run, up to/ });
-    await waitFor(() => expect(start).toHaveAttribute('aria-disabled', 'false'));
-    await user.click(start);
-    await user.click(await within(dialog).findByRole('button', { name: 'Yes, start the run' }));
-    await waitFor(() => expect(server.to('POST /api/runs')).toHaveLength(1));
-    expect(
-      await screen.findByText(
-        'Run started in Sfax. Not started yet, because of the limit on runs at once: Tunis.',
-      ),
-    ).toBeVisible();
+  it('lets a person collapse the panel of a picked country and open it again', async () => {
+    renderPage(undefined, '/leadgen/coverage?focus=TN');
+    const head = await screen.findByRole('button', { name: /Coverage by region: Tunisia/ });
+    expect(head).toHaveAttribute('aria-expanded', 'true');
+    await userEvent.click(head);
+    expect(head).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(head);
+    expect(head).toHaveAttribute('aria-expanded', 'true');
   });
 
-  describe('picking a region', () => {
-    it('turns the matrix into that region’s table and focuses the map on it', async () => {
-      const { user } = setup();
-      await user.click(await screen.findByRole('button', { name: 'Region Sfax' }));
-      expect(await screen.findByRole('region', { name: 'Sfax by sector' })).toBeVisible();
-      expect(screen.queryByRole('grid')).toBeNull();
-      const table = screen.getByRole('table', { name: 'Sfax by sector' });
-      const head = within(table)
-        .getAllByRole('columnheader')
-        .map((h) => h.textContent);
-      expect(head.slice(0, 6)).toEqual(['Sector', 'State', 'Leads', 'Cost', 'Yield', 'Last run']);
-      const textile = within(table).getByRole('row', { name: /Textile/ });
-      expect(within(textile).getByText('Partial')).toBeVisible();
-      expect(within(textile).getByText('3.3')).toBeVisible();
-      expect(
-        within(textile).getByRole('button', { name: 'Start a run for Textile' }),
-      ).toBeVisible();
-      expect(map()).toHaveAttribute('data-focus', 'sfax');
-      expect(screen.getByRole('button', { name: 'Region Tunis' })).toHaveClass('is-dimmed');
-      expect(where()).toBe('?region=sfax');
-    });
+  it('ignores a country that is switched off or unknown in the address', async () => {
+    renderPage(undefined, '/leadgen/coverage?focus=DE');
+    await waitFor(() => expect(map()).toHaveAttribute('data-pins', '2'));
+    expect(map()).toHaveAttribute('data-country', '');
+  });
 
-    it('opens Start a run on that sector, with the region preselected, from a table row', async () => {
-      const { server, user } = setup();
-      await user.click(await screen.findByRole('button', { name: 'Region Sfax' }));
-      await user.click(await screen.findByRole('button', { name: 'Start a run for Agri-food' }));
-      const dialog = await screen.findByRole('dialog', { name: 'Start a run' });
-      const regionChips = within(dialog).getByRole('group', { name: 'Regions to search' });
-      expect(within(regionChips).getByRole('button', { name: /Sfax/ })).toHaveAttribute(
-        'aria-pressed',
-        'true',
-      );
-      expect(within(regionChips).getByRole('button', { name: /Tunis/ })).toHaveAttribute(
-        'aria-pressed',
-        'false',
-      );
-      // The sector is fixed (shown, not a chip to untick), so only the regions can be many.
-      expect(within(dialog).getByText('Agri-food')).toBeVisible();
-      expect(within(dialog).queryByRole('button', { name: 'Agri-food' })).toBeNull();
-      await waitFor(() =>
-        expect(server.to('POST /api/runs/preview').at(-1)!.body).toMatchObject({
-          regionId: 'sfax',
-          sectorIds: ['agri-food'],
+  it('lights a region on the map from its row, and the row from the region', async () => {
+    renderPage(undefined, '/leadgen/coverage?focus=TN');
+    const row = await screen.findByRole('button', { name: /^Sfax/ });
+    await userEvent.hover(row);
+    expect(map()).toHaveAttribute('data-hover-region', 'sfax');
+    await userEvent.unhover(row);
+    expect(map()).toHaveAttribute('data-hover-region', '');
+    await userEvent.hover(await screen.findByRole('button', { name: 'map region Tunis' }));
+    expect(map()).toHaveAttribute('data-hover-region', 'tunis');
+    expect(screen.getByRole('button', { name: /^Tunis/, pressed: false })).toHaveClass('is-hot');
+  });
+
+  it('picks a region by its row or on the map, shows its details, and unpicks it', async () => {
+    renderPage(undefined, '/leadgen/coverage?focus=TN');
+    await userEvent.click(await screen.findByRole('button', { name: /^Sfax/ }));
+    expect(screen.getByTestId('where')).toHaveTextContent('?focus=TN&region=sfax');
+    expect(map()).toHaveAttribute('data-selected-region', 'sfax');
+    expect(screen.getByRole('heading', { name: 'Sfax', level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start a run in Sfax' })).toBeEnabled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'map region Tunis' }));
+    expect(map()).toHaveAttribute('data-selected-region', 'tunis');
+    // Empty map: the region is let go, the country stays.
+    await userEvent.click(screen.getByRole('button', { name: 'map background' }));
+    expect(screen.getByTestId('where')).toHaveTextContent('/leadgen/coverage?focus=TN');
+    expect(map()).toHaveAttribute('data-selected-region', '');
+  });
+
+  it('opens a small panel over a pin, with a button to the lead page', async () => {
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'map pin Huilerie Baccar' }));
+    const panel = screen.getByRole('region', { name: 'Details of Huilerie Baccar' });
+    expect(within(panel).getByRole('heading', { name: 'Huilerie Baccar' })).toBeInTheDocument();
+    expect(within(panel).getByText('Sfax · Olive oil producer')).toBeInTheDocument();
+    expect(within(panel).getByText('Score 71')).toBeInTheDocument();
+    expect(within(panel).getByText('baccar.example')).toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole('link', { name: 'Open the lead' }));
+    expect(await screen.findByText('Lead page')).toBeInTheDocument();
+    expect(screen.getByTestId('where')).toHaveTextContent('/leadgen/runs/run-1/leads/lead-1');
+  });
+
+  it('says so, with no button, when the company was never scored', async () => {
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'map pin Sans Lead' }));
+    const panel = screen.getByRole('region', { name: 'Details of Sans Lead' });
+    expect(within(panel).queryByRole('link', { name: 'Open the lead' })).toBeNull();
+    expect(within(panel).getByText(/no lead page/)).toBeInTheDocument();
+  });
+
+  it('closes the pin panel from its button and from the map', async () => {
+    renderPage();
+    const open = async () =>
+      userEvent.click(await screen.findByRole('button', { name: 'map pin Huilerie Baccar' }));
+    await open();
+    await userEvent.click(screen.getByRole('button', { name: 'Close the company details' }));
+    expect(screen.queryByRole('region', { name: /Details of/ })).toBeNull();
+
+    await open();
+    await userEvent.click(screen.getByRole('button', { name: 'map background' }));
+    expect(screen.queryByRole('region', { name: /Details of/ })).toBeNull();
+  });
+
+  it('steps back with Escape: the open pin, then the picked region, then the picked country', async () => {
+    renderPage(undefined, '/leadgen/coverage?focus=TN&region=sfax');
+    await userEvent.click(await screen.findByRole('button', { name: 'map pin Huilerie Baccar' }));
+    await waitFor(() => expect(map()).toHaveAttribute('data-selected-region', 'sfax'));
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('region', { name: /Details of/ })).toBeNull();
+    expect(map()).toHaveAttribute('data-selected-region', 'sfax');
+    await userEvent.keyboard('{Escape}');
+    expect(map()).toHaveAttribute('data-selected-region', '');
+    expect(map()).toHaveAttribute('data-country', 'TN');
+    await userEvent.keyboard('{Escape}');
+    expect(map()).toHaveAttribute('data-country', '');
+  });
+
+  it('starts a run in a region of the picked country, whatever the sidebar says', async () => {
+    window.localStorage.setItem('leadgen.gdpr.accepted', '1');
+    const server = renderPage(
+      fakeServer(
+        routes({
+          'POST /api/runs/preview': { body: preview({ regionId: 'fr-bretagne' }) },
         }),
-      );
-    });
-
-    it('selects a region from a square, not from its title', async () => {
-      const { user } = setup();
-      await user.click(await screen.findByRole('button', { name: 'Tunis, Textile, Unexplored' }));
-      expect(await screen.findByRole('region', { name: 'Tunis, Textile' })).toBeVisible();
-      expect(map()).toHaveAttribute('data-focus', 'tunis');
-      expect(where()).toBe('?region=tunis&sector=textile');
-    });
-
-    it('cannot pick a greyed-out region on the map', async () => {
-      const { user } = setup();
-      await user.click(await screen.findByRole('button', { name: 'Region Gabès' }));
-      await user.click(screen.getByRole('button', { name: 'Gabès' }));
-      expect(where()).toBe('');
-      expect(screen.queryByRole('dialog')).toBeNull();
-      expect(map()).toHaveAttribute('data-focus', '');
-      expect(screen.getByRole('grid')).toBeVisible();
-    });
-
-    it('goes back to the matrix and the whole map when the empty panel is clicked', async () => {
-      const { user } = setup();
-      await user.click(await screen.findByRole('button', { name: 'Region Sfax' }));
-      await screen.findByRole('table', { name: 'Sfax by sector' });
-      await user.click(screen.getByRole('heading', { name: 'Coverage', level: 1 }));
-      expect(await screen.findByRole('grid', { name: 'Coverage by sector' })).toBeVisible();
-      expect(map()).toHaveAttribute('data-focus', '');
-      expect(screen.getByRole('button', { name: 'Region Tunis' })).not.toHaveClass('is-dimmed');
-      expect(where()).toBe('');
-    });
-
-    it('goes back when the empty map background is clicked', async () => {
-      const { user } = setup();
-      await user.click(await screen.findByRole('button', { name: 'Region Sfax' }));
-      await screen.findByRole('table', { name: 'Sfax by sector' });
-      await user.click(map());
-      expect(await screen.findByRole('grid', { name: 'Coverage by sector' })).toBeVisible();
-      expect(where()).toBe('');
-    });
-
-    it('goes back with Escape', async () => {
-      const { user } = setup();
-      await user.click(await screen.findByRole('button', { name: 'Region Sfax' }));
-      await screen.findByRole('table', { name: 'Sfax by sector' });
-      await user.keyboard('{Escape}');
-      expect(await screen.findByRole('grid', { name: 'Coverage by sector' })).toBeVisible();
-      expect(map()).toHaveAttribute('data-focus', '');
-      expect(where()).toBe('');
-    });
-
-    it('stays put when the table itself is clicked, and has a button back', async () => {
-      const { user } = setup();
-      await user.click(await screen.findByRole('button', { name: 'Region Sfax' }));
-      const table = await screen.findByRole('table', { name: 'Sfax by sector' });
-      await user.click(within(table).getByText('Textile'));
-      expect(where()).toBe('?region=sfax');
-      await user.click(screen.getByRole('button', { name: 'All regions' }));
-      expect(await screen.findByRole('grid')).toBeVisible();
-    });
-
-    it('restores the pick from the address, and ignores a region that is greyed or unknown', async () => {
-      setup('/leadgen/coverage?region=sfax');
-      expect(await screen.findByRole('table', { name: 'Sfax by sector' })).toBeVisible();
-      expect(map()).toHaveAttribute('data-focus', 'sfax');
-    });
-
-    it('shows the matrix for a greyed-out region in the address', async () => {
-      setup('/leadgen/coverage?region=gabes');
-      expect(await screen.findByRole('grid', { name: 'Coverage by sector' })).toBeVisible();
-      expect(map()).toHaveAttribute('data-focus', '');
+      ),
+      '/leadgen/coverage?focus=FR&region=fr-bretagne',
+    );
+    await userEvent.click(await screen.findByRole('button', { name: 'Start a run in Bretagne' }));
+    expect(await screen.findByRole('dialog', { name: 'Start a run' })).toBeInTheDocument();
+    // The window's own region list asks for France, not for the sidebar's country.
+    await waitFor(() => {
+      const asked = server.to('GET /api/regions').map((c) => c.query.get('country'));
+      expect(asked).toContain('FR');
     });
   });
 
-  describe('the Expand window', () => {
-    it('opens a larger matrix with the metric switch and a History results tab', async () => {
-      const { user } = setup();
-      const button = await screen.findByRole('button', { name: 'Expand' });
-      await user.click(button);
-      const dialog = await screen.findByRole('dialog', { name: 'Coverage' });
-      expect(within(dialog).getByRole('tab', { name: 'Matrix' })).toHaveAttribute(
-        'aria-selected',
-        'true',
-      );
-      expect(within(dialog).getByRole('grid', { name: 'Coverage by sector' })).toBeVisible();
-      await user.click(within(dialog).getByRole('radio', { name: 'Leads' }));
-      expect(
-        within(dialog).getByRole('button', { name: 'Sfax, Textile, Partial' }),
-      ).toHaveTextContent('5');
-      // The panel behind uses the same metric.
-      expect(
-        screen
-          .getAllByRole('button', { name: 'Sfax, Textile, Partial' })
-          .every((b) => b.getAttribute('data-metric') === 'leads'),
-      ).toBe(true);
-    });
-
-    it('lists past runs newest first, with a region filter', async () => {
-      const { user } = setup();
-      await user.click(await screen.findByRole('button', { name: 'Expand' }));
-      const dialog = await screen.findByRole('dialog', { name: 'Coverage' });
-      await user.click(within(dialog).getByRole('tab', { name: 'History results' }));
-      const table = await within(dialog).findByRole('table', { name: 'History results' });
-      const body = () =>
-        within(table)
-          .getAllByRole('row')
-          .slice(1)
-          .map((r) => r.textContent);
-      expect(body()).toHaveLength(2);
-      expect(body()[0]).toContain('Tunis');
-      expect(body()[0]).toContain('All sectors');
-      expect(body()[1]).toContain('Sfax');
-      expect(body()[1]).toContain('Textile');
-      const head = within(table)
-        .getAllByRole('columnheader')
-        .map((h) => h.textContent);
-      expect(head).toEqual(['Date', 'Region', 'Sector', 'Leads found', 'Cost', 'Status']);
-      await chooseOption(user, within(dialog).getByLabelText('Region'), 'Sfax');
-      expect(body()).toHaveLength(1);
-      expect(body()[0]).toContain('Sfax');
-    });
-
-    it('closes with Escape and gives the focus back to the Expand button', async () => {
-      const { user } = setup();
-      const button = await screen.findByRole('button', { name: 'Expand' });
-      await user.click(button);
-      await screen.findByRole('dialog', { name: 'Coverage' });
-      await user.keyboard('{Escape}');
-      expect(screen.queryByRole('dialog')).toBeNull();
-      expect(button).toHaveFocus();
-    });
-
-    it('keeps the pick when Escape closes the window', async () => {
-      const { user } = setup('/leadgen/coverage?region=sfax');
-      await screen.findByRole('table', { name: 'Sfax by sector' });
-      await user.click(screen.getByRole('button', { name: 'Expand' }));
-      await screen.findByRole('dialog', { name: 'Coverage' });
-      await user.keyboard('{Escape}');
-      expect(where()).toBe('?region=sfax');
-      expect(screen.getByRole('table', { name: 'Sfax by sector' })).toBeVisible();
-    });
-
-    it('traps focus inside the window', async () => {
-      const { user } = setup();
-      await user.click(await screen.findByRole('button', { name: 'Expand' }));
-      const dialog = await screen.findByRole('dialog', { name: 'Coverage' });
-      for (let i = 0; i < 12; i++) await user.tab();
-      expect(dialog).toContainElement(document.activeElement as HTMLElement);
-    });
+  it('shows the data-protection notice once before the first run in a European country', async () => {
+    window.localStorage.removeItem('leadgen.gdpr.accepted');
+    renderPage(
+      fakeServer(
+        routes({ 'POST /api/runs/preview': { body: preview({ regionId: 'fr-bretagne' }) } }),
+      ),
+      '/leadgen/coverage?focus=FR&region=fr-bretagne',
+    );
+    await userEvent.click(await screen.findByRole('button', { name: 'Start a run in Bretagne' }));
+    const notice = await screen.findByRole('dialog', { name: 'Before you search in France' });
+    expect(screen.queryByRole('dialog', { name: 'Start a run' })).toBeNull();
+    await userEvent.click(within(notice).getByRole('button', { name: 'I understand' }));
+    expect(await screen.findByRole('dialog', { name: 'Start a run' })).toBeInTheDocument();
+    expect(window.localStorage.getItem('leadgen.gdpr.accepted')).toBe('1');
   });
 
-  it('says so when the regions cannot be loaded, with a way to retry', async () => {
-    const server = fakeServer({
-      ...dashboardRoutes(),
-      'GET /api/regions': page(regions),
-      'GET /api/coverage': { status: 500, body: { error: { code: 'internal', message: 'x' } } },
-      'GET /api/regions/geometry': geometry,
-    });
-    renderWith(<CoveragePage />, server, '/leadgen/coverage');
-    expect(await screen.findByRole('button', { name: 'Try again' })).toBeVisible();
+  it('shows a retry when the lists cannot be loaded', async () => {
+    renderPage(
+      fakeServer(routes({ 'GET /api/map/pins': { status: 500, body: { error: 'boom' } } })),
+    );
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
   });
 
-  it('shows an empty state when there are no regions', async () => {
-    const server = fakeServer({
-      ...dashboardRoutes(),
-      'GET /api/regions': page([]),
-      'GET /api/coverage': { regions: [], sectors: [], entries: [] },
-      'GET /api/regions/geometry': { items: [] },
-    });
-    renderWith(<CoveragePage />, server, '/leadgen/coverage');
-    expect(await screen.findByText('No regions yet')).toBeVisible();
+  it('says so when no company has a place yet', async () => {
+    renderPage(fakeServer(routes({ 'GET /api/map/pins': { body: { items: [], total: 0 } } })));
+    expect(await screen.findByText(/No company has a place on the map yet/)).toBeInTheDocument();
   });
 });

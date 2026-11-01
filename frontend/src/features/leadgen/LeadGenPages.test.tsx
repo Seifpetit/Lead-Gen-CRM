@@ -1,8 +1,13 @@
 import { screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { dashboardRoutes, page, run } from '../../test/fixtures.js';
 import { fakeServer } from '../../test/fakeServer.js';
 import { renderApp } from '../../test/render.js';
+
+// jsdom cannot draw the Leaflet map on the Coverage page.
+vi.mock('./worldmap/WorldMap.js', async () => ({
+  WorldMap: (await import('../../test/fakeWorldMap.js')).FakeWorldMap,
+}));
 
 const signedIn = {
   ...dashboardRoutes(),
@@ -49,12 +54,18 @@ describe('Lead Gen sidebar and pages', () => {
     }
   });
 
-  it('renders the Coverage page: one panel with the matrix and the map', async () => {
-    renderApp(fakeServer(signedIn), '/leadgen/coverage');
-    expect(await screen.findByRole('heading', { name: 'Coverage', level: 1 })).toBeVisible();
-    expect(await screen.findByRole('region', { name: 'Coverage by sector' })).toBeVisible();
-    expect(await screen.findByRole('region', { name: 'Coverage map' })).toBeVisible();
-    expect(screen.queryByRole('region', { name: 'History results' })).toBeNull();
+  it('renders the Coverage page as a world map with its own country picker', async () => {
+    const server = fakeServer({
+      ...signedIn,
+      'GET /api/map/pins': { body: { items: [], total: 0 } },
+    });
+    renderApp(server, '/leadgen/coverage');
+    expect(await screen.findByRole('heading', { name: 'Coverage', level: 1 })).toBeInTheDocument();
+    expect(await screen.findByTestId('world-map')).toBeVisible();
+    expect(await screen.findByRole('button', { name: /Coverage by region/ })).toBeVisible();
+    // One picker, on the map: the sidebar's own switch steps aside on this page.
+    expect(screen.getAllByRole('button', { name: /^Country:/ })).toHaveLength(1);
+    expect(screen.queryByRole('region', { name: 'Coverage by sector' })).toBeNull();
   });
 
   it('renders the Costs page with the costs widget', async () => {

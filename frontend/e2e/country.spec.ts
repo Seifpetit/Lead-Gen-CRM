@@ -8,14 +8,12 @@ const EMAIL = 'e2e@example.test';
 const PASSWORD = 'e2e-password-123';
 
 test('switching country redraws the page without a reload and is remembered', async ({ page }) => {
-  await page.goto('/leadgen/coverage');
+  await page.goto('/leadgen');
   await page.getByLabel('Email').fill(EMAIL);
   await page.getByLabel('Password').fill(PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  const grid = page.getByRole('grid', { name: 'Coverage by sector' });
-  await expect(grid).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible();
   await expect(page).toHaveURL(/country=TN/);
-  await expect(grid.getByRole('rowheader')).toHaveCount(25);
 
   // A marker on the window is lost on any reload.
   await page.evaluate(() => {
@@ -34,14 +32,12 @@ test('switching country redraws the page without a reload and is remembered', as
   await notice.getByRole('button', { name: 'I understand' }).click();
   await expect(notice).toHaveCount(0);
 
-  // France's 13 regions, with the first row for the matrix header.
-  await expect(grid.getByRole('rowheader')).toHaveCount(14);
-  await expect(grid.getByRole('rowheader', { name: /Brittany/ })).toBeVisible();
   await expect(page).toHaveURL(/country=FR/);
+  await expect(page.getByRole('button', { name: /^Country: France/ })).toBeVisible();
   expect(await page.evaluate(() => (window as unknown as { __kept?: boolean }).__kept)).toBe(true);
 
   // Remembered: a fresh load of the plain address opens in France, with no notice again.
-  await page.goto('/leadgen/coverage');
+  await page.goto('/leadgen');
   await expect(page.getByRole('button', { name: /^Country: France/ })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
