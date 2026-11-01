@@ -1,3 +1,4 @@
+import { QUERY_SET } from '../config/querySet.js';
 import type {
   PlannedQuery,
   RunMode,
@@ -204,8 +205,8 @@ export async function previewRun(
     `SELECT count(*)::integer AS queries, COALESCE(sum(results_returned), 0)::integer AS results,
             COALESCE(sum(new_places_found), 0)::integer AS fresh
        FROM search_queries s JOIN region_cells rc ON rc.id = s.region_cell_id
-      WHERE s.user_id = $1 AND rc.region_id = $2`,
-    [userId, input.regionId],
+      WHERE s.user_id = $1 AND rc.region_id = $2 AND s.query_set = $3`,
+    [userId, input.regionId, QUERY_SET],
   );
   const h = hist.rows[0]!;
   const avgResults = h.queries >= 10 ? h.results / h.queries : config.maxPlacesPerQuery / 2;

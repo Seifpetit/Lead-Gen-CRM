@@ -1,4 +1,4 @@
-import { FREIGHT_SECTORS } from '../config/sectors.js';
+import { ACTIVE_SECTORS } from '../config/sectors.js';
 import type { Queryable } from '../data/db.js';
 import type { UserId } from '../data/ids.js';
 import { countRuns } from '../data/runs.js';
@@ -13,7 +13,7 @@ import type { RunnerConfig } from './config.js';
 
 /** Every French wording the query grid searches. A cell is exhausted when all of them are. */
 export const ALL_WORDINGS: readonly string[] = [
-  ...new Set(FREIGHT_SECTORS.flatMap((s) => s.searchTermsFr.map((t) => normalizeQuery(t)))),
+  ...new Set(ACTIVE_SECTORS.flatMap((s) => s.searchTermsFr.map((t) => normalizeQuery(t)))),
 ];
 
 /** Avoids dividing by zero for cells that found leads on free (or not yet settled) spend. */
@@ -139,11 +139,11 @@ function day(d: Date): string {
 
 /** Ways to find more in a saturated region. Suggestions only; nothing is added automatically. */
 export function wideningSuggestions(): string[] {
-  const english = FREIGHT_SECTORS.flatMap((s) => s.searchTermsEn);
+  const english = ACTIVE_SECTORS.flatMap((s) => s.searchTermsEn);
   return [
     `English wordings (not searched by default): ${english.slice(0, 6).join(', ')}${english.length > 6 ? ', ...' : ''}`,
-    'Adjacent sectors not in config/sectors.ts yet: cold storage, fishing and seafood processing, paper and printing, electrical equipment, recycling',
-    'Arabic wordings: none are configured; add them to config/sectors.ts (needs a native speaker to choose the terms)',
+    'Adjacent export sectors not in config/sectors.ts yet: paper and printing, electrical equipment, recycling, cosmetics, medical supplies',
+    'More Arabic wordings: only the general trade words are configured; a native speaker should add sector words in config/sectors.ts',
   ];
 }
 

@@ -41,6 +41,7 @@ describe('migrations', () => {
       'companies',
       'contacts',
       'cost_ledger',
+      'coverage_history',
       'crm_card_events',
       'crm_cards',
       'crm_contact_events',
@@ -79,11 +80,11 @@ describe('migrations', () => {
     expect(await migrateDown(db, Infinity)).toEqual(MIGRATIONS.map((m) => m.id).reverse());
     expect(await tables()).toEqual([]);
     expect(await migrateUp(db)).toEqual(MIGRATIONS.map((m) => m.id));
-    expect(await tables()).toHaveLength(33);
+    expect(await tables()).toHaveLength(34);
   });
 
   it('moves existing leads onto the Companies board in Found, one card per company', async () => {
-    await migrateDown(db, 7); // back to 008, before the boards
+    await migrateDown(db, 8); // back to 008, before the boards
     expect(await tables()).not.toContain('crm_cards');
     await seedReference(db, {});
     const user = await makeUser(db);
@@ -121,6 +122,7 @@ describe('migrations', () => {
       '013_company_place',
       '014_failure_tracking',
       '015_messages_contacts',
+      '016_import_export',
     ]);
     const { rows } = await db.query<{
       user_id: string;
@@ -156,7 +158,7 @@ describe('migrations', () => {
     expect((await db.query("SELECT 1 FROM crm_cards WHERE pipeline = 'people'")).rowCount).toBe(0);
   });
   it('gives companies found before 013 their coordinates, category and address from the stored place', async () => {
-    await migrateDown(db, 3); // back to 012, before the place columns
+    await migrateDown(db, 4); // back to 012, before the place columns
     await seedReference(db, {});
     const user = await makeUser(db);
     const run = await createRun(db, user, { regionId: 'sfax', budgetCapUsd: 2 });
@@ -181,6 +183,7 @@ describe('migrations', () => {
       '013_company_place',
       '014_failure_tracking',
       '015_messages_contacts',
+      '016_import_export',
     ]);
     const read = async (id: string) =>
       (await db.query('SELECT lat, lng, category, address FROM companies WHERE id = $1', [id]))
@@ -201,8 +204,57 @@ describe('migrations', () => {
     });
   });
 
+  it('016 keeps old leads and old coverage: nothing deleted, old rows become history', async () => {
+    await migrateDown(db, 1); // back to 015, before the import/export target
+    await seedReference(db, {});
+    const user = await makeUser(db);
+    const run = await createRun(db, user, { regionId: 'sfax', budgetCapUsd: 2 });
+    const company = await oldCompany(user, 'Old mover');
+    const cell = await db.query<{ id: string }>(
+      `INSERT INTO region_cells (region_id, cell_key, south, west, north, east)
+       VALUES ('sfax', 'r0c0', 34, 10, 35, 11) RETURNING id`,
+    );
+    await db.query(
+      `INSERT INTO search_queries (user_id, run_id, region_cell_id, provider, query_text, normalized_query)
+       VALUES ($1, $2, $3, 'apify_google_maps', 'transport de marchandises', 'transport de marchandises')`,
+      [user, run.id, cell.rows[0]!.id],
+    );
+    await db.query(
+      'INSERT INTO region_coverage (user_id, region_cell_id, places_found) VALUES ($1, $2, 7)',
+      [user, cell.rows[0]!.id],
+    );
+    await db.query(
+      `INSERT INTO exhausted_queries (user_id, region_cell_id, normalized_query) VALUES ($1, $2, 'transport')`,
+      [user, cell.rows[0]!.id],
+    );
+
+    expect(await migrateUp(db)).toEqual(['016_import_export']);
+
+    // The company is still there, unlabelled.
+    const c = await db.query('SELECT trade_role FROM companies WHERE id = $1', [company]);
+    expect(c.rows).toEqual([{ trade_role: null }]);
+    // The old search stays, tagged as the first query set; scoring starts at version 1.
+    const q = await db.query('SELECT query_set FROM search_queries');
+    expect(q.rows).toEqual([{ query_set: 1 }]);
+    // The live coverage tables start clean; the old numbers are kept as history.
+    expect((await db.query('SELECT 1 FROM region_coverage')).rowCount).toBe(0);
+    expect((await db.query('SELECT 1 FROM exhausted_queries')).rowCount).toBe(0);
+    const history = await db.query<{ kind: string; query_set: number; places: number | null }>(
+      `SELECT kind, query_set, (data ->> 'places_found')::integer AS places
+         FROM coverage_history ORDER BY kind`,
+    );
+    expect(history.rows).toEqual([
+      { kind: 'exhausted_queries', query_set: 1, places: null },
+      { kind: 'region_coverage', query_set: 1, places: 7 },
+    ]);
+    // A hand-made label outside the allowed ones is refused.
+    await expect(
+      db.query("UPDATE companies SET trade_role = 'shipper' WHERE id = $1", [company]),
+    ).rejects.toThrow();
+  });
+
   it('turns the provider events of runs from before the live log into technical log lines', async () => {
-    await migrateDown(db, 4); // back to 011, before run_log
+    await migrateDown(db, 5); // back to 011, before run_log
     expect(await tables()).not.toContain('run_log');
     await seedReference(db, {});
     const user = await makeUser(db);
@@ -229,6 +281,7 @@ describe('migrations', () => {
       '013_company_place',
       '014_failure_tracking',
       '015_messages_contacts',
+      '016_import_export',
     ]);
     const { rows } = await db.query<{
       level: string;

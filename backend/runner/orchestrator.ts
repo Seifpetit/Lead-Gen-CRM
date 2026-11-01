@@ -12,7 +12,12 @@ import { APIFY_MIN_MAX_CHARGE_USD } from '../config/pricing.js';
 import { recordApifyEvent, type ApifyState } from '../data/apifyEvents.js';
 import { getRunProblem, setRunProblem } from '../data/runHealth.js';
 import { claimCells, listLiveClaims, releaseClaims, renewClaims } from '../data/cellClaims.js';
-import { getCompany, setCompanySector, upsertCompany } from '../data/companies.js';
+import {
+  getCompany,
+  setCompanySector,
+  setCompanyTradeRole,
+  upsertCompany,
+} from '../data/companies.js';
 import { setContactPhoto, setMapsImage } from '../data/companyImages.js';
 import {
   listCompaniesWithStaleContacts,
@@ -110,6 +115,7 @@ import {
 import type { CompanyClassifier, TitleClassifier } from '../stages/classifier.js';
 import { matchTitle, type TitleMatch } from '../stages/matchTitle.js';
 import { isReachable, qualify, type Qualification } from '../stages/qualify.js';
+import { TradeChecker } from './tradeCheck.js';
 import { buildQueryGrid, gridShape } from '../stages/queryGrid.js';
 import { GUARD_WINDOW, outsideRegionVerdict } from './guard.js';
 import { gridSectorIds, usableCells } from './plan.js';
@@ -249,7 +255,15 @@ export class Orchestrator {
   constructor(private readonly deps: OrchestratorDeps) {
     this.db = deps.db;
     this.config = { ...DEFAULT_RUNNER_CONFIG, ...deps.config };
+    this.tradeCheck = new TradeChecker(
+      deps.db,
+      deps.companyClassifier,
+      this.config.classifierRunCapUsd,
+    );
   }
+
+  /** The "check old leads for import/export" job (classifier only, no Apify). */
+  readonly tradeCheck: TradeChecker;
 
   private async checkpoint(label: string): Promise<void> {
     await this.deps.checkpoint?.(label);
@@ -602,6 +616,7 @@ export class Orchestrator {
       const qualification: Qualification = {
         verdict: 'qualified',
         sectorId: place.sector,
+        tradeRole: null,
         method: 'rules',
         kind: 'estimate',
         reasons: ['qualified in an earlier run; contacts are stale'],
@@ -1827,6 +1842,9 @@ export class Orchestrator {
           payload: { qualification: q },
         });
         if (!moved) return;
+        // Every decided company keeps its trade label, including competitors and non-traders:
+        // they are stored (so they are never found and paid for again) and hidden by default.
+        if (q.tradeRole) await setCompanyTradeRole(tx, userId, rc.companyId, q.tradeRole);
         if (q.verdict === 'qualified' && q.sectorId) {
           await setCompanySector(
             tx,
@@ -1917,6 +1935,7 @@ export class Orchestrator {
               contactFit: s.contactFit,
               reachability: s.reachability,
             },
+            scoringVersion: raw.scoringVersion,
             scoreReasons: [...raw.points, ...s.adjustments.map((a) => ({ ...a, evidence: [] }))],
           });
           scores.push({ contactId, total: s.total });

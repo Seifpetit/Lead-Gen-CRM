@@ -25,6 +25,11 @@ import {
   type BulkRemoveResult,
   type BulkRestoreResult,
   type CardSelection,
+  type TradeFilter,
+  type TradeRole,
+  DEFAULT_TRADE_FILTERS,
+  NOT_TRADING_ROLES,
+  TRADING_ROLES,
 } from '@lead-gen-crm/shared';
 import { FREIGHT_SECTORS } from '../config/sectors.js';
 import { withTransaction, type Queryable } from './db.js';
@@ -86,6 +91,7 @@ interface CardRow {
   contact_id: string | null;
   company_name: string;
   sector: string | null;
+  trade_role: TradeRole | null;
   website: string | null;
   company_phone: string | null;
   company_email: string | null;
@@ -114,7 +120,7 @@ interface CardRow {
 const CARD_SELECT = `
   SELECT k.id, k.user_id, k.pipeline, k.stage, k.stage_entered_at, k.noise_at, k.noise_from_stage,
          k.company_id, k.contact_id,
-         c.name AS company_name, c.sector, c.website, c.phone AS company_phone, c.email AS company_email,
+         c.name AS company_name, c.sector, c.trade_role, c.website, c.phone AS company_phone, c.email AS company_email,
          c.image_url, c.image_source, c.category, c.address, c.lat, c.lng,
          p.full_name, p.title, p.email AS person_email, p.phone AS person_phone, p.linkedin_url,
          p.photo_url, k.created_at, c.governorate,
@@ -152,6 +158,7 @@ function toCard(r: CardRow, retentionDays: number): CrmCard {
       id: r.company_id,
       name: r.company_name,
       sector: r.sector,
+      tradeRole: r.trade_role,
       website: r.website,
       phone: r.company_phone,
       email: r.company_email,
@@ -240,6 +247,27 @@ function decodeCursor(cursor: string): [string, string] {
 /** `%` and `_` in the search words mean themselves, not wildcards. */
 const likePattern = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
+const sqlList = (items: readonly string[]) => items.map((i) => `'${i}'`).join(', ');
+
+/**
+ * The Import/export filter. Cards the user has already worked on (past Found, anyone contacted
+ * at the company) and everything in Noise are never filtered out: the filter hides unchecked
+ * clutter, never work in progress. The role lists are constants, not user input.
+ */
+function tradeClause(filters: readonly TradeFilter[]): string {
+  const parts: string[] = [];
+  if (filters.includes('yes')) parts.push(`t.trade_role IN (${sqlList(TRADING_ROLES)})`);
+  if (filters.includes('unchecked'))
+    parts.push("(t.trade_role IS NULL OR t.trade_role = 'unclear')");
+  if (filters.includes('no')) parts.push(`t.trade_role IN (${sqlList(NOT_TRADING_ROLES)})`);
+  const shown = parts.length > 0 ? parts.join(' OR ') : 'false';
+  const worked = [...PROTECTED_STAGES, 'noise'];
+  return `(${shown}
+    OR t.stage IN (${sqlList(worked)})
+    OR EXISTS (SELECT 1 FROM crm_cards w WHERE w.user_id = t.user_id AND w.company_id = t.company_id
+                AND w.stage IN (${sqlList(PROTECTED_STAGES)})))`;
+}
+
 function whereOf(
   userId: UserId,
   pipeline: CrmPipeline,
@@ -268,6 +296,7 @@ function whereOf(
   }
   if (o.runId) add((n) => `t.run_id = $${n}::uuid`, o.runId);
   if (o.regionId) add((n) => `t.governorate = $${n}`, o.regionId);
+  clauses.push(tradeClause(o.trade ?? DEFAULT_TRADE_FILTERS));
   return { clauses, params };
 }
 
@@ -371,7 +400,7 @@ export async function loadFacets(
   db: Queryable,
   userId: UserId,
   pipeline: CrmPipeline,
-  filters: Pick<BoardFilters, 'q' | 'minScore' | 'foundDays' | 'regionId'> = {},
+  filters: Pick<BoardFilters, 'q' | 'minScore' | 'foundDays' | 'regionId' | 'trade'> = {},
 ): Promise<Omit<CrmFacets, 'noiseRetentionDays'>> {
   const { clauses, params } = whereOf(userId, pipeline, { ...filters, excludeNoise: true });
   const from = `FROM (${CARD_SELECT}) t WHERE ${clauses.join(' AND ')}`;

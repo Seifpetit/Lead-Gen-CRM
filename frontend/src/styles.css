@@ -6166,3 +6166,31 @@ a.channel:hover .channel-text {
   background: var(--surface);
   color: var(--text);
 }
+
+/* Import/export labels and the check of older leads. */
+.badge-trade {
+  background: var(--teal);
+  color: var(--black);
+}
+.trade-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  margin: 0 0 8px;
+  background: var(--yellow);
+  border: var(--bw) solid var(--black);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+  font-weight: 600;
+}
+.trade-facts {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+}
+.sr-all-sectors {
+  margin: 0;
+}

@@ -1,6 +1,7 @@
 import {
   BOARD_PAGE_SIZE,
   MAX_NOTES_LENGTH,
+  TRADE_FILTERS,
   type AddDecisionMakerResult,
   MAX_BULK_CARDS,
   type BulkRemoveResult,
@@ -11,6 +12,8 @@ import {
   type CrmCard,
   type CrmCardPage,
   type CrmFacets,
+  type TradeCheckPreview,
+  type TradeCheckStatus,
 } from '@lead-gen-crm/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -78,6 +81,12 @@ const FilterQuery = z.object({
   foundDays: z.coerce.number().int().min(1).max(3650).optional(),
   runId: z.uuid().optional(),
   regionId: z.string().trim().min(1).max(60).optional(),
+  /** Comma-separated: yes, unchecked, no. Left out means yes + unchecked. */
+  trade: z
+    .string()
+    .transform((v) => v.split(',').filter((x) => x !== ''))
+    .pipe(z.array(z.enum(TRADE_FILTERS)).max(3))
+    .optional(),
   sort: z.enum(['newest', 'score', 'days', 'name', 'sector', 'stage']).optional(),
   dir: z.enum(['asc', 'desc']).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(BOARD_PAGE_SIZE),
@@ -92,7 +101,13 @@ const CardsQuery = FilterQuery.extend({
 });
 /** "Select all" follows the same filters as the list, the column chip included. */
 const SelectionQuery = FilterQuery.extend({ stage: z.string().min(1).max(40).optional() });
-const FacetsQuery = FilterQuery.pick({ q: true, minScore: true, foundDays: true, regionId: true });
+const FacetsQuery = FilterQuery.pick({
+  q: true,
+  minScore: true,
+  foundDays: true,
+  regionId: true,
+  trade: true,
+});
 const PipelineParam = z.object({ pipeline: z.enum(['companies', 'people']) });
 
 const BOARD_STATUS: Record<BoardError['code'], number> = {
@@ -152,6 +167,20 @@ export async function crmRoutes(app: FastifyInstance, deps: RouteDeps): Promise<
     const { pipeline } = parse(PipelineParam, request.params);
     const { limit: _limit, ...filters } = parse(SelectionQuery, request.query);
     return guard(() => listCardRefs(db, currentUser(request).id, pipeline, filters));
+  });
+
+  // Check old leads for import/export: a preview with the cost, then start, status and stop.
+  app.get('/api/trade-check/preview', async (request): Promise<TradeCheckPreview> => {
+    return deps.runner.tradeCheck.preview(currentUser(request).id);
+  });
+  app.get('/api/trade-check', async (request): Promise<TradeCheckStatus> => {
+    return deps.runner.tradeCheck.status(currentUser(request).id);
+  });
+  app.post('/api/trade-check', async (request): Promise<TradeCheckStatus> => {
+    return deps.runner.tradeCheck.start(currentUser(request).id);
+  });
+  app.post('/api/trade-check/stop', async (request): Promise<TradeCheckStatus> => {
+    return deps.runner.tradeCheck.stop(currentUser(request).id);
   });
 
   // A company's page: its card, notes, history and decision-maker, found by company ID.

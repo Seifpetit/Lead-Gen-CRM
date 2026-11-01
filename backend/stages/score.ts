@@ -14,10 +14,29 @@ export interface ScorePoint {
 }
 
 export interface ScoreResult extends ScoreBreakdown {
+  scoringVersion: number;
   factPoints: number;
   estimatePoints: number;
   points: ScorePoint[];
 }
+
+/**
+ * Which scoring rules are in force. Stored with every lead's score, so a score made under
+ * older rules is never read as a current one. 1 = domestic freight buyers (before the
+ * import/export target), 2 = import/export companies: the company's trade role decides the
+ * main company-fit points.
+ */
+export const SCORING_VERSION = 2;
+
+/** Points for the trade role: the direction is known for exporters, importers and both. */
+export const TRADE_ROLE_POINTS = {
+  exporter: 20,
+  importer: 20,
+  both: 20,
+  trader: 15,
+  /** Qualified before the role was recorded (stale re-checks): decided by rules, not labelled. */
+  unlabelled: 10,
+} as const;
 
 /** Maximum points per rule. Components sum to 50, 30 and 20. */
 export const SCORE_WEIGHTS = {
@@ -63,10 +82,15 @@ export function score(candidate: LeadCandidate): ScoreResult {
 
   // Company fit
   if (q.verdict === 'qualified') {
+    const role = q.tradeRole;
+    const rolePoints =
+      role === 'exporter' || role === 'importer' || role === 'both' || role === 'trader'
+        ? TRADE_ROLE_POINTS[role]
+        : TRADE_ROLE_POINTS.unlabelled;
     add({
       component: 'companyFit',
-      points: w.companyFit.qualified,
-      reason: `qualified: ${q.reasons.join('; ')}`,
+      points: rolePoints,
+      reason: `${role ?? 'qualified'}: ${q.reasons.join('; ')}`,
       kind: q.kind,
       evidence: qEvidence,
     });
@@ -75,7 +99,7 @@ export function score(candidate: LeadCandidate): ScoreResult {
     add({
       component: 'companyFit',
       points: w.companyFit.sectorMatched,
-      reason: `freight sector ${q.sectorId}`,
+      reason: `sector ${q.sectorId}`,
       kind: q.kind,
       evidence: qEvidence,
     });
@@ -211,6 +235,7 @@ export function score(candidate: LeadCandidate): ScoreResult {
   const contactFit = sum((p) => p.component === 'contactFit');
   const reachability = sum((p) => p.component === 'reachability');
   return {
+    scoringVersion: SCORING_VERSION,
     companyFit,
     contactFit,
     reachability,

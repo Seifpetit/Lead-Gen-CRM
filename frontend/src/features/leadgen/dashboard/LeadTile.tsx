@@ -3,7 +3,13 @@ import type { DragEvent, KeyboardEvent, MouseEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useT } from '../../../i18n/index.js';
 import { CompanyThumb, PersonAvatar } from '../../crm/BoardCard.js';
-import { ChannelRows, ScoreBadge, cardSubtitle, cardTooltip } from '../../crm/cardParts.js';
+import {
+  ChannelRows,
+  ScoreBadge,
+  TradeBadge,
+  cardSubtitle,
+  cardTooltip,
+} from '../../crm/cardParts.js';
 import { cardName } from '../../crm/useBoard.js';
 
 /** Which badges a tile shows, and how big it is; the card density in the filters chooses. */
@@ -124,6 +130,7 @@ export function LeadTile({
         <div className="tile-badges">
           {parts.stage && <span className="badge">{t(`boardStage.${card.stage}`)}</span>}
           {parts.score && card.score !== null && <ScoreBadge score={card.score} />}
+          {!person && <TradeBadge role={company.tradeRole} />}
         </div>
         {parts.contact && <ChannelRows card={card} />}
       </div>

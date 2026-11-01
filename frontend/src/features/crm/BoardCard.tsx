@@ -13,7 +13,14 @@ import { Popover } from '../../components/shared/Popover.js';
 import { useT, type StringKey } from '../../i18n/index.js';
 import { avatarColor, initialsOf } from './avatar.js';
 import { daysInStage, daysLeft } from './boardTime.js';
-import { ChannelRows, LinkedinIcon, ScoreBadge, cardSubtitle, cardTooltip } from './cardParts.js';
+import {
+  ChannelRows,
+  LinkedinIcon,
+  ScoreBadge,
+  TradeBadge,
+  cardSubtitle,
+  cardTooltip,
+} from './cardParts.js';
 import { sectorLook } from './sectorLook.js';
 import { thumbShape } from './thumbShape.js';
 import { cardName, leftKey } from './useBoard.js';
@@ -205,6 +212,7 @@ export function CardFace({ card, actions }: { card: CrmCard; actions: CardAction
             {name}
           </h4>
           {card.score !== null && !inNoise && <ScoreBadge score={card.score} />}
+          {!card.person && !inNoise && <TradeBadge role={card.company.tradeRole} />}
         </div>
         <p className="kanban-card-sub" title={tooltip}>
           {subText}

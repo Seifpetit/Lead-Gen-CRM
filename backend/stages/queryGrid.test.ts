@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { FREIGHT_SECTORS } from '../config/sectors.js';
+import { ACTIVE_SECTORS, FREIGHT_SECTORS } from '../config/sectors.js';
 import { buildQueryGrid, cleanWordings, gridShape } from './queryGrid.js';
 
 // Illustrative bounds around Sfax; real governorate bounds aren't seeded yet.
 const SFAX = { south: 34.4, west: 10.2, north: 35.2, east: 11.1 };
-const frWordings = new Set(FREIGHT_SECTORS.flatMap((s) => s.searchTermsFr)).size;
+const frWordings = new Set(ACTIVE_SECTORS.flatMap((s) => s.searchTermsFr)).size;
 
 describe('buildQueryGrid', () => {
   it('turns one region into 100 to 200 French queries over map cells', () => {
@@ -46,18 +46,18 @@ describe('buildQueryGrid', () => {
       bounds: SFAX,
       exhaustedCellKeys: [cell],
       exhaustedWordings: [
-        { cellKey: null, normalizedQuery: 'huilerie' },
-        { cellKey: all.cells[1]!.key, normalizedQuery: 'Grossiste' },
+        { cellKey: null, normalizedQuery: "huile d'olive exportateur" },
+        { cellKey: all.cells[1]!.key, normalizedQuery: 'Dattes Exportateur' },
       ],
     });
     expect(grid.queries.some((q) => q.cellKey === cell)).toBe(false);
-    expect(grid.queries.some((q) => q.normalizedQuery === 'huilerie')).toBe(false);
+    expect(grid.queries.some((q) => q.normalizedQuery === "huile d'olive exportateur")).toBe(false);
     expect(
       grid.queries.some(
-        (q) => q.cellKey === all.cells[1]!.key && q.normalizedQuery === 'grossiste',
+        (q) => q.cellKey === all.cells[1]!.key && q.normalizedQuery === 'dattes exportateur',
       ),
     ).toBe(false);
-    expect(grid.queries.some((q) => q.normalizedQuery === 'grossiste')).toBe(true);
+    expect(grid.queries.some((q) => q.normalizedQuery === 'dattes exportateur')).toBe(true);
     const live = all.cells.length - 1;
     expect(grid.queries.length).toBe(live * frWordings - live - 1);
     expect(grid.skipped).toEqual({ exhaustedCells: 1, exhaustedQueries: live + 1 });
@@ -76,10 +76,12 @@ describe('buildQueryGrid', () => {
     });
     expect(grid.cells).toEqual(cells);
     expect(grid.queries.map((q) => `${q.cellKey} ${q.textQuery}`)).toEqual([
-      'r0c0.r0c0 huilerie',
-      'r0c0.r0c1 huilerie',
-      "r0c0.r0c0 huile d'olive export",
-      "r0c0.r0c1 huile d'olive export",
+      "r0c0.r0c0 huile d'olive exportateur",
+      "r0c0.r0c1 huile d'olive exportateur",
+      "r0c0.r0c0 huile d'olive importateur",
+      "r0c0.r0c1 huile d'olive importateur",
+      "r0c0.r0c0 huile d'olive import export",
+      "r0c0.r0c1 huile d'olive import export",
     ]);
   });
 
@@ -100,6 +102,31 @@ describe('buildQueryGrid', () => {
   });
 });
 
+describe('import/export terms', () => {
+  const grid = buildQueryGrid({ regionId: 'sfax', bounds: SFAX });
+  const wordings = new Set(grid.queries.map((q) => q.textQuery));
+
+  it('searches the trade words in French, Arabic and English-free combinations', () => {
+    for (const w of ['import export', 'exportateur', 'importateur', 'négoce', 'مستورد', 'مصدر']) {
+      expect(wordings.has(w)).toBe(true);
+    }
+    expect(wordings.has("huile d'olive exportateur")).toBe(true);
+  });
+
+  it('leaves out the terms that only find domestic movers', () => {
+    const domestic =
+      /transport de marchandises|transporteur|livraison|déménagement|demenagement|messagerie|fret/i;
+    expect([...wordings].filter((w) => domestic.test(w) || w === 'grossiste')).toEqual([]);
+  });
+
+  it('keeps retired sectors out unless one is asked for by name', () => {
+    expect(grid.queries.some((q) => q.sectorId === 'steel-metal')).toBe(false);
+    expect(
+      buildQueryGrid({ regionId: 'sfax', bounds: SFAX, sectorIds: ['steel-metal'] }).queries,
+    ).toEqual([]);
+  });
+});
+
 describe('typed-in wordings', () => {
   const bounds = { south: 34, west: 10, north: 35, east: 11 };
 
@@ -108,11 +135,21 @@ describe('typed-in wordings', () => {
       regionId: 'sfax',
       bounds,
       sectorIds: ['textile'],
-      customWordings: ['entrepôt frigorifique', 'Entrepot  Frigorifique', 'usine textile'],
+      customWordings: [
+        'entrepôt frigorifique',
+        'Entrepot  Frigorifique',
+        'Textile confection exportateur',
+      ],
     });
     const wordings = [...new Set(grid.queries.map((q) => q.textQuery))];
-    // "usine textile" is already textile's; the second spelling of the custom one is a duplicate.
-    expect(wordings).toEqual(['usine textile', 'confection', 'entrepôt frigorifique']);
+    // The textile wording typed in again is already textile's; the second spelling of the
+    // custom one is a duplicate.
+    expect(wordings).toEqual([
+      'textile confection exportateur',
+      'textile confection importateur',
+      'textile confection import export',
+      'entrepôt frigorifique',
+    ]);
     expect(
       grid.queries
         .filter((q) => q.sectorId === null)

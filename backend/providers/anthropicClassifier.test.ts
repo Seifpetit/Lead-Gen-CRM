@@ -51,15 +51,15 @@ const message = (text: string, usage: unknown = { input_tokens: 400, output_toke
 const classifier = (http: HttpJson) =>
   new AnthropicClassifier(KEY, { model: 'claude-haiku-5-5', http });
 
+const ANSWER = (role: string, evidence = 'makes garments for export') =>
+  JSON.stringify({ tradeRole: role, evidence, fields: ['name', 'category'] });
+
 describe('company classification', () => {
-  it('returns the verdict, reasons, the evidence relied on, the model and the token cost', async () => {
-    const { http, sent } = fakeHttp(
-      message(
-        '{"verdict":"qualified","reasons":["makes garments for export"],"fields":["name","category"]}',
-      ),
-    );
+  it('returns the trade role, one evidence sentence, the fields relied on, the model and the cost', async () => {
+    const { http, sent } = fakeHttp(message(ANSWER('exporter')));
     const c = await classifier(http).classifyCompany(FACTS);
     expect(c.verdict).toBe('qualified');
+    expect(c.tradeRole).toBe('exporter');
     expect(c.reasons).toEqual(['makes garments for export']);
     expect(c.model).toBe('claude-haiku-5-5');
     expect(c.evidence).toEqual([
@@ -75,8 +75,57 @@ describe('company classification', () => {
     expect(sent).toHaveLength(1);
   });
 
+  it.each([
+    ['exporter', 'qualified'],
+    ['importer', 'qualified'],
+    ['both', 'qualified'],
+    ['trader', 'qualified'],
+    ['not_import_export', 'rejected'],
+    ['competitor_or_partner', 'rejected'],
+    ['unclear', 'review'],
+  ])('turns the label %s into the pipeline verdict %s', async (role, verdict) => {
+    const { http } = fakeHttp(message(ANSWER(role)));
+    const c = await classifier(http).classifyCompany(FACTS);
+    expect(c).toMatchObject({ tradeRole: role, verdict });
+  });
+
+  it('asks the import/export question, names every label and calls forwarders competitors', async () => {
+    const { http, sent } = fakeHttp(message(ANSWER('unclear')));
+    await classifier(http).classifyCompany(FACTS);
+    const system = String(sent[0]!.body.system);
+    expect(system).toContain('regularly import or export physical goods');
+    for (const label of [
+      'exporter',
+      'importer',
+      'both',
+      'trader',
+      'not_import_export',
+      'unclear',
+      'competitor_or_partner',
+    ]) {
+      expect(system).toContain(`"${label}"`);
+    }
+    expect(system).toMatch(/freight forwarder.*customs broker|customs broker.*forwarder/is);
+    expect(system).toMatch(/offshore/i);
+    expect(system).toMatch(/never\s+invent/i);
+  });
+
+  it('asks about the partner country in trades_with_partner mode, with the same labels', async () => {
+    const { http, sent } = fakeHttp(message(ANSWER('importer')));
+    const c = await classifier(http).classifyCompany({
+      ...FACTS,
+      mode: 'trades_with_partner',
+      partnerCountry: 'TN',
+    });
+    const system = String(sent[0]!.body.system);
+    expect(system).toContain('import physical goods from TN or export them to TN');
+    expect(system).not.toContain('regularly import or export physical goods');
+    expect(system).toContain('"competitor_or_partner"');
+    expect(c.tradeRole).toBe('importer');
+  });
+
   it('sends only public company facts, with the key in a header and no address', async () => {
-    const { http, sent } = fakeHttp(message('{"verdict":"review","reasons":[]}'));
+    const { http, sent } = fakeHttp(message(ANSWER('unclear')));
     await classifier(http).classifyCompany(FACTS);
     const call = sent[0]!;
     expect(call.url).toBe('https://api.anthropic.com/v1/messages');
@@ -87,39 +136,39 @@ describe('company classification', () => {
     expect(body).not.toContain('rue des Tests');
     expect(body).toContain('Atelier Sfax Export');
     expect(body).toContain('atelier.example.test');
-    // The sector that found the place comes first among the candidates.
-    const user = (call.body.messages as { content: string }[])[0]!.content;
-    const candidates = (JSON.parse(user) as { sectorCandidates: string[] }).sectorCandidates;
-    expect(candidates[0]).toMatch(/textile/i);
   });
 
   it('sends no sampling settings, which newer models reject with a 400', async () => {
-    const { http, sent } = fakeHttp(message('{"verdict":"review","reasons":[]}'));
+    const { http, sent } = fakeHttp(message(ANSWER('unclear')));
     await classifier(http).classifyCompany(FACTS);
     const keys = Object.keys(sent[0]!.body);
     for (const banned of ['temperature', 'top_p', 'top_k']) expect(keys).not.toContain(banned);
   });
 
   it('accepts JSON wrapped in a code fence', async () => {
-    const { http } = fakeHttp(message('```json\n{"verdict":"rejected","reasons":["a shop"]}\n```'));
+    const { http } = fakeHttp(
+      message('```json\n' + ANSWER('not_import_export', 'a shop') + '\n```'),
+    );
     expect((await classifier(http).classifyCompany(FACTS)).verdict).toBe('rejected');
   });
 
   it('falls back to the name and category as evidence when none are named', async () => {
-    const { http } = fakeHttp(message('{"verdict":"review","reasons":["thin"]}'));
+    const { http } = fakeHttp(message('{"tradeRole":"unclear","evidence":"thin"}'));
     const c = await classifier(http).classifyCompany(FACTS);
     expect(c.evidence.map((e) => e.field)).toEqual(['name', 'category']);
   });
 
   it.each([
     ['text that is not JSON', 'I think this is a textile company.'],
-    ['a verdict outside the allowed three', '{"verdict":"maybe","reasons":[]}'],
-    ['a missing reasons list', '{"verdict":"qualified"}'],
+    ['a label outside the allowed seven', '{"tradeRole":"maybe","evidence":"x"}'],
+    ['a missing evidence sentence', '{"tradeRole":"exporter"}'],
+    ['the old verdict format', '{"verdict":"qualified","reasons":["x"]}'],
     ['an empty answer', ''],
   ])('answers review for %s, and still records what the call cost', async (_n, text) => {
     const { http } = fakeHttp(message(text));
     const c = await classifier(http).classifyCompany(FACTS);
     expect(c.verdict).toBe('review');
+    expect(c.tradeRole).toBe('unclear');
     expect(c.reasons[0]).toContain('invalid answer');
     expect(c.evidence).toEqual([]);
     expect(totalUsd(c.costs)).toBeGreaterThan(0);

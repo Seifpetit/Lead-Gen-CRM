@@ -64,12 +64,13 @@ describe('planRunCells', () => {
 describe('wordings', () => {
   it('lists every distinct French wording once', () => {
     expect(new Set(ALL_WORDINGS).size).toBe(ALL_WORDINGS.length);
-    expect(ALL_WORDINGS).toContain('usine textile');
+    expect(ALL_WORDINGS).toContain('textile confection exportateur');
+    expect(ALL_WORDINGS).toContain('مستورد');
   });
 
-  it('suggests widening without inventing Arabic terms', () => {
+  it('suggests widening, with Arabic sector words left to a native speaker', () => {
     const s = wideningSuggestions();
     expect(s).toHaveLength(3);
-    expect(s[2]).toMatch(/none are configured/);
+    expect(s[2]).toMatch(/native speaker/);
   });
 });

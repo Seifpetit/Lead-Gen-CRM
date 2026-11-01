@@ -63,7 +63,6 @@ async function pickRegion(user: User, name = 'Sfax') {
   await chooseOption(user, await screen.findByLabelText('Region'), new RegExp(`^${name}`));
 }
 
-const chip = (name: string) => screen.getByRole('button', { name });
 const startButton = () => screen.getByRole('button', { name: /^Start run/ });
 const cap = () => screen.getByLabelText('Spend cap (USD)');
 
@@ -113,54 +112,24 @@ describe('Start a run: region', () => {
 });
 
 describe('Start a run: sectors', () => {
-  it('ticks only the suggested sector for the region, never all of them', async () => {
+  it('has no sector chips: every import/export sector is searched, and it says so', async () => {
     const { user } = setup();
     await pickRegion(user);
-    // Road freight yields the most new places per search among the sectors still yielding.
-    await waitFor(() => expect(chip('Road freight')).toHaveAttribute('aria-pressed', 'true'));
-    expect(chip('Import and export')).toHaveAttribute('aria-pressed', 'false');
-    expect(chip('Textile')).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByText('1 of 3 selected')).toBeInTheDocument();
+    expect(screen.queryByText('Sectors to search')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Textile' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'All' })).toBeNull();
+    expect(screen.getByText(/Searches every import\/export sector/)).toBeInTheDocument();
+    // A region is enough to start; there is no "pick a sector" step left.
+    await waitFor(() => expect(startButton()).toHaveAttribute('aria-disabled', 'false'));
   });
 
-  it('ticks nothing for a region with no history and says what to do', async () => {
-    const { user } = setup();
-    await pickRegion(user, 'Tunis');
-    expect(await screen.findByText('0 of 3 selected')).toBeInTheDocument();
-    expect(screen.getByText(/Pick at least one sector/)).toBeInTheDocument();
-    expect(startButton()).toHaveAttribute('aria-disabled', 'true');
-  });
-
-  it('has All and None links, and chips that toggle', async () => {
-    const { user } = setup();
-    await pickRegion(user);
-    await user.click(screen.getByRole('button', { name: 'All' }));
-    expect(screen.getByText('3 of 3 selected')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'None' }));
-    expect(screen.getByText('0 of 3 selected')).toBeInTheDocument();
-    await user.click(chip('Textile'));
-    expect(chip('Textile')).toHaveAttribute('aria-pressed', 'true');
-    chip('Import and export').focus();
-    await user.keyboard(' ');
-    expect(chip('Import and export')).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByText('2 of 3 selected')).toBeInTheDocument();
-  });
-
-  it('sends the ticked sectors with the estimate', async () => {
+  it('asks for the estimate without naming sectors, so the server uses all of them', async () => {
     const { server, user } = setup();
     await pickRegion(user);
-    await user.click(await screen.findByRole('button', { name: 'All' }));
-    await waitFor(() =>
-      expect(
-        server
-          .to('POST /api/runs/preview')
-          .some(
-            (c) =>
-              JSON.stringify(c.body.sectorIds) ===
-              JSON.stringify(['road-freight', 'import-export', 'textile']),
-          ),
-      ).toBe(true),
-    );
+    await waitFor(() => expect(server.to('POST /api/runs/preview').length).toBeGreaterThan(0));
+    for (const call of server.to('POST /api/runs/preview')) {
+      expect(call.body).not.toHaveProperty('sectorIds');
+    }
   });
 });
 
@@ -418,7 +387,6 @@ describe('Start a run: starting', () => {
     await waitFor(() => expect(count()).toBe(1));
     expect(server.to('POST /api/runs')[0]!.body).toEqual({
       regionId: 'sfax',
-      sectorIds: ['road-freight'],
       budgetCapUsd: 2,
       confirm: true,
     });
@@ -492,7 +460,7 @@ describe('Start a run: advanced', () => {
     );
   });
 
-  it('can start from extra searches alone, and sends them', async () => {
+  it('sends extra searches along with the sector terms', async () => {
     const base = preview();
     const { server, user } = setup({
       'POST /api/runs/preview': { body: preview({ cost: { ...base.cost, totalUsd: 1 } }) },
@@ -506,10 +474,10 @@ describe('Start a run: advanced', () => {
     await waitFor(() => expect(server.to('POST /api/runs')).toHaveLength(1));
     expect(server.to('POST /api/runs')[0]!.body).toMatchObject({
       regionId: 'tunis',
-      sectorIds: [],
       customWordings: ['camion frigorifique'],
       confirm: true,
     });
+    expect(server.to('POST /api/runs')[0]!.body).not.toHaveProperty('sectorIds');
   });
 
   it('rejects more than 20 wordings and wordings over 80 characters', async () => {
@@ -528,7 +496,7 @@ describe('Start a run: advanced', () => {
 });
 
 describe('Start a run: prefill from Coverage', () => {
-  it('fills region, sector and map cells, and puts the focus on the sector', async () => {
+  it('fills region, shows the sector and fills map cells', async () => {
     const server = fakeServer({
       ...dashboardRoutes(),
       'GET /api/coverage': startCoverage,
@@ -543,9 +511,9 @@ describe('Start a run: prefill from Coverage', () => {
       server,
     );
     await waitFor(() => expect(screen.getByLabelText('Region')).toHaveTextContent('Sfax'));
-    await waitFor(() => expect(chip('Textile')).toHaveAttribute('aria-pressed', 'true'));
-    expect(chip('Road freight')).toHaveAttribute('aria-pressed', 'false');
-    await waitFor(() => expect(chip('Textile')).toHaveFocus());
+    // The sector from the map is shown, not chosen: there are no chips.
+    expect(await screen.findByText('Sector: Textile')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Road freight' })).toBeNull();
     await userEvent.setup().click(screen.getByText('Advanced'));
     expect(await screen.findByText('Only these map cells: r0c0')).toBeInTheDocument();
   });
@@ -603,13 +571,12 @@ describe('Start a run: from a sector', () => {
     for (const b of bodies) expect(b.sectorIds).toEqual(['textile']);
   });
 
-  it('keeps one region with many sectors when started from a region', async () => {
+  it('shows no sectors to choose when started from a region', async () => {
     const { user } = setup();
     await pickRegion(user);
-    expect(await screen.findByText('Sectors to search')).toBeVisible();
+    expect(screen.queryByText('Sectors to search')).toBeNull();
     expect(screen.queryByRole('button', { name: /^Sfax/ })).toBeNull();
-    await user.click(chip('Textile'));
-    expect(chip('Textile')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(/Searches every import\/export sector/)).toBeVisible();
   });
 });
 

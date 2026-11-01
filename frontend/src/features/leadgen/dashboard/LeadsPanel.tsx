@@ -20,6 +20,7 @@ import {
 import { useLeadCards } from './useLeadCards.js';
 import { ExportButton } from '../../outreach/ExportButton.js';
 import { SelectBar, SelectButton } from './SelectBar.js';
+import { TradeCheckBanner } from './TradeCheck.js';
 import { useLeadSelection } from './useLeadSelection.js';
 
 /**
@@ -141,6 +142,7 @@ export function LeadsPanel({
       ) : (
         <>
           <FilterChips fields={fields} />
+          <TradeCheckBanner onChanged={onChanged} />
           {selection.active && (
             <SelectBar
               selection={selection}

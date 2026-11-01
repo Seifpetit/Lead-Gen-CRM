@@ -57,8 +57,8 @@ describe('matchTitle', () => {
     const miss = await matchTitle('Chargé de flux', classifier);
     expect(miss).toMatchObject({ roleClass: 'logistics', method: 'classifier', kind: 'estimate' });
     expect(miss.costs).toHaveLength(1);
-    expect((await matchTitle('Directeur Commercial Export', classifier)).roleClass).toBeNull();
-    expect(classifier.calls).toEqual(['Chargé de flux', 'Directeur Commercial Export']);
+    expect((await matchTitle('Chargé de communication', classifier)).roleClass).toBeNull();
+    expect(classifier.calls).toEqual(['Chargé de flux', 'Chargé de communication']);
   });
 
   it('returns no match without a classifier', async () => {

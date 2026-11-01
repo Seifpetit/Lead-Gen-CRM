@@ -107,7 +107,7 @@ export async function getRun(db: Queryable, userId: UserId, runId: string): Prom
 
 export async function listRuns(db: Queryable, userId: UserId, limit = 50): Promise<Run[]> {
   const { rows } = await db.query<Row>(
-    `${SELECT_RUN} WHERE r.user_id = $1 ORDER BY r.created_at DESC LIMIT $2`,
+    `${SELECT_RUN} WHERE r.user_id = $1 AND r.kind = 'search' ORDER BY r.created_at DESC LIMIT $2`,
     [userId, limit],
   );
   return rows.map(toRun);
@@ -203,7 +203,7 @@ export async function countActiveRuns(db: Queryable, userId: UserId): Promise<nu
 /** How many runs the user has ever started: the scheduler sends every fifth one exploring. */
 export async function countRuns(db: Queryable, userId: UserId): Promise<number> {
   const { rows } = await db.query<{ n: number }>(
-    'SELECT count(*)::integer AS n FROM runs WHERE user_id = $1',
+    "SELECT count(*)::integer AS n FROM runs WHERE user_id = $1 AND kind = 'search'",
     [userId],
   );
   return rows[0]!.n;

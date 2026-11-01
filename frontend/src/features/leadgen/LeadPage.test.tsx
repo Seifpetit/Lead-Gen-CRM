@@ -29,6 +29,7 @@ const card = (over: Partial<CrmCard> = {}): CrmCard => ({
     id: 'co-1',
     name: 'Fixture Transport SARL',
     sector: 'textile',
+    tradeRole: null,
     website: 'https://fixture-transport.example.test',
     phone: '+216 70 000 000',
     email: null,

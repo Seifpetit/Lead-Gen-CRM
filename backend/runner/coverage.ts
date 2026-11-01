@@ -1,5 +1,5 @@
 import type { Coverage, CoverageEntry, CoverageState } from '@lead-gen-crm/shared';
-import { FREIGHT_SECTORS } from '../config/sectors.js';
+import { ACTIVE_SECTORS, FREIGHT_SECTORS } from '../config/sectors.js';
 import {
   companySectors,
   exhaustionByRegion,
@@ -102,7 +102,7 @@ export async function buildCoverage(
   };
 
   const entries: CoverageEntry[] = [];
-  const sectorIds: (string | null)[] = [...FREIGHT_SECTORS.map((s) => s.id), null];
+  const sectorIds: (string | null)[] = [...ACTIVE_SECTORS.map((s) => s.id), null];
   for (const r of regions) {
     for (const sectorId of sectorIds) {
       const c = cells.get(key(r.id, sectorId));
@@ -125,7 +125,7 @@ export async function buildCoverage(
   }
   return {
     regions: regions.map((r) => ({ regionId: r.id, name: r.name })),
-    sectors: FREIGHT_SECTORS.map((s) => ({ id: s.id, name: s.name })),
+    sectors: ACTIVE_SECTORS.map((s) => ({ id: s.id, name: s.name })),
     entries,
   };
 }

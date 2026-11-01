@@ -61,12 +61,15 @@ export async function upsertLead(
     score: Omit<ScoreBreakdown, 'total'>;
     /** Why each score point was given; stored with the score and refreshed with it. */
     scoreReasons?: ScoreReason[];
+    /** The scoring rules that made the score (SCORING_VERSION); 1 when not given. */
+    scoringVersion?: number;
   },
 ): Promise<{ lead: CrmLead; created: boolean } | null> {
   const { rows } = await db.query<Row & { created: boolean }>(
     `INSERT INTO crm_leads (user_id, run_id, company_id, contact_id,
-                            score_company_fit, score_contact_fit, score_reachability, score_reasons)
-     SELECT $1, $2, c.id, $4, $5, $6, $7, $8::jsonb FROM companies c
+                            score_company_fit, score_contact_fit, score_reachability, score_reasons,
+                            scoring_version)
+     SELECT $1, $2, c.id, $4, $5, $6, $7, $8::jsonb, $9 FROM companies c
       WHERE c.user_id = $1 AND c.id = $3
         AND ($4::uuid IS NULL OR EXISTS
               (SELECT 1 FROM contacts p WHERE p.user_id = $1 AND p.id = $4 AND p.company_id = c.id))
@@ -75,6 +78,7 @@ export async function upsertLead(
        score_contact_fit = EXCLUDED.score_contact_fit,
        score_reachability = EXCLUDED.score_reachability,
        score_reasons = EXCLUDED.score_reasons,
+       scoring_version = EXCLUDED.scoring_version,
        updated_at = now()
      RETURNING *, (xmax = 0) AS created`,
     [
@@ -86,6 +90,7 @@ export async function upsertLead(
       input.score.contactFit,
       input.score.reachability,
       JSON.stringify(input.scoreReasons ?? []),
+      input.scoringVersion ?? 1,
     ],
   );
   const r = rows[0];

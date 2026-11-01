@@ -23,11 +23,43 @@ export const ROLE_CLASSES = [
 ] as const;
 export type RoleClass = (typeof ROLE_CLASSES)[number];
 
+/**
+ * Whether a company trades goods across borders, as read from its listing. `exporter`, `importer`,
+ * `both` and `trader` are the companies this app looks for; the rest are not leads.
+ * `competitor_or_partner` is a carrier, forwarder, customs broker, shipping agent or courier.
+ */
+export const TRADE_ROLES = [
+  'exporter',
+  'importer',
+  'both',
+  'trader',
+  'not_import_export',
+  'unclear',
+  'competitor_or_partner',
+] as const;
+export type TradeRole = (typeof TRADE_ROLES)[number];
+
+/** The roles that make a company a lead. */
+export const TRADING_ROLES: readonly TradeRole[] = ['exporter', 'importer', 'both', 'trader'];
+/** The roles that take a company out of the leads (it goes to Noise, or is never kept). */
+export const NOT_TRADING_ROLES: readonly TradeRole[] = [
+  'not_import_export',
+  'competitor_or_partner',
+];
+
+/** The import/export filter of the lead list: companies that trade, not yet checked, or do not. */
+export const TRADE_FILTERS = ['yes', 'unchecked', 'no'] as const;
+export type TradeFilter = (typeof TRADE_FILTERS)[number];
+/** What the lead list shows until the user changes it. */
+export const DEFAULT_TRADE_FILTERS: readonly TradeFilter[] = ['yes', 'unchecked'];
+
 export interface Company {
   id: string;
   name: string;
   governorate: string;
   sector: string | null;
+  /** Null: not checked for import/export (a company found before that check existed). */
+  tradeRole?: TradeRole | null;
   googlePlaceId: string | null;
   domain: string | null;
   website: string | null;

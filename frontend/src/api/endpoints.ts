@@ -3,6 +3,8 @@ import type {
   BulkRemoveResult,
   BulkRestoreResult,
   CardSelection,
+  TradeCheckPreview,
+  TradeCheckStatus,
   CompanyCardDetail,
   ApifyLog,
   BoardFilters,
@@ -183,7 +185,7 @@ export function createApi(client: ApiClient) {
         }),
       facets: (
         pipeline: CrmPipeline,
-        filters: Pick<BoardFilters, 'q' | 'minScore' | 'foundDays' | 'regionId'> = {},
+        filters: Pick<BoardFilters, 'q' | 'minScore' | 'foundDays' | 'regionId' | 'trade'> = {},
         signal?: AbortSignal,
       ) => client.get<CrmFacets>(`/api/crm/${pipeline}/facets`, defined(filters), signal),
       companyDetail: (companyId: string, signal?: AbortSignal) =>
@@ -205,6 +207,13 @@ export function createApi(client: ApiClient) {
         client.request<CrmCard>('POST', `/api/crm/cards/${id}/restore`, {
           body: defined({ stage }),
         }),
+    },
+
+    tradeCheck: {
+      preview: () => client.get<TradeCheckPreview>('/api/trade-check/preview'),
+      status: () => client.get<TradeCheckStatus>('/api/trade-check'),
+      start: () => client.request<TradeCheckStatus>('POST', '/api/trade-check'),
+      stop: () => client.request<TradeCheckStatus>('POST', '/api/trade-check/stop'),
     },
 
     costs: {

@@ -107,6 +107,7 @@ const beta = companyCard({
     id: 'co-b',
     name: 'Second Freight',
     sector: 'food',
+    tradeRole: null,
     website: null,
     phone: null,
     email: null,
@@ -255,6 +256,7 @@ describe('Recent leads cards', () => {
         id: 'co-img',
         name: 'Pictured Co',
         sector: 'textile',
+        tradeRole: null,
         website: null,
         phone: null,
         email: null,
@@ -838,7 +840,6 @@ describe('Create run', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(server.to('POST /api/runs')[0]!.body).toEqual({
       regionId: 'sfax',
-      sectorIds: ['textile'],
       budgetCapUsd: 2,
       confirm: true,
     });
