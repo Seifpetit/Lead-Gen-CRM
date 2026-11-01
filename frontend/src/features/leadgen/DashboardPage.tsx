@@ -1,3 +1,4 @@
+import { CountryFilter } from '../country/CountryFilter.js';
 import { Select } from '../../components/shared/Select.js';
 import type { Coverage, Lead, RunSummary } from '@lead-gen-crm/shared';
 import { Plus, Terminal } from 'lucide-react';
@@ -137,6 +138,7 @@ export function DashboardPage() {
                 {t('devc.open')}
               </Link>
             )}
+            <CountryFilter />
             <label htmlFor={regionSelect} className="visually-hidden">
               {t('dash.region')}
             </label>
