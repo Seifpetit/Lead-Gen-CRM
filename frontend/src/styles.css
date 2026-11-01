@@ -6221,3 +6221,10 @@ a.channel:hover .channel-text {
     max-width: calc(100% - 24px);
   }
 }
+
+/* The country switch used as a filter in the Dashboard header: sized like its neighbours. */
+.dp-header .country-filter .country-button {
+  width: auto;
+  min-height: 36px;
+  box-shadow: none;
+}
