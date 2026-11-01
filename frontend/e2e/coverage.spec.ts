@@ -238,6 +238,17 @@ test('clicking a pin springs a small panel open, with a button to the lead', asy
   }
 
   // Dragging the map moves the panel with the pin.
+  // First let the panel come to rest (opening a pin may nudge the camera).
+  let rest = -1;
+  let still = 0;
+  await expect
+    .poll(async () => {
+      const x = (await panel.boundingBox())!.x;
+      still = x === rest ? still + 1 : 0;
+      rest = x;
+      return still;
+    })
+    .toBeGreaterThanOrEqual(4);
   const first = await panel.boundingBox();
   await page.mouse.move(mapBox.x + 900, mapBox.y + 450);
   await page.mouse.down();
