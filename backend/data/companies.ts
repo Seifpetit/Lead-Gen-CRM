@@ -1,4 +1,4 @@
-import type { TradeRole } from '@lead-gen-crm/shared';
+import type { CountryCode, TradeRole } from '@lead-gen-crm/shared';
 import { withTransaction, type Queryable } from './db.js';
 import { haversineKm } from '../lib/geo.js';
 import { insertEvidence } from './evidence.js';
@@ -72,6 +72,8 @@ export interface CompanyInput {
   refreshBy?: Date;
   /** The map cell the company was found in (kept from the first find). */
   regionCellId?: string;
+  /** The country it was found in; its phone number is read by that country's rules. Default Tunisia. */
+  country?: CountryCode;
 }
 
 export type MatchedBy =
@@ -223,7 +225,7 @@ export async function upsertCompany(
     const normalizedName = normalizeCompanyName(input.name.value);
     const placeId = input.googlePlaceId?.value.trim() || null;
     const domain = input.website ? normalizeDomain(input.website.value) : null;
-    const phone = input.phone ? classifyPhone(input.phone.value) : null;
+    const phone = input.phone ? classifyPhone(input.phone.value, input.country) : null;
     const phoneE164 = phone?.e164 ?? null;
     let match = await findMatch(tx, userId, {
       placeId,
@@ -364,7 +366,8 @@ export async function upsertCompany(
     }
 
     const target = { companyId: row.id };
-    const { sourceProvider, refreshBy, regionCellId, location, ...sourcedFields } = input;
+    const { sourceProvider, refreshBy, regionCellId, location, country, ...sourcedFields } = input;
+    void country;
     for (const [field, sourced] of Object.entries(sourcedFields) as [
       string,
       Sourced<string> | undefined,

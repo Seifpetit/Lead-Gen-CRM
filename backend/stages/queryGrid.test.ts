@@ -176,3 +176,21 @@ describe('typed-in wordings', () => {
     ]);
   });
 });
+
+describe('buildQueryGrid in France', () => {
+  const BRETAGNE = { south: 47.3, west: -5.2, north: 48.9, east: -1.0 };
+
+  it('searches the product with the partner name in French', () => {
+    const fr = buildQueryGrid({ regionId: 'fr-bretagne', bounds: BRETAGNE, country: 'FR' });
+    const texts = new Set(fr.queries.map((q) => q.textQuery));
+    expect(texts.has("huile d'olive Tunisie importateur")).toBe(true);
+    expect([...texts].every((t) => /Tunisie/.test(t))).toBe(true);
+    expect(new Set(fr.queries.map((q) => q.languageCode))).toEqual(new Set(['fr']));
+  });
+
+  it('leaves the Tunisian grid as it was when no country is given', () => {
+    expect(buildQueryGrid({ regionId: 'sfax', bounds: SFAX, country: 'TN' })).toEqual(
+      buildQueryGrid({ regionId: 'sfax', bounds: SFAX }),
+    );
+  });
+});

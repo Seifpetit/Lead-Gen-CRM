@@ -26,6 +26,7 @@ const card = (over: Partial<CrmCard> = {}): CrmCard => ({
   purgeAt: null,
   removedFrom: null,
   company: {
+    country: 'TN',
     id: 'co-1',
     name: 'Fixture Transport SARL',
     sector: 'textile',

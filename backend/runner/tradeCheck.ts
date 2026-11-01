@@ -6,6 +6,7 @@ import { setCompanyTradeRole } from '../data/companies.js';
 import { withTransaction, type Db, type Queryable } from '../data/db.js';
 import { insertEvidence } from '../data/evidence.js';
 import type { UserId } from '../data/ids.js';
+import { getCountry } from '../config/countries.js';
 import type { CompanyClassifier, CompanyFacts } from '../stages/classifier.js';
 
 // "Check old leads for import/export": the classifier looks at companies found before the
@@ -34,6 +35,7 @@ interface Candidate {
   website: string | null;
   cardId: string;
   regionId: string;
+  country: string;
   sourceUrl: string | null;
 }
 
@@ -138,9 +140,10 @@ export class TradeChecker {
       website: string | null;
       card_id: string;
       governorate: string;
+      country: string;
       source_url: string | null;
     }>(
-      `SELECT c.id, c.name, c.category, c.website, k.id AS card_id, c.governorate,
+      `SELECT c.id, c.name, c.category, c.website, k.id AS card_id, c.governorate, c.country,
               (SELECT e.source_url FROM evidence e WHERE e.company_id = c.id AND e.field = 'name'
                 ORDER BY e.id LIMIT 1) AS source_url
          ${UNCHECKED_FROM}
@@ -154,6 +157,7 @@ export class TradeChecker {
       website: r.website,
       cardId: r.card_id,
       regionId: r.governorate,
+      country: r.country,
       sourceUrl: r.source_url,
     }));
   }
@@ -190,6 +194,11 @@ export class TradeChecker {
         website: c.website,
         address: null,
         sourceUrl: c.sourceUrl ?? c.website ?? 'https://www.google.com/maps',
+        // A company of a country that trades with a partner is asked about that partner.
+        mode: getCountry(c.country).mode,
+        ...(getCountry(c.country).partnerCountry
+          ? { partnerCountry: getCountry(getCountry(c.country).partnerCountry).name }
+          : {}),
       };
       const result = await this.classifier!.classifyCompany(facts);
       const role: TradeRole = result.tradeRole ?? 'unclear';

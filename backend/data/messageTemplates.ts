@@ -4,6 +4,7 @@ import {
   type MessageTemplate,
   type MessageTemplateInput,
   type SenderProfile,
+  type TemplateLanguage,
 } from '@lead-gen-crm/shared';
 import { withTransaction, type Db, type Queryable } from './db.js';
 import type { UserId } from './ids.js';
@@ -14,6 +15,7 @@ import type { UserId } from './ids.js';
 interface TemplateRow {
   id: string;
   name: string;
+  language: TemplateLanguage;
   body: string;
   updated_at: Date;
 }
@@ -21,6 +23,7 @@ interface TemplateRow {
 const toTemplate = (r: TemplateRow): MessageTemplate => ({
   id: r.id,
   name: r.name,
+  language: r.language,
   body: r.body,
   updatedAt: r.updated_at.toISOString(),
 });
@@ -49,7 +52,7 @@ export async function listTemplates(db: Db, userId: UserId): Promise<MessageTemp
       await tx.query('UPDATE users SET templates_seeded = true WHERE id = $1', [userId]);
     }
     const { rows } = await tx.query<TemplateRow>(
-      `SELECT id, name, body, updated_at FROM message_templates
+      `SELECT id, name, language, body, updated_at FROM message_templates
         WHERE user_id = $1 ORDER BY position, created_at, id`,
       [userId],
     );
@@ -73,9 +76,10 @@ export async function createTemplate(
     const { n, next } = count.rows[0]!;
     if (n >= MAX_TEMPLATES) throw new TemplateLimitError();
     const { rows } = await tx.query<TemplateRow>(
-      `INSERT INTO message_templates (user_id, name, body, position) VALUES ($1, $2, $3, $4)
-       RETURNING id, name, body, updated_at`,
-      [userId, input.name, input.body, next],
+      `INSERT INTO message_templates (user_id, name, language, body, position)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, name, language, body, updated_at`,
+      [userId, input.name, input.language ?? 'fr', input.body, next],
     );
     // A user who writes their own first never gets the defaults on top.
     await tx.query('UPDATE users SET templates_seeded = true WHERE id = $1', [userId]);
@@ -91,9 +95,10 @@ export async function updateTemplate(
   input: MessageTemplateInput,
 ): Promise<MessageTemplate | null> {
   const { rows } = await db.query<TemplateRow>(
-    `UPDATE message_templates SET name = $3, body = $4, updated_at = now()
-      WHERE user_id = $1 AND id = $2 RETURNING id, name, body, updated_at`,
-    [userId, id, input.name, input.body],
+    `UPDATE message_templates SET name = $3, body = $4, language = COALESCE($5, language),
+            updated_at = now()
+      WHERE user_id = $1 AND id = $2 RETURNING id, name, language, body, updated_at`,
+    [userId, id, input.name, input.body, input.language ?? null],
   );
   return rows[0] ? toTemplate(rows[0]) : null;
 }

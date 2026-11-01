@@ -1,5 +1,6 @@
 import { TUNISIAN_GOVERNORATES } from '../config/regions.js';
-import { committedRegionGeometry } from '../config/regionGeometry.js';
+import { committedCountryGeometry, committedRegionGeometry } from '../config/regionGeometry.js';
+import { COUNTRY_REGION_SETS } from '../config/countryRegions.js';
 import { upsertCompany } from './companies.js';
 import { upsertContact } from './contacts.js';
 import { upsertLead } from './crmLeads.js';
@@ -9,12 +10,16 @@ import { createRun } from './runs.js';
 import type { Sourced } from './sourced.js';
 import { createUser, findUserByEmail } from './users.js';
 
-/** Reference data every environment needs: the region list with its committed OSM bounds and outlines. Safe to run repeatedly. */
+/** Reference data every environment needs: the region lists of every country with their committed bounds and outlines. Safe to run repeatedly. */
 export async function seedReference(
   db: Queryable,
   geometry: Parameters<typeof upsertRegions>[3] = committedRegionGeometry(),
 ): Promise<void> {
   await upsertRegions(db, TUNISIAN_GOVERNORATES, 'TN', geometry);
+  // France, Germany and Italy: always seeded, whether or not the country is switched on.
+  for (const set of COUNTRY_REGION_SETS) {
+    await upsertRegions(db, set.regions, set.country, committedCountryGeometry(set.country));
+  }
 }
 
 export const DEMO_EMAIL = 'demo@example.com';

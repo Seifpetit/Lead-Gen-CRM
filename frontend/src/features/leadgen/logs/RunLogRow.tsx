@@ -51,7 +51,12 @@ export function RunLogRow({
           aria-label={t('logs.export.pick', { name })}
         />
       )}
-      <strong className="logs-name">{name}</strong>
+      <strong className="logs-name">
+        {name}{' '}
+        <span className="logs-country" title={t('country.column')}>
+          {run.country}
+        </span>
+      </strong>
       <span className="logs-outcome">
         <OutcomeBadge run={run} />
       </span>

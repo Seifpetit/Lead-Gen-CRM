@@ -1,5 +1,6 @@
-import { outlineBounds, type Bounds, type Outline } from './geo.js';
+import { outlineBounds, simplifyOutline, type Bounds, type Outline } from './geo.js';
 import type { GovernorateId } from '../config/regions.js';
+import type { CountryRegionSet } from '../config/countryRegions.js';
 
 // Turns the geoBoundaries ADM1 file for Tunisia into one outline and one bounding box per
 // governorate. Pure: the download and the file writing live in scripts/buildRegions.ts.
@@ -107,5 +108,40 @@ export function buildRegionGeometries(collection: BoundaryCollection): RegionGeo
   }
   const missing = Object.values(GOVERNORATE_BY_ISO).filter((id) => !outlines[id]);
   if (missing.length > 0) throw new Error(`Missing governorates: ${missing.join(', ')}`);
+  return { outlines, bounds };
+}
+
+/**
+ * About 300 m. The outlines of France, Germany and Italy are cut from files with 10 to 100
+ * thousand points per region, far more than cutting search cells and drawing a map need;
+ * Tunisia's keep the full detail of their source.
+ */
+export const COUNTRY_OUTLINE_TOLERANCE_DEG = 0.003;
+
+/**
+ * One outline (simplified) and one bounding box (of the full outline) per region of a country
+ * other than Tunisia. Throws unless the file holds each listed region exactly once and nothing
+ * else: a missing or renamed region must stop the build, not quietly vanish.
+ */
+export function buildCountryGeometries(
+  collection: BoundaryCollection,
+  set: CountryRegionSet,
+  toleranceDeg = COUNTRY_OUTLINE_TOLERANCE_DEG,
+): RegionGeometries {
+  const idByShape = new Map(set.regions.map((r) => [r.shapeName, r.id]));
+  const outlines: Record<string, Outline> = {};
+  const bounds: Record<string, Bounds> = {};
+  for (const feature of collection.features ?? []) {
+    const shape = feature.properties?.shapeName ?? '';
+    const id = idByShape.get(shape);
+    if (!id) throw new Error(`Unknown region "${shape}" in the ${set.country} file`);
+    if (outlines[id]) throw new Error(`${id} appears twice`);
+    const full = toOutline(id, feature.geometry);
+    const b = outlineBounds(full);
+    bounds[id] = { south: b.south, west: b.west, north: b.north, east: b.east };
+    outlines[id] = simplifyOutline(full, toleranceDeg);
+  }
+  const missing = set.regions.filter((r) => !outlines[r.id]).map((r) => r.id);
+  if (missing.length > 0) throw new Error(`Missing regions: ${missing.join(', ')}`);
   return { outlines, bounds };
 }

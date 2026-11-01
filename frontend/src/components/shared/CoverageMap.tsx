@@ -208,7 +208,11 @@ export function CoverageMap({
           </>
         )}
       </svg>
-      <p className="map-attribution">{t('map.attribution')}</p>
+      <p className="map-attribution">
+        {[...new Set(drawable.map((r) => r.country))]
+          .map((c) => t(`map.attribution.${c}`))
+          .join(' · ') || t('map.attribution')}
+      </p>
       {regionCells.length > 0 && (
         <ul className="legend cov-map-legend" aria-label={t('map.legend')}>
           {CELL_STATES.map((s) => (

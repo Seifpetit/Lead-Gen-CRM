@@ -46,3 +46,13 @@ import type { GovernorateId } from './regions.js';
 export const REGION_BOUNDS: Record<GovernorateId, Bounds> = ${JSON.stringify(f.bounds)};
 `;
 }
+
+/** The text of one country's file (config/regionOutlines.<cc>.json): provenance, bounds and outlines together. */
+export function renderCountryFile(f: RegionFiles & { tolerance: number }): string {
+  return JSON.stringify({
+    ...f.provenance,
+    simplifiedToleranceDeg: f.tolerance,
+    bounds: f.bounds,
+    outlines: f.outlines,
+  });
+}

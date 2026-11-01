@@ -3,6 +3,8 @@ import type {
   BulkRemoveResult,
   BulkRestoreResult,
   CardSelection,
+  CountryCode,
+  CountryInfo,
   TradeCheckPreview,
   TradeCheckStatus,
   CompanyCardDetail,
@@ -73,13 +75,34 @@ export interface LeadQuery extends PageParams {
   q?: string;
 }
 
+/**
+ * Which country the screens are looking at. Every list that belongs to one country (leads,
+ * boards, regions, coverage, the start-run form) sends it along; the country switch changes it.
+ * Left undefined, nothing is filtered (this is how components work in tests without a switch).
+ */
+export interface CountryScope {
+  country: CountryCode | undefined;
+}
+
 /** Typed calls for every endpoint the screens use. Paths and shapes mirror backend/routes. */
 export function createApi(client: ApiClient) {
   const defined = <T extends object>(o: T) =>
     Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
+  const scope: CountryScope = { country: undefined };
+  /** Adds the country of the switch to a request, unless the call says "ALL" or names one. */
+  const scoped = <T extends object>(params: T & { country?: CountryCode | 'ALL' | undefined }) => {
+    const { country, ...rest } = params;
+    const chosen = country === 'ALL' ? undefined : (country ?? scope.country);
+    return defined({ ...rest, country: chosen });
+  };
 
   return {
     client,
+    scope,
+
+    countries: {
+      list: () => client.get<{ items: CountryInfo[] }>('/api/countries'),
+    },
 
     auth: {
       config: () => client.get<AuthConfig>('/api/auth/config'),
@@ -105,8 +128,9 @@ export function createApi(client: ApiClient) {
     },
 
     runs: {
-      list: (params: PageParams & { status?: RunStatus[] } = {}) =>
-        client.get<Page<RunSummary>>('/api/runs', defined(params)),
+      /** `country: 'ALL'` lists the runs of every country (the Runs page and the badge). */
+      list: (params: PageParams & { status?: RunStatus[]; country?: CountryCode | 'ALL' } = {}) =>
+        client.get<Page<RunSummary>>('/api/runs', scoped(params)),
       get: (id: string) => client.get<RunDetail>(`/api/runs/${id}`),
       preview: (input: RunPreviewInput) =>
         client.request<RunPreview>('POST', '/api/runs/preview', { body: input }),
@@ -133,9 +157,9 @@ export function createApi(client: ApiClient) {
 
     regions: {
       list: (params: PageParams = {}) =>
-        client.get<Page<RegionSummary>>('/api/regions', defined(params)),
-      suggestion: () => client.get<RegionSuggestionView>('/api/regions/suggestion'),
-      geometry: () => client.get<{ items: RegionGeometry[] }>('/api/regions/geometry'),
+        client.get<Page<RegionSummary>>('/api/regions', scoped(params)),
+      suggestion: () => client.get<RegionSuggestionView>('/api/regions/suggestion', scoped({})),
+      geometry: () => client.get<{ items: RegionGeometry[] }>('/api/regions/geometry', scoped({})),
       /** All of a region's cells, following the pages. */
       async cells(regionId: string): Promise<CellSummary[]> {
         const all: CellSummary[] = [];
@@ -152,11 +176,11 @@ export function createApi(client: ApiClient) {
     },
 
     coverage: {
-      get: () => client.get<Coverage>('/api/coverage'),
+      get: () => client.get<Coverage>('/api/coverage', scoped({})),
     },
 
     leads: {
-      list: (query: LeadQuery = {}) => client.get<Page<Lead>>('/api/leads', defined(query)),
+      list: (query: LeadQuery = {}) => client.get<Page<Lead>>('/api/leads', scoped(query)),
       move: (id: string, stage: CrmStage, reason?: string) =>
         client.request<Lead>('PATCH', `/api/leads/${id}/stage`, {
           body: defined({ stage, reason }),
@@ -172,9 +196,9 @@ export function createApi(client: ApiClient) {
         pipeline: CrmPipeline,
         filters: BoardFilters & { limit?: number | undefined } = {},
         signal?: AbortSignal,
-      ) => client.get<CrmBoard>(`/api/crm/${pipeline}`, defined(filters), signal),
+      ) => client.get<CrmBoard>(`/api/crm/${pipeline}`, scoped(filters), signal),
       cards: (pipeline: CrmPipeline, query: CardsQuery = {}, signal?: AbortSignal) =>
-        client.get<CrmCardPage>(`/api/crm/${pipeline}/cards`, defined(query), signal),
+        client.get<CrmCardPage>(`/api/crm/${pipeline}/cards`, scoped(query), signal),
       move: (id: string, stage: string, reason?: string) =>
         client.request<CrmCard>('POST', `/api/crm/cards/${id}/move`, {
           body: defined({ stage, reason }),
@@ -187,7 +211,7 @@ export function createApi(client: ApiClient) {
         pipeline: CrmPipeline,
         filters: Pick<BoardFilters, 'q' | 'minScore' | 'foundDays' | 'regionId' | 'trade'> = {},
         signal?: AbortSignal,
-      ) => client.get<CrmFacets>(`/api/crm/${pipeline}/facets`, defined(filters), signal),
+      ) => client.get<CrmFacets>(`/api/crm/${pipeline}/facets`, scoped(filters), signal),
       companyDetail: (companyId: string, signal?: AbortSignal) =>
         client.get<CompanyCardDetail>(`/api/crm/cards/by-company/${companyId}`, undefined, signal),
       saveNotes: (companyId: string, notes: string) =>
@@ -196,7 +220,7 @@ export function createApi(client: ApiClient) {
         }),
       remove: (id: string) => client.request<CrmCard>('POST', `/api/crm/cards/${id}/remove`),
       selection: (pipeline: CrmPipeline, query: CardsQuery = {}, signal?: AbortSignal) =>
-        client.get<CardSelection>(`/api/crm/${pipeline}/selection`, defined(query), signal),
+        client.get<CardSelection>(`/api/crm/${pipeline}/selection`, scoped(query), signal),
       removeMany: (ids: readonly string[]) =>
         client.request<BulkRemoveResult>('POST', '/api/crm/cards/bulk-remove', { body: { ids } }),
       restoreMany: (ids: readonly string[]) =>
@@ -230,7 +254,7 @@ export function createApi(client: ApiClient) {
         if (source.kind === 'cards') {
           const { cursor: _c, limit: _l, ...filters } = source.filters;
           return client.download(`/api/exports/cards/${source.pipeline}`, {
-            ...defined(filters),
+            ...scoped(filters),
             ...options,
           });
         }

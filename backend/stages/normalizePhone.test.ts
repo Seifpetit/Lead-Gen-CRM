@@ -65,3 +65,37 @@ describe('classifyPhone', () => {
     },
   );
 });
+
+describe('phone numbers per country', () => {
+  it.each([
+    ['06 12 34 56 78', 'FR', '+33612345678', 'mobile'],
+    ['+33 7 12 34 56 78', 'FR', '+33712345678', 'mobile'],
+    ['01 23 45 67 89', 'FR', '+33123456789', 'landline'],
+    ['0033 4 91 23 45 67', 'FR', '+33491234567', 'landline'],
+    ['08 05 12 34 56', 'FR', '+33805123456', 'special'],
+    ['0171 2345678', 'DE', '+491712345678', 'mobile'],
+    ['+49 (0)151 23456789', 'DE', '+4915123456789', 'mobile'],
+    ['030 1234567', 'DE', '+49301234567', 'landline'],
+    ['0800 1234567', 'DE', '+498001234567', 'special'],
+    ['347 123 4567', 'IT', '+393471234567', 'mobile'],
+    ['+39 02 1234 5678', 'IT', '+390212345678', 'landline'],
+    ['800 123456', 'IT', '+39800123456', 'special'],
+  ] as const)('%s in %s -> %s (%s)', (raw, country, e164, line) => {
+    expect(classifyPhone(raw, country)).toEqual({ e164, line, foreign: false });
+  });
+
+  it('keeps a Tunisian number Tunisian, and flags it foreign inside France', () => {
+    expect(classifyPhone('98 123 456')).toEqual({
+      e164: '+21698123456',
+      line: 'mobile',
+      foreign: false,
+    });
+    expect(classifyPhone('+216 98 123 456', 'FR')).toMatchObject({ foreign: true });
+  });
+
+  it('refuses numbers that cannot be real in the country', () => {
+    expect(classifyPhone('06 12 34', 'FR')).toBeNull();
+    expect(classifyPhone('abc', 'DE')).toBeNull();
+    expect(classifyPhone('12345', 'IT')).toBeNull();
+  });
+});

@@ -7,6 +7,7 @@ import {
   queryTotalsByRegionSector,
   spendByStep,
 } from '../data/coverageMatrix.js';
+import { getCountry, partnerWordings } from '../config/countries.js';
 import type { Queryable } from '../data/db.js';
 import type { UserId } from '../data/ids.js';
 import { listRegions } from '../data/regions.js';
@@ -35,8 +36,9 @@ export async function buildCoverage(
   db: Queryable,
   userId: UserId,
   now: Date = new Date(),
+  country?: string,
 ): Promise<Coverage> {
-  const [regions, queries, leads, steps, companies, exhaustion] = await Promise.all([
+  const [allRegions, queries, leads, steps, companies, exhaustion] = await Promise.all([
     listRegions(db),
     queryTotalsByRegionSector(db, userId),
     leadTotalsByRegionSector(db, userId),
@@ -44,6 +46,9 @@ export async function buildCoverage(
     companySectors(db, userId),
     exhaustionByRegion(db, userId),
   ]);
+
+  const regions = country ? allRegions.filter((r) => r.country === country) : allRegions;
+  const countryOf = new Map(allRegions.map((r) => [r.id, r.country]));
 
   const cells = new Map<
     string,
@@ -79,9 +84,15 @@ export async function buildCoverage(
     }
   }
 
-  const wordingsOf = new Map<string, string[]>(
-    FREIGHT_SECTORS.map((s) => [s.id, s.searchTermsFr.map((t) => normalizeQuery(t))]),
-  );
+  // The wordings a sector is searched with depend on the country: a country that trades with a
+  // partner searches its own words.
+  const wordingsFor = (regionId: string, sectorId: string): string[] | undefined => {
+    const sector = FREIGHT_SECTORS.find((s) => s.id === sectorId);
+    if (!sector) return undefined;
+    const terms =
+      partnerWordings(getCountry(countryOf.get(regionId)), sectorId) ?? sector.searchTermsFr;
+    return terms.map((t) => normalizeQuery(t));
+  };
   const stateOf = (
     regionId: string,
     sectorId: string | null,
@@ -89,7 +100,7 @@ export async function buildCoverage(
     lastAt: Date | null,
   ): CoverageState => {
     if (queriesRun === 0) return 'not_searched';
-    const wordings = sectorId ? wordingsOf.get(sectorId) : undefined;
+    const wordings = sectorId ? wordingsFor(regionId, sectorId) : undefined;
     const ex = exhaustion.get(regionId);
     if (!wordings || !ex || ex.cells.length === 0) return 'yielding';
     const done = ex.cells.every(
@@ -124,7 +135,7 @@ export async function buildCoverage(
     }
   }
   return {
-    regions: regions.map((r) => ({ regionId: r.id, name: r.name })),
+    regions: regions.map((r) => ({ regionId: r.id, name: r.name, country: r.country })),
     sectors: ACTIVE_SECTORS.map((s) => ({ id: s.id, name: s.name })),
     entries,
   };

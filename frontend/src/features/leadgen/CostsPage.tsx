@@ -64,6 +64,7 @@ export function CostsPage() {
               <thead>
                 <tr>
                   <th scope="col">{t('costs.col.key')}</th>
+                  <th scope="col">{t('country.column')}</th>
                   <th scope="col" className="num">
                     {t('costs.col.actual')}
                   </th>
@@ -84,6 +85,7 @@ export function CostsPage() {
                     <th scope="row" data-label={t('costs.col.key')}>
                       <RowName group={group} row={row} />
                     </th>
+                    <td data-label={t('country.column')}>{row.country ?? '–'}</td>
                     <td className="num" data-label={t('costs.col.actual')}>
                       {formatUsd(row.actualUsd)}
                     </td>

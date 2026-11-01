@@ -217,4 +217,18 @@ export const CARRIER_KEYWORDS = [
   'trucking',
   'forwarder',
   'courier',
+  // German and Italian carriers and forwarders (for the countries that trade with Tunisia).
+  'spedition',
+  'spediteur',
+  'logistik',
+  'frachtfuhrer',
+  'transportunternehmen',
+  'fuhrunternehmen',
+  'kurier',
+  'spedizioni',
+  'spedizioniere',
+  'trasporti',
+  'logistica',
+  'corriere',
+  'traslochi',
 ] as const;

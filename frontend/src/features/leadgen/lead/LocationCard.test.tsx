@@ -61,6 +61,7 @@ const square = (w: number, s: number, e: number, n: number) => ({
 });
 const REGIONS: RegionGeometry[] = [
   {
+    country: 'TN',
     regionId: 'sfax',
     name: 'Sfax',
     bounds: { south: 34, west: 10, north: 35, east: 11 },
@@ -68,6 +69,7 @@ const REGIONS: RegionGeometry[] = [
     outlineSource: 'osm',
   },
   {
+    country: 'TN',
     regionId: 'tunis',
     name: 'Tunis',
     bounds: { south: 36, west: 10, north: 37, east: 11 },

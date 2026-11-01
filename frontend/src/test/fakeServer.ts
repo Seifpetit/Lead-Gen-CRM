@@ -1,6 +1,6 @@
 import { ApiClient } from '../api/client.js';
 import { createApi } from '../api/endpoints.js';
-import { health } from './fixtures.js';
+import { countries, health } from './fixtures.js';
 
 export interface FakeRequest {
   method: string;
@@ -34,6 +34,7 @@ export function fakeServer(routes: Record<string, Handler>) {
     'GET /api/auth/csrf': { body: { token: 'csrf-test-token' } },
     // The in-app notice asks for this on every screen; healthy unless a test says otherwise.
     'GET /api/health': { body: health() },
+    'GET /api/countries': { body: { items: countries() } },
     ...routes,
   };
   const fetchImpl: typeof fetch = async (input, init) => {

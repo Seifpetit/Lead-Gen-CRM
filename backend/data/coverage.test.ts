@@ -107,7 +107,7 @@ describe('coverage per cell, rolled up per region', () => {
     });
 
     const all = await listCoverage(db, user);
-    expect(all).toHaveLength(24);
+    expect(all).toHaveLength(24 + 13 + 16 + 20); // Tunisia, France, Germany, Italy
     expect(all.find((r) => r.regionId === 'tunis')).toMatchObject({
       cellsTotal: 0,
       placesFound: 0,

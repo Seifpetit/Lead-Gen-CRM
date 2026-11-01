@@ -9,6 +9,7 @@ import type { RouteDeps } from './deps.js';
 import {
   ApiError,
   body,
+  CountryParam,
   csvList,
   notFound,
   PageQuery,
@@ -24,6 +25,7 @@ const LeadQuery = PageQuery.extend({
   stage: csvList(z.enum(CRM_STAGES)),
   runId: UUID.optional(),
   regionId: z.string().min(1).max(60).optional(),
+  country: CountryParam,
   minScore: z.coerce.number().int().min(0).max(100).optional(),
   q: z.string().trim().min(1).max(100).optional(),
 });

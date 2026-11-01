@@ -40,7 +40,8 @@ import { dismissalFeedback, runFunnel } from '../data/views.js';
 import type { UserId } from '../data/ids.js';
 import { createRegionGrid, listCells } from '../data/regionCells.js';
 import { addCellCoverage } from '../data/regionCoverage.js';
-import { getRegionBounds, getRegionOutline } from '../data/regions.js';
+import { getCountry } from '../config/countries.js';
+import { getRegionBounds, getRegionCountry, getRegionOutline } from '../data/regions.js';
 import { FREIGHT_SECTORS } from '../config/sectors.js';
 import { cellOverlap, placeInOutline } from '../lib/geo.js';
 import { liveMessages, type SearchFacts } from '../lib/liveMessages.js';
@@ -130,7 +131,8 @@ import { planRunCells, ALL_WORDINGS } from './scheduler.js';
 import { RunChanges } from './changes.js';
 import { webhookFor } from './webhooks.js';
 
-export type RunStartErrorCode = 'monthly_cap_reached' | 'no_bounds' | 'no_free_cells';
+export type RunStartErrorCode =
+  'monthly_cap_reached' | 'no_bounds' | 'no_free_cells' | 'country_disabled';
 
 export class RunStartError extends Error {
   constructor(
@@ -483,6 +485,13 @@ export class Orchestrator {
         'monthly_cap_reached',
       );
     }
+    const country = getCountry(await getRegionCountry(this.db, input.regionId));
+    if (!country.enabled) {
+      throw new RunStartError(
+        `${country.name} is switched off${country.disabledReason ? `: ${country.disabledReason}` : ''}`,
+        'country_disabled',
+      );
+    }
     const cells = await listCells(this.db, input.regionId, { leafOnly: true });
     if (cells.length === 0) {
       const bounds = await getRegionBounds(this.db, input.regionId);
@@ -561,6 +570,7 @@ export class Orchestrator {
     const keyToId = new Map(cells.map((c) => [c.cellKey, c.id]));
     const grid = buildQueryGrid({
       regionId: run.region,
+      country: run.country,
       bounds: cells[0]!,
       cells: claimedIds.map((id) => {
         const cell = cellById.get(id)!;
@@ -1381,6 +1391,7 @@ export class Orchestrator {
           sourceProvider: place.provider,
           ...(refreshBy ? { refreshBy } : {}),
           ...(cellId ? { regionCellId: cellId } : {}),
+          country: run.country,
         },
         run.id,
       );
@@ -1700,7 +1711,8 @@ export class Orchestrator {
       (rc) => !planned.has(rc.companyId),
     );
     if (todo.length === 0) return false;
-    const keywords = titleKeywords();
+    const country = getCountry(run.country);
+    const keywords = titleKeywords(50, country);
     await withTransaction(this.db, async (tx) => {
       for (const rc of todo) {
         const payload = reviveDates<DiscoverPayload>(rc.payload);
@@ -1708,7 +1720,7 @@ export class Orchestrator {
           companyName: payload.place.name.value,
           companyLinkedinUrl: payload.place.linkedinUrl?.value ?? null,
           titleKeywords: keywords,
-          location: 'Tunisia',
+          location: country.name,
           maxPeople: this.config.maxPeoplePerCompany,
         };
         await ensureStep(tx, userId, {
@@ -1809,8 +1821,13 @@ export class Orchestrator {
     for (const rc of todo) {
       const payload = reviveDates<DiscoverPayload>(rc.payload);
       const capped = await this.classifierCapReached(userId, run.id);
+      const country = getCountry(run.country);
       const q = await qualify(payload.place, {
         querySectorId: payload.querySectorId,
+        mode: country.mode,
+        ...(country.partnerCountry
+          ? { partnerCountry: getCountry(country.partnerCountry).name }
+          : {}),
         ...(this.deps.companyClassifier && !capped
           ? { classifier: this.deps.companyClassifier }
           : {}),
@@ -1889,7 +1906,11 @@ export class Orchestrator {
   private async runScore(userId: UserId, run: Run): Promise<boolean> {
     for (const rc of await listRunCompanies(this.db, userId, run.id, ['verified'])) {
       const payload = reviveDates<DiscoverPayload>(rc.payload);
-      const company: CompanyForLead = { ...payload.place, qualification: payload.qualification! };
+      const company: CompanyForLead = {
+        ...payload.place,
+        qualification: payload.qualification!,
+        country: run.country,
+      };
       const domain = payload.place.website ? normalizeDomain(payload.place.website.value) : null;
       const people: (PersonForLead & { contactId: string })[] = [];
       for (const p of payload.people ?? []) {

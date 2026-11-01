@@ -9,9 +9,9 @@ import { CoverageMatrix } from './CoverageMatrix.js';
 
 const data: Coverage = {
   regions: [
-    { regionId: 'gabes', name: 'Gabès' },
-    { regionId: 'sfax', name: 'Sfax' },
-    { regionId: 'tunis', name: 'Tunis' },
+    { regionId: 'gabes', name: 'Gabès', country: 'TN' },
+    { regionId: 'sfax', name: 'Sfax', country: 'TN' },
+    { regionId: 'tunis', name: 'Tunis', country: 'TN' },
   ],
   sectors: [
     { id: 'agri-food', name: 'Agri-food' },

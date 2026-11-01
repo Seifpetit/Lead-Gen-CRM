@@ -17,7 +17,17 @@ import { RunStartError } from '../runner/orchestrator.js';
 import { cleanWordings, MAX_CUSTOM_WORDINGS, MAX_WORDING_CHARS } from '../stages/queryGrid.js';
 import { pendingMigrations } from '../data/migrate.js';
 import type { RouteDeps } from './deps.js';
-import { ApiError, body, csvList, notFound, PageQuery, query, toPage, uuidParam } from './http.js';
+import {
+  ApiError,
+  body,
+  CountryParam,
+  csvList,
+  notFound,
+  PageQuery,
+  query,
+  toPage,
+  uuidParam,
+} from './http.js';
 
 /** Most cells a run can be restricted to. */
 const MAX_CELL_KEYS = 100;
@@ -70,7 +80,10 @@ const startBody = (maxCap: number) =>
     .strict()
     .refine(nonEmptyPlan, EMPTY_PLAN);
 
-const ListQuery = PageQuery.extend({ status: csvList(z.enum(RUN_STATUSES)) });
+const ListQuery = PageQuery.extend({
+  status: csvList(z.enum(RUN_STATUSES)),
+  country: CountryParam,
+});
 
 /** Drops duplicate wordings (accents and case ignored), keeping the first as typed. */
 function tidy<T extends { customWordings?: string[] | undefined }>(input: T): T {
@@ -155,12 +168,10 @@ export async function runRoutes(app: FastifyInstance, deps: RouteDeps): Promise<
 
   app.get('/api/runs', async (request): Promise<Page<RunSummary>> => {
     const q = query(ListQuery, request);
-    const { items, total } = await listRunSummaries(
-      db,
-      currentUser(request).id,
-      q,
-      q.status ? { status: q.status } : {},
-    );
+    const { items, total } = await listRunSummaries(db, currentUser(request).id, q, {
+      ...(q.status ? { status: q.status } : {}),
+      ...(q.country ? { country: q.country } : {}),
+    });
     return toPage(items, total, q);
   });
 

@@ -12,7 +12,8 @@ import type { Queryable } from '../data/db.js';
 import type { UserId } from '../data/ids.js';
 import { cellsInOutline, listCells } from '../data/regionCells.js';
 import { listCoverage } from '../data/regionCoverage.js';
-import { getRegionBounds, getRegionOutline } from '../data/regions.js';
+import { getRegionBounds, getRegionCountry, getRegionOutline } from '../data/regions.js';
+import { getCountry } from '../config/countries.js';
 import { countActiveRuns, countRuns } from '../data/runs.js';
 import { listCellStats, listExhaustedQueries, type CellStats } from '../data/saturation.js';
 import { getMonthlyBudget } from '../data/userBudget.js';
@@ -92,6 +93,13 @@ export async function previewRun(
       message: `${activeRuns} runs are already active (limit ${config.maxConcurrentRunsPerUser})`,
     });
   }
+  const country = getCountry(await getRegionCountry(db, input.regionId));
+  if (!country.enabled) {
+    blockers.push({
+      code: 'country_disabled',
+      message: `${country.name} is switched off${country.disabledReason ? `: ${country.disabledReason}` : ''}`,
+    });
+  }
   const discoveryMin = APIFY_MIN_MAX_CHARGE_USD[ctx.discovery.name] ?? 0;
   if (input.budgetCapUsd !== undefined && input.budgetCapUsd < discoveryMin) {
     blockers.push({
@@ -167,6 +175,7 @@ export async function previewRun(
     const keyById = new Map(stats.map((c) => [c.regionCellId, c.cellKey]));
     const grid = buildQueryGrid({
       regionId: input.regionId,
+      country: country.code,
       bounds,
       cells: chosen.map((c) => ({
         key: c.cellKey,
@@ -250,8 +259,8 @@ export async function previewRun(
   const repPeople = ctx.people.estimate({
     companyName: 'Example',
     companyLinkedinUrl: 'https://www.linkedin.com/company/example',
-    titleKeywords: titleKeywords(),
-    location: 'Tunisia',
+    titleKeywords: titleKeywords(50, country),
+    location: country.name,
     maxPeople: config.maxPeoplePerCompany,
   });
   const findPeopleUsd = qualified * sumUsd(repPeople);

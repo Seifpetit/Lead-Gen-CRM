@@ -4,7 +4,7 @@ import type { UserId } from '../data/ids.js';
 import { countRuns } from '../data/runs.js';
 import { listRegionStats, type CellStats, type RegionStats } from '../data/saturation.js';
 import { normalizeQuery } from '../lib/normalize.js';
-import type { RunMode } from '@lead-gen-crm/shared';
+import { DEFAULT_COUNTRY, type RunMode } from '@lead-gen-crm/shared';
 import type { RunnerConfig } from './config.js';
 
 // Coverage scheduler. Ranks cells (within a region) and regions by leads per dollar, computed
@@ -183,9 +183,12 @@ export async function suggestNextRegion(
   userId: UserId,
   config: Pick<RunnerConfig, 'exploreEvery' | 'maintenanceIntervalDays'>,
   now = new Date(),
+  country: string = DEFAULT_COUNTRY,
 ): Promise<RegionSuggestion> {
-  const regions = (await listRegionStats(db, userId)).filter((r) => r.bounds || r.cellsTotal > 0);
-  const runsSoFar = await countRuns(db, userId);
+  const regions = (await listRegionStats(db, userId, country)).filter(
+    (r) => r.bounds || r.cellsTotal > 0,
+  );
+  const runsSoFar = await countRuns(db, userId, country);
   const dueBefore = now.getTime() - config.maintenanceIntervalDays * 86_400_000;
   const coverage = (r: RegionStats): number =>
     r.cellsTotal === 0 ? 0 : r.cellsSearched / r.cellsTotal;

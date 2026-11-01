@@ -2,6 +2,7 @@ import type {
   ApifyLog,
   Company,
   Contact,
+  CountryInfo,
   Evidence,
   Lead,
   Page,
@@ -126,6 +127,7 @@ export function run(over: Partial<RunSummary> = {}): RunSummary {
   return {
     id: 'run-1',
     region: 'sfax',
+    country: 'TN',
     sectors: [],
     mode: 'normal',
     status: 'finished',
@@ -162,6 +164,7 @@ export function region(over: Partial<RegionSummary> = {}): RegionSummary {
   return {
     regionId: 'sfax',
     name: 'Sfax',
+    country: 'TN',
     hasBounds: true,
     status: 'active',
     saturatedAt: null,
@@ -304,4 +307,63 @@ export function health(over: Partial<HealthView> = {}): HealthView {
     checkedAt: '2026-10-19T12:00:00.000Z',
     ...over,
   };
+}
+
+export function countries(): CountryInfo[] {
+  const base = {
+    nameFr: '',
+    partnerCountry: null,
+    disabledReason: null,
+    unverified: false,
+    gdprNotice: false,
+  } as const;
+  return [
+    {
+      ...base,
+      code: 'TN',
+      name: 'Tunisia',
+      nameFr: 'Tunisie',
+      mode: 'own_trade',
+      enabled: true,
+      regions: 24,
+    },
+    {
+      ...base,
+      code: 'FR',
+      name: 'France',
+      nameFr: 'France',
+      mode: 'trades_with_partner',
+      partnerCountry: 'TN',
+      enabled: true,
+      unverified: true,
+      gdprNotice: true,
+      regions: 13,
+    },
+    {
+      ...base,
+      code: 'DE',
+      name: 'Germany',
+      nameFr: 'Allemagne',
+      mode: 'trades_with_partner',
+      partnerCountry: 'TN',
+      enabled: false,
+      disabledReason: 'Switched off until France has been tested.',
+      unverified: true,
+      gdprNotice: true,
+      regions: 16,
+    },
+    {
+      ...base,
+      code: 'IT',
+      name: 'Italy',
+      nameFr: 'Italie',
+      mode: 'trades_with_partner',
+      partnerCountry: 'TN',
+      enabled: false,
+      disabledReason: 'Switched off until France has been tested.',
+      unverified: true,
+      gdprNotice: true,
+      regions: 20,
+    },
+  ];
 }

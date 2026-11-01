@@ -219,6 +219,7 @@ const CASES: RouteCase[] = [
   { method: 'GET', pattern: '/api/regions/suggestion', url: () => '/api/regions/suggestion' },
   { method: 'GET', pattern: '/api/regions/geometry', url: () => '/api/regions/geometry' },
   { method: 'GET', pattern: '/api/coverage', url: () => '/api/coverage' },
+  { method: 'GET', pattern: '/api/countries', url: () => '/api/countries' },
   {
     method: 'GET',
     pattern: '/api/regions/:regionId/cells',
@@ -898,7 +899,7 @@ describe('POST /api/runs with a search plan', () => {
 });
 
 describe('GET /api/coverage', () => {
-  const coverage = async (who: Who) => (await call(who, 'GET', '/api/coverage')).json();
+  const coverage = async (who: Who) => (await call(who, 'GET', '/api/coverage?country=TN')).json();
   const entry = (c: { entries: CoverageEntry[] }, r: string, s: string | null): CoverageEntry =>
     c.entries.find((e) => e.regionId === r && e.sectorId === s)!;
 
@@ -930,7 +931,7 @@ describe('GET /api/coverage', () => {
     const total = c.entries
       .filter((e: { regionId: string }) => e.regionId === 'sfax')
       .reduce((n: number, e: { spendUsd: number }) => n + e.spendUsd, 0);
-    const sfax = (await call(alice, 'GET', '/api/regions'))
+    const sfax = (await call(alice, 'GET', '/api/regions?country=TN'))
       .json()
       .items.find((r: { regionId: string }) => r.regionId === 'sfax');
     expect(total).toBeCloseTo(sfax.spendUsd, 5);
@@ -992,7 +993,7 @@ describe('GET /api/coverage', () => {
 
 describe('GET /api/regions/geometry', () => {
   it('gives each region its bounds and outline, shared by all users', async () => {
-    const g = (await call(alice, 'GET', '/api/regions/geometry')).json();
+    const g = (await call(alice, 'GET', '/api/regions/geometry?country=TN')).json();
     expect(g.items).toHaveLength(24);
     const sfax = g.items.find((r: { regionId: string }) => r.regionId === 'sfax');
     expect(sfax.bounds).toMatchObject({ south: 34.6, north: 34.9 });
@@ -1000,7 +1001,7 @@ describe('GET /api/regions/geometry', () => {
     expect(sfax).toMatchObject({ outlineSource: 'bounds', outline: { type: 'Polygon' } });
     const gabes = g.items.find((r: { regionId: string }) => r.regionId === 'gabes');
     expect(gabes).toMatchObject({ bounds: null, outline: null, outlineSource: null });
-    expect((await call(bob, 'GET', '/api/regions/geometry')).json()).toEqual(g);
+    expect((await call(bob, 'GET', '/api/regions/geometry?country=TN')).json()).toEqual(g);
   });
 });
 
@@ -1146,7 +1147,7 @@ describe('POST /api/runs/:id/stop', () => {
 
 describe('regions and coverage', () => {
   it('lists every region with coverage, yield, cost per lead and saturation status', async () => {
-    const page = (await call(alice, 'GET', '/api/regions')).json();
+    const page = (await call(alice, 'GET', '/api/regions?country=TN')).json();
     expect(page.total).toBe(24);
     expect(page.items).toHaveLength(24);
     const sfax = page.items.find((r: { regionId: string }) => r.regionId === 'sfax');
@@ -1166,13 +1167,13 @@ describe('regions and coverage', () => {
     expect(sfax.qualifiedShare).not.toBeNull();
     const tunis = page.items.find((r: { regionId: string }) => r.regionId === 'tunis');
     expect(tunis).toMatchObject({ leads: 0, costPerLeadUsd: null, coverage: null });
-    const small = (await call(alice, 'GET', '/api/regions?limit=5&offset=20')).json();
+    const small = (await call(alice, 'GET', '/api/regions?country=TN&limit=5&offset=20')).json();
     expect(small).toMatchObject({ total: 24, nextOffset: null });
     expect(small.items).toHaveLength(4);
   });
 
   it('shows another user no coverage, spend or leads', async () => {
-    const sfax = (await call(bob, 'GET', '/api/regions'))
+    const sfax = (await call(bob, 'GET', '/api/regions?country=TN'))
       .json()
       .items.find((r: { regionId: string }) => r.regionId === 'sfax');
     expect(sfax).toMatchObject({
@@ -2150,6 +2151,36 @@ describe('message templates and the sender', () => {
     expect((await call(bob, 'GET', '/api/templates')).json().items).toHaveLength(3);
   });
 
+  it('gives a template a language: French unless said, only the known languages, kept on edit', async () => {
+    const plain = await call(alice, 'POST', '/api/templates', { name: 'Plain', body: 'Bonjour' });
+    expect(plain.json().language).toBe('fr');
+    const german = await call(alice, 'POST', '/api/templates', {
+      name: 'Deutsch',
+      body: 'Guten Tag {person}',
+      language: 'de',
+    });
+    expect(german.statusCode).toBe(201);
+    expect(german.json().language).toBe('de');
+    const id = german.json().id;
+    // An edit that does not mention the language keeps it.
+    const edited = await call(alice, 'PUT', `/api/templates/${id}`, {
+      name: 'Deutsch 2',
+      body: 'Hallo',
+    });
+    expect(edited.json().language).toBe('de');
+    const bad = await call(alice, 'POST', '/api/templates', {
+      name: 'Klingon',
+      body: 'x',
+      language: 'tlh',
+    });
+    expect(bad.statusCode).toBe(400);
+    expect(
+      (await call(alice, 'GET', '/api/templates'))
+        .json()
+        .items.map((t: { language: string }) => t.language),
+    ).toContain('de');
+  });
+
   it('creates and edits templates up to 1000 characters, Arabic included', async () => {
     const arabic = 'مرحبا {person}، نحن شركة نقل في {my_company}.';
     const made = await call(alice, 'POST', '/api/templates', { name: 'عربي', body: arabic });
@@ -2254,5 +2285,81 @@ describe('import/export on the boards and the check of old leads (routes)', () =
 
   it('shows another user nothing of it', async () => {
     expect((await call(bob, 'GET', '/api/trade-check/preview')).json().unchecked).toBe(0);
+  });
+});
+
+describe('countries', () => {
+  it('lists the four countries with their state, partner and number of regions', async () => {
+    const res = await call(alice, 'GET', '/api/countries');
+    expect(res.statusCode).toBe(200);
+    const items = res.json().items as {
+      code: string;
+      enabled: boolean;
+      mode: string;
+      partnerCountry: string | null;
+      regions: number;
+      unverified: boolean;
+      gdprNotice: boolean;
+      disabledReason: string | null;
+    }[];
+    expect(items.map((c) => [c.code, c.enabled, c.regions])).toEqual([
+      ['TN', true, 24],
+      ['FR', true, 13],
+      ['DE', false, 16],
+      ['IT', false, 20],
+    ]);
+    const de = items.find((c) => c.code === 'DE')!;
+    expect(de.disabledReason).toMatch(/France/);
+    expect(de).toMatchObject({
+      mode: 'trades_with_partner',
+      partnerCountry: 'TN',
+      gdprNotice: true,
+    });
+    expect(items.find((c) => c.code === 'TN')).toMatchObject({
+      mode: 'own_trade',
+      unverified: false,
+    });
+  });
+
+  it('refuses to start a run in a country that is switched off, and says so in the preview', async () => {
+    const before = await rowCounts();
+    const start = await call(alice, 'POST', '/api/runs', {
+      regionId: 'de-bayern',
+      budgetCapUsd: 5,
+      confirm: true,
+    });
+    expect(start.statusCode).toBe(409);
+    expect(start.json().error).toBe('country_disabled');
+    expect(await rowCounts()).toEqual(before);
+    const preview = await call(alice, 'POST', '/api/runs/preview', {
+      regionId: 'de-bayern',
+      budgetCapUsd: 5,
+    });
+    expect(preview.json().blockers.map((b: { code: string }) => b.code)).toContain(
+      'country_disabled',
+    );
+  });
+
+  it('starts a run in France, keeps its country, and filters lists by country', async () => {
+    const started = await call(alice, 'POST', '/api/runs', {
+      regionId: 'fr-bretagne',
+      budgetCapUsd: 5,
+      confirm: true,
+    });
+    expect(started.statusCode).toBe(201);
+    expect(started.json().country).toBe('FR');
+    const fr = (await call(alice, 'GET', '/api/runs?country=FR')).json();
+    expect(fr.items.map((r: { country: string }) => r.country)).toEqual(['FR']);
+    const tn = (await call(alice, 'GET', '/api/runs?country=TN')).json();
+    expect(tn.items.every((r: { country: string }) => r.country === 'TN')).toBe(true);
+    const all = (await call(alice, 'GET', '/api/runs')).json();
+    expect(all.total).toBe(tn.total + 1);
+    expect((await call(alice, 'GET', '/api/runs?country=ZZ')).statusCode).toBe(400);
+    const regions = (await call(alice, 'GET', '/api/regions?country=FR')).json();
+    expect(regions.total).toBe(13);
+    const geometry = (await call(alice, 'GET', '/api/regions/geometry?country=FR')).json();
+    expect(geometry.items).toHaveLength(13);
+    const costs = (await call(alice, 'GET', '/api/costs?groupBy=run&country=FR')).json();
+    expect(costs.items.every((r: { country: string }) => r.country === 'FR')).toBe(true);
   });
 });

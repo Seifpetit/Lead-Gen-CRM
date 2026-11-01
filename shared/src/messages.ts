@@ -12,9 +12,15 @@ export const MAX_TEMPLATE_NAME_LENGTH = 80;
 export const MAX_TEMPLATES = 30;
 export const MAX_SENDER_FIELD_LENGTH = 120;
 
+/** The languages a message template can be written in. */
+export const TEMPLATE_LANGUAGES = ['fr', 'ar', 'en', 'de', 'it'] as const;
+export type TemplateLanguage = (typeof TEMPLATE_LANGUAGES)[number];
+
 export interface MessageTemplate {
   id: string;
   name: string;
+  /** The language the text is written in. */
+  language: TemplateLanguage;
   /** The text with its variables as {company}, {person} and so on. */
   body: string;
   updatedAt: string;
@@ -22,6 +28,8 @@ export interface MessageTemplate {
 
 export interface MessageTemplateInput {
   name: string;
+  /** Defaults to French when left out. */
+  language?: TemplateLanguage | undefined;
   body: string;
 }
 
@@ -132,18 +140,27 @@ export const DEFAULT_TEMPLATES: readonly MessageTemplateInput[] = [
 ];
 
 /**
- * The number WhatsApp wants ("21698123456") when a phone looks like a Tunisian mobile: +216
- * and eight digits starting with 2, 4, 5 or 9. Landlines, special numbers and foreign numbers
- * give null, so they are offered as a call only.
+ * The number WhatsApp wants ("21698123456") when a phone looks like a mobile: a Tunisian one
+ * (+216 and eight digits starting with 2, 4, 5 or 9), or one written with its country code that
+ * looks like a French (+33 6 or 7), German (+49 15, 16 or 17) or Italian (+39 3) mobile.
+ * Landlines, special numbers and other foreign numbers give null, so they are offered as a call
+ * only. These checks are hand-written, not a phone-number library: they only decide whether to
+ * offer the WhatsApp button.
  */
 export function whatsappNumber(raw: string | null | undefined): string | null {
   const text = raw?.trim() ?? '';
   if (text === '' || /\p{L}/u.test(text)) return null;
   let digits = text.replace(/\(0\)/g, '').replace(/[\s().\-/+]/g, '');
   if (!/^\d+$/.test(digits)) return null;
-  if (digits.startsWith('00216')) digits = digits.slice(5);
-  else if (digits.length === 11 && digits.startsWith('216')) digits = digits.slice(3);
-  else if (text.startsWith('+') || digits.startsWith('00')) return null;
+  const international = text.startsWith('+') || digits.startsWith('00');
+  if (digits.startsWith('00')) digits = digits.slice(2);
+  if (international) {
+    if (/^33[67]\d{8}$/.test(digits)) return digits;
+    if (/^491[567]\d{8,9}$/.test(digits)) return digits;
+    if (/^393\d{8,9}$/.test(digits)) return digits;
+  }
+  if (digits.startsWith('216') && digits.length === 11) digits = digits.slice(3);
+  else if (international) return null;
   if (digits.length !== 8 || !/^[2459]/.test(digits)) return null;
   return `216${digits}`;
 }

@@ -1,10 +1,11 @@
-import type { Run, RunMode, RunStage, RunStatus } from '@lead-gen-crm/shared';
+import type { CountryCode, Run, RunMode, RunStage, RunStatus } from '@lead-gen-crm/shared';
 import { withTransaction, type Queryable } from './db.js';
 import { trustedUserId, type UserId } from './ids.js';
 
 interface Row {
   id: string;
   region_id: string;
+  country: CountryCode;
   sectors: string[];
   custom_only: boolean;
   custom_wordings: string[];
@@ -34,6 +35,7 @@ const SELECT_RUN = `SELECT r.*,
 const toRun = (r: Row): Run => ({
   id: r.id,
   region: r.region_id,
+  country: r.country,
   sectors: r.sectors,
   customOnly: r.custom_only,
   customWordings: r.custom_wordings,
@@ -201,10 +203,11 @@ export async function countActiveRuns(db: Queryable, userId: UserId): Promise<nu
 }
 
 /** How many runs the user has ever started: the scheduler sends every fifth one exploring. */
-export async function countRuns(db: Queryable, userId: UserId): Promise<number> {
+export async function countRuns(db: Queryable, userId: UserId, country?: string): Promise<number> {
   const { rows } = await db.query<{ n: number }>(
-    "SELECT count(*)::integer AS n FROM runs WHERE user_id = $1 AND kind = 'search'",
-    [userId],
+    `SELECT count(*)::integer AS n FROM runs
+      WHERE user_id = $1 AND kind = 'search' AND ($2::text IS NULL OR country = $2)`,
+    [userId, country ?? null],
   );
   return rows[0]!.n;
 }

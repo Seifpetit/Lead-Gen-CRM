@@ -53,7 +53,11 @@ export function RunCard({
         actions={<OutcomeBadge run={run} />}
       >
         <p className="run-card-meta muted">
-          {t('runs.meta', { region: regionLabel(run.region), time: formatDateTime(run.createdAt) })}
+          {t('runs.meta', {
+            region: regionLabel(run.region),
+            country: run.country,
+            time: formatDateTime(run.createdAt),
+          })}
         </p>
         <p className="run-card-result">{outcomeText(t, run)}</p>
         <p className="visually-hidden" aria-live="polite">

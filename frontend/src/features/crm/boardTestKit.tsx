@@ -55,6 +55,7 @@ export function companyCard(over: Partial<CrmCard> & { id: string; name: string 
     purgeAt: null,
     removedFrom: null,
     company: {
+      country: 'TN',
       id: `co-${over.id}`,
       name,
       sector: 'textile',
@@ -87,6 +88,7 @@ export function personCard(over: Partial<CrmCard> & { id: string }): CrmCard {
     purgeAt: null,
     removedFrom: null,
     company: {
+      country: 'TN',
       id: 'co-a',
       name: 'Alpha SARL',
       sector: 'textile',

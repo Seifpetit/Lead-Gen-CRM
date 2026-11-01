@@ -611,6 +611,36 @@ export const en = {
   'crm.dm.save': 'Save decision-maker',
   'crm.dm.saving': 'Saving…',
   // Dashboard redesign
+  'templates.language': 'Language of the message',
+  'templates.language.fr': 'French',
+  'templates.language.ar': 'Arabic',
+  'templates.language.en': 'English',
+  'templates.language.de': 'German',
+  'templates.language.it': 'Italian',
+  'map.attribution.TN': 'Boundaries: geoBoundaries, from © OpenStreetMap contributors (ODbL)',
+  'map.attribution.FR': 'Boundaries: IGN (Etalab Open Licence 2.0), via geoBoundaries',
+  'map.attribution.DE':
+    'Boundaries: BKG (Data licence Germany, attribution 2.0), via geoBoundaries',
+  'map.attribution.IT': 'Boundaries: ISTAT (CC BY 3.0), via geoBoundaries',
+  'country.label': 'Country',
+  'country.switch': 'Country: {name}. Change country',
+  'country.all': 'All countries',
+  'country.off': 'Switched off',
+  'country.draft': 'Search words are a first draft',
+  'country.column': 'Country',
+  'country.unknown': 'Unknown',
+  'gdpr.title': 'Before you search in {country}',
+  'gdpr.intro':
+    'People in the European Union are protected by data-protection law (GDPR). This app keeps names, job titles and work contacts of the people it finds.',
+  'gdpr.point.business':
+    'Contact people only about their work, at a work address or number, and only about something that concerns their business.',
+  'gdpr.point.optOut':
+    'Say who you are in the first message and stop at once when someone asks not to be contacted. Move them to Opted out; the app never contacts them again.',
+  'gdpr.point.source':
+    'Every contact shows where it was found. If someone asks where you got their details, tell them.',
+  'gdpr.notLegal':
+    'This is a reminder, not legal advice. Ask a lawyer before you contact people in bulk.',
+  'gdpr.ok': 'I understand',
   'side.collapse': 'Collapse sidebar',
   'side.expand': 'Expand sidebar',
   'side.settings': 'Settings',
@@ -961,7 +991,7 @@ export const en = {
   'runs.tabs': 'Results and past runs',
   'runs.tab.leads': 'Leads',
   'runs.tab.past': 'Past runs',
-  'runs.meta': '{region} · started {time}',
+  'runs.meta': '{region} ({country}) · started {time}',
   'runs.error': 'This run stopped with a problem: {message}',
   'runs.logs': 'Open all logs',
   'runs.leads.show': 'Show its leads',

@@ -279,3 +279,23 @@ describe('configuration', () => {
     expect(anthropicPrice('claude-unlisted').input).toBeGreaterThan(0);
   });
 });
+
+describe('company classification in a country that trades with Tunisia', () => {
+  it('asks whether the company trades with Tunisia, naming the partner', async () => {
+    const { http, sent } = fakeHttp(message(ANSWER('importer')));
+    await classifier(http).classifyCompany({
+      ...FACTS,
+      mode: 'trades_with_partner',
+      partnerCountry: 'Tunisia',
+    });
+    const system = JSON.stringify(sent[0]!.body);
+    expect(system).toContain('Tunisia');
+    expect(system).toMatch(/import physical goods from Tunisia/);
+  });
+
+  it('keeps the original question for a company in its own country', async () => {
+    const { http, sent } = fakeHttp(message(ANSWER('exporter')));
+    await classifier(http).classifyCompany(FACTS);
+    expect(JSON.stringify(sent[0]!.body)).not.toMatch(/from Tunisia or export/);
+  });
+});

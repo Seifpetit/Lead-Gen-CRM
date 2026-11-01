@@ -58,6 +58,22 @@ const NON_SHIPPER_WORDS = [
   'local government office',
   'gas station',
   'station service',
+  'restaurant',
+  'ristorante',
+  'apotheke',
+  'farmacia',
+  'friseur',
+  'parrucchiere',
+  'zahnarzt',
+  'dentista',
+  'schule',
+  'scuola',
+  'krankenhaus',
+  'ospedale',
+  'banca',
+  'sparkasse',
+  'kirche',
+  'chiesa',
 ];
 
 // A name or Google category that says outright what the company does in foreign trade.
@@ -112,6 +128,7 @@ export function isReachable(place: DiscoveredPlace): boolean {
 export function qualifyByRules(
   place: DiscoveredPlace,
   querySectorId: string | null = null,
+  mode: 'own_trade' | 'trades_with_partner' = 'own_trade',
 ): Qualification | null {
   const evidence = evidenceOf(place);
   const base = { method: 'rules' as const, kind: 'fact' as const, evidence, costs: [] };
@@ -150,6 +167,9 @@ export function qualifyByRules(
   }
   // A sector keyword alone proves nothing about foreign trade: it only labels the sector.
   // The name or category must say the trade outright for the rules to qualify a place.
+  // In a country that trades with a partner, "import export" in a name says nothing about the
+  // partner (an import firm in Lyon may buy only from Spain), so the classifier decides.
+  if (mode === 'trades_with_partner') return null;
   const trade = tradeRoleByWords(nameAndCategory);
   if (!trade) return null;
   const sector = matchSector(place, querySectorId);
@@ -209,7 +229,7 @@ export async function qualify(
     partnerCountry?: string;
   } = {},
 ): Promise<Qualification> {
-  const byRules = qualifyByRules(place, options.querySectorId ?? null);
+  const byRules = qualifyByRules(place, options.querySectorId ?? null, options.mode);
   if (byRules) return byRules;
   const guessedSector =
     matchSector(place, options.querySectorId ?? null)?.id ?? options.querySectorId ?? null;

@@ -84,7 +84,7 @@ describe('migrations', () => {
   });
 
   it('moves existing leads onto the Companies board in Found, one card per company', async () => {
-    await migrateDown(db, 8); // back to 008, before the boards
+    await migrateDown(db, 9); // back to 008, before the boards
     expect(await tables()).not.toContain('crm_cards');
     await seedReference(db, {});
     const user = await makeUser(db);
@@ -123,6 +123,7 @@ describe('migrations', () => {
       '014_failure_tracking',
       '015_messages_contacts',
       '016_import_export',
+      '017_countries',
     ]);
     const { rows } = await db.query<{
       user_id: string;
@@ -158,7 +159,7 @@ describe('migrations', () => {
     expect((await db.query("SELECT 1 FROM crm_cards WHERE pipeline = 'people'")).rowCount).toBe(0);
   });
   it('gives companies found before 013 their coordinates, category and address from the stored place', async () => {
-    await migrateDown(db, 4); // back to 012, before the place columns
+    await migrateDown(db, 5); // back to 012, before the place columns
     await seedReference(db, {});
     const user = await makeUser(db);
     const run = await createRun(db, user, { regionId: 'sfax', budgetCapUsd: 2 });
@@ -184,6 +185,7 @@ describe('migrations', () => {
       '014_failure_tracking',
       '015_messages_contacts',
       '016_import_export',
+      '017_countries',
     ]);
     const read = async (id: string) =>
       (await db.query('SELECT lat, lng, category, address FROM companies WHERE id = $1', [id]))
@@ -205,7 +207,7 @@ describe('migrations', () => {
   });
 
   it('016 keeps old leads and old coverage: nothing deleted, old rows become history', async () => {
-    await migrateDown(db, 1); // back to 015, before the import/export target
+    await migrateDown(db, 2); // back to 015, before the import/export target
     await seedReference(db, {});
     const user = await makeUser(db);
     const run = await createRun(db, user, { regionId: 'sfax', budgetCapUsd: 2 });
@@ -228,7 +230,7 @@ describe('migrations', () => {
       [user, cell.rows[0]!.id],
     );
 
-    expect(await migrateUp(db)).toEqual(['016_import_export']);
+    expect(await migrateUp(db)).toEqual(['016_import_export', '017_countries']);
 
     // The company is still there, unlabelled.
     const c = await db.query('SELECT trade_role FROM companies WHERE id = $1', [company]);
@@ -254,7 +256,7 @@ describe('migrations', () => {
   });
 
   it('turns the provider events of runs from before the live log into technical log lines', async () => {
-    await migrateDown(db, 5); // back to 011, before run_log
+    await migrateDown(db, 6); // back to 011, before run_log
     expect(await tables()).not.toContain('run_log');
     await seedReference(db, {});
     const user = await makeUser(db);
@@ -282,6 +284,7 @@ describe('migrations', () => {
       '014_failure_tracking',
       '015_messages_contacts',
       '016_import_export',
+      '017_countries',
     ]);
     const { rows } = await db.query<{
       level: string;
@@ -307,5 +310,46 @@ describe('migrations', () => {
     expect((await db.query('SELECT live_message FROM runs')).rows[0]).toEqual({
       live_message: null,
     });
+  });
+  it('017 tags everything already stored as Tunisia, and fills the country of new rows from their region', async () => {
+    await migrateDown(db, 1); // back to 016, before the countries
+    await seedReference(db, {});
+    const user = await makeUser(db);
+    const run = await createRun(db, user, { regionId: 'sfax', budgetCapUsd: 2 });
+    const company = await oldCompany(user, 'Old exporter');
+    await db
+      .query(
+        `INSERT INTO message_templates (user_id, name, body) VALUES ($1, 'Hello', 'Bonjour')`,
+        [user],
+      )
+      .catch(() => undefined);
+
+    expect(await migrateUp(db)).toEqual(['017_countries']);
+
+    const read = async (table: string, id: string) =>
+      (await db.query<{ country: string }>(`SELECT country FROM ${table} WHERE id = $1`, [id]))
+        .rows[0]!.country;
+    expect(await read('runs', run.id)).toBe('TN');
+    expect(await read('companies', company)).toBe('TN');
+
+    // A run in a French region gets France without anyone saying so.
+    await seedReference(db);
+    const fr = await createRun(db, user, { regionId: 'fr-bretagne', budgetCapUsd: 2 });
+    expect(await read('runs', fr.id)).toBe('FR');
+    const cell = await db.query<{ id: string; country: string }>(
+      `INSERT INTO region_cells (region_id, cell_key, south, west, north, east)
+       VALUES ('fr-bretagne', 'r0c0', 47, -4, 48, -3) RETURNING id, country`,
+    );
+    expect(cell.rows[0]!.country).toBe('FR');
+    const lang = await db.query('SELECT language FROM message_templates');
+    for (const row of lang.rows) expect(row).toEqual({ language: 'fr' });
+
+    // Going back removes the column again.
+    await migrateDown(db, 1);
+    const cols = await db.query(
+      `SELECT 1 FROM information_schema.columns WHERE table_name = 'runs' AND column_name = 'country'`,
+    );
+    expect(cols.rowCount).toBe(0);
+    await migrateUp(db);
   });
 });

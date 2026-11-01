@@ -30,8 +30,18 @@ const app = await buildApp({
   webhookSecret: null,
 });
 
+// One pass at a time: on a slow machine a pass can outlast the interval, and two passes over
+// the same run would start the same step twice (the second one marks it interrupted).
+let polling = false;
 setInterval(() => {
-  world.runner.pollAll().catch((err) => app.log.error({ err }, 'poll failed'));
+  if (polling) return;
+  polling = true;
+  world.runner
+    .pollAll()
+    .catch((err) => app.log.error({ err }, 'poll failed'))
+    .finally(() => {
+      polling = false;
+    });
 }, TICK_MS).unref();
 
 await app.listen({ port: PORT, host: '127.0.0.1' });

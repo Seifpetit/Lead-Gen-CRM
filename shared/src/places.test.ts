@@ -54,3 +54,23 @@ describe('formatPhone', () => {
     expect(formatPhone('  ')).toBeNull();
   });
 });
+
+describe('formatPhone for European numbers', () => {
+  it('groups a French number and splits the code off a German or Italian one', () => {
+    expect(formatPhone('+33612345678')).toBe('+33 6 12 34 56 78');
+    expect(formatPhone('+491712345678')).toBe('+49 1712345678');
+    expect(formatPhone('+393471234567')).toBe('+39 3471234567');
+  });
+
+  it('leaves Tunisian numbers as they were', () => {
+    expect(formatPhone('+21674679952')).toBe('+216 74 679 952');
+    expect(formatPhone('74679952')).toBe('+216 74 679 952');
+  });
+});
+
+describe('regionLabel for other countries', () => {
+  it('uses the real name of a French, German or Italian region', () => {
+    expect(regionLabel('de-nordrhein-westfalen')).toBe('North Rhine-Westphalia');
+    expect(regionLabel('it-sicilia')).toBe('Sicily');
+  });
+});

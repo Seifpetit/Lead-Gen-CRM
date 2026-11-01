@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { GOVERNORATE_BY_ISO, buildRegionGeometries } from './geoBoundaries.js';
+import {
+  GOVERNORATE_BY_ISO,
+  buildCountryGeometries,
+  buildRegionGeometries,
+} from './geoBoundaries.js';
+import { FRANCE } from '../config/countryRegions.js';
 
 const square = (x: number, y: number) => [
   [
@@ -70,6 +75,33 @@ describe('buildRegionGeometries', () => {
     expect(() => buildRegionGeometries({ features: [...all, all[0]!] })).toThrow(/twice/);
     expect(() => buildRegionGeometries({ features: [...all, feature('TN-99', null)] })).toThrow(
       /Unknown governorate/,
+    );
+  });
+});
+
+describe('buildCountryGeometries', () => {
+  const frFeatures = FRANCE.regions.map((r, i) => ({
+    properties: { shapeName: r.shapeName },
+    geometry: { type: 'Polygon', coordinates: square(i, 40) } as {
+      type: string;
+      coordinates: unknown;
+    },
+  }));
+
+  it('builds one outline and one box per region of the country, keyed by its namespaced id', () => {
+    const g = buildCountryGeometries({ features: frFeatures }, FRANCE);
+    expect(Object.keys(g.outlines)).toHaveLength(13);
+    expect(g.bounds['fr-bretagne']).toBeDefined();
+  });
+
+  it('stops on a region it does not know, a duplicate and a missing one', () => {
+    const unknown = [...frFeatures, { ...frFeatures[0]!, properties: { shapeName: 'Atlantis' } }];
+    expect(() => buildCountryGeometries({ features: unknown }, FRANCE)).toThrow(/Atlantis/);
+    expect(() =>
+      buildCountryGeometries({ features: [...frFeatures, frFeatures[0]!] }, FRANCE),
+    ).toThrow(/twice/);
+    expect(() => buildCountryGeometries({ features: frFeatures.slice(1) }, FRANCE)).toThrow(
+      /Missing/,
     );
   });
 });

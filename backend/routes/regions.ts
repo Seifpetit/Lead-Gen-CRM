@@ -14,9 +14,13 @@ import { listCellStats, listExhaustedQueries, listRegionStats } from '../data/sa
 import { cellQueries, regionQueryTotals } from '../data/views.js';
 import { suggestNextRegion } from '../runner/scheduler.js';
 import type { RouteDeps } from './deps.js';
-import { notFound, PageQuery, query, toPage, uuidParam } from './http.js';
+import { CountryParam, notFound, PageQuery, query, toPage, uuidParam } from './http.js';
+import { z } from 'zod';
 
 const iso = (d: Date | null) => d?.toISOString() ?? null;
+
+const CountryQuery = z.object({ country: CountryParam });
+const RegionsQuery = PageQuery.extend({ country: CountryParam });
 
 export async function regionRoutes(app: FastifyInstance, deps: RouteDeps): Promise<void> {
   const { db, runner } = deps;
@@ -29,9 +33,9 @@ export async function regionRoutes(app: FastifyInstance, deps: RouteDeps): Promi
 
   app.get('/api/regions', async (request): Promise<Page<RegionSummary>> => {
     const user = currentUser(request).id;
-    const page = query(PageQuery, request);
+    const page = query(RegionsQuery, request);
     const [stats, coverage, totals] = await Promise.all([
-      listRegionStats(db, user),
+      listRegionStats(db, user, page.country),
       listCoverage(db, user),
       regionQueryTotals(db, user),
     ]);
@@ -41,6 +45,7 @@ export async function regionRoutes(app: FastifyInstance, deps: RouteDeps): Promi
       return {
         regionId: s.regionId,
         name: s.name,
+        country: s.country,
         hasBounds: s.bounds !== null,
         status: s.mode,
         saturatedAt: iso(s.saturatedAt),
@@ -65,12 +70,18 @@ export async function regionRoutes(app: FastifyInstance, deps: RouteDeps): Promi
   });
 
   // Reference geometry shared by all users (no user data), for drawing the coverage map.
-  app.get('/api/regions/geometry', async (): Promise<{ items: RegionGeometry[] }> => {
-    return { items: await listRegionShapes(db) };
+  app.get('/api/regions/geometry', async (request): Promise<{ items: RegionGeometry[] }> => {
+    return { items: await listRegionShapes(db, query(CountryQuery, request).country) };
   });
 
   app.get('/api/regions/suggestion', async (request): Promise<RegionSuggestionView> => {
-    return suggestNextRegion(db, currentUser(request).id, runner.config);
+    return suggestNextRegion(
+      db,
+      currentUser(request).id,
+      runner.config,
+      new Date(),
+      query(CountryQuery, request).country,
+    );
   });
 
   app.get<{ Params: { regionId: string } }>(
