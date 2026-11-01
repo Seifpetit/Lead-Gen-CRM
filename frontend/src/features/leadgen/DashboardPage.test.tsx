@@ -130,7 +130,12 @@ const chartLead = (i: number, daysAgo: number) =>
       sector: i % 2 ? 'food' : 'textile',
       evidence: [fresh('placeId', new Date(Date.now() - daysAgo * DAY).toISOString())],
     }),
-    contact: contact({ id: `ct-${i}` }),
+    // The contact's own facts must be as fresh as the company's: a lead counts as found at the
+    // earliest of them, so a fixed fixture date would pull it out of the 7-day window over time.
+    contact: contact({
+      id: `ct-${i}`,
+      evidence: [fresh('linkedinUrl', new Date(Date.now() - daysAgo * DAY).toISOString())],
+    }),
   });
 
 const routes = (cards: CrmCard[] = [alpha, beta], extra = {}) => ({

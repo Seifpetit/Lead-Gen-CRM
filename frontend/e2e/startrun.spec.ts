@@ -167,17 +167,14 @@ for (const size of [
   { width: 1280, height: 720 },
   { width: 1440, height: 900 },
 ]) {
-  test(`does not scroll at ${size.width} x ${size.height}, with 15 sectors`, async ({ page }) => {
+  test(`does not scroll at ${size.width} x ${size.height}, with every sector`, async ({ page }) => {
     await page.setViewportSize(size);
     await signIn(page);
     await page.goto('/leadgen');
     await page.getByRole('button', { name: 'Create run' }).first().click();
     const dialog = page.getByRole('dialog', { name: 'Start a run' });
     await pickRegion(dialog, 'Sfax, 32 leads, partly covered');
-    await expect(dialog.getByRole('button', { name: 'Textile' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    await expect(dialog.locator('.sr-all-sectors')).toBeVisible();
     await expect(dialog.getByRole('region', { name: 'Estimate' }).getByText('$3.50')).toBeVisible();
     await expect(dialog.getByText('Estimate is above your cap')).toBeVisible();
     expect(await fits(page)).toEqual({ body: true, dialog: true, inWindow: true });
@@ -225,7 +222,7 @@ test('below 800px the columns stack, the estimate under the choices', async ({ p
     await page.screenshot({ path: `${process.env.STARTRUN_SHOTS}/narrow.png` });
 });
 
-test('Start stays off until a region and a sector are picked, and previewing starts nothing', async ({
+test('Start stays off until a region is picked, and previewing starts nothing', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
@@ -245,8 +242,6 @@ test('Start stays off until a region and a sector are picked, and previewing sta
   await expect(start).toHaveAttribute('aria-disabled', 'true');
   await expect(dialog.getByText('Choose a region to start.')).toBeVisible();
   await pickRegion(dialog, 'Tunis, 0 leads, not searched yet');
-  await expect(dialog.getByText('Pick at least one sector')).toBeVisible();
-  await dialog.getByRole('button', { name: 'Textile' }).click();
   await expect(start).toHaveAttribute('aria-disabled', 'false');
   await expect(start).toHaveText('Start run, up to $2.00');
   expect(started).toBe(0);

@@ -63,10 +63,9 @@ test('sign in, run, watch, open the result, and work the two CRM boards', async 
   await start.getByRole('combobox', { name: 'Region' }).click();
   await page.getByRole('option', { name: 'Sfax, 0 leads, not searched yet' }).click();
   const estimate = start.getByRole('region', { name: 'Estimate' });
-  // A new region has no suggested sector, so nothing is ticked and Start says why.
+  // There are no sector chips: the run covers every import/export sector.
   const go = start.getByRole('button', { name: /^Start run/ });
-  await expect(go).toHaveAttribute('aria-disabled', 'true');
-  await start.locator('.sr-chip').first().click();
+  await expect(start.locator('.sr-all-sectors')).toBeVisible();
   await expect(estimate.getByText('Estimated cost')).toBeVisible();
   await expect(estimate.locator('.tag-estimate').first()).toBeVisible();
   await expect(runs.getByText('No runs yet')).toBeVisible();
