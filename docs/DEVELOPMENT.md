@@ -141,6 +141,25 @@ The words each country searches with and the job titles it looks for are in
 `backend/config/countries.ts`. Every list there for France, Germany and Italy is a first draft
 that nobody has tried on real results yet; a country is switched on with `enabled: true`.
 
+### The world map on the Coverage page
+
+The Coverage page is one big map with no background tiles. The shapes of the world's countries come
+from [Natural Earth](https://www.naturalearthdata.com) 1:50m (public domain, no credit required;
+the app credits it anyway). The processed file is committed as
+`frontend/src/features/leadgen/worldmap/worldCountries.json` and is loaded only when the page is
+opened. To rebuild it:
+
+```sh
+npm run world:build          # downloads the file, simplifies it to about 2 km, rewrites the JSON
+npm run format
+```
+
+A country is light grey and clickable when it is switched on in `backend/config/countries.ts`
+(`enabled: true`); every other country is dark grey and shows nothing inside. Picking a country
+draws its regions (`GET /api/regions/geometry?country=XX`). Every company with a place is a pin
+(`GET /api/map/pins`, newest first, at most 5,000; the page says when some were left out). A
+company removed to Noise has no pin.
+
 ## Security
 
 - **Passwords** are hashed with argon2id (the `argon2` library); the app never stores or logs

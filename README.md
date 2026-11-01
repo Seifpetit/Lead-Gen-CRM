@@ -18,10 +18,10 @@ boards (companies and people), and every stored value shows where it came from.
 - **Start a run** for a region with a hard spend cap and a cost estimate before anything is paid.
 - **Watch it live** through six plain-language steps, with a technical log when you need it.
 - **Work the leads** on two kanban boards: companies, then the people who decide.
-- **See coverage** of the map, so each new run goes where it will find the most new companies.
+- **See coverage** on a world map: every company is a pin, and each country opens into its regions, so each new run goes where it will find the most new companies.
 - **Track every cent** in an append-only cost ledger with per-run and monthly caps.
 
-![Coverage map by region and sector](docs/media/coverage.gif)
+![Coverage map](docs/media/coverage.gif)
 
 ![Moving a company to Decision-maker identified and adding a person](docs/media/crm-boards.gif)
 

@@ -4,3 +4,4 @@ coverage
 package-lock.json
 backend/config/regionOutlines.json
 backend/config/regionOutlines.*.json
+frontend/src/features/leadgen/worldmap/worldCountries.json

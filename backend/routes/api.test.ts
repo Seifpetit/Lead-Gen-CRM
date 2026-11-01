@@ -220,6 +220,7 @@ const CASES: RouteCase[] = [
   { method: 'GET', pattern: '/api/regions/geometry', url: () => '/api/regions/geometry' },
   { method: 'GET', pattern: '/api/coverage', url: () => '/api/coverage' },
   { method: 'GET', pattern: '/api/countries', url: () => '/api/countries' },
+  { method: 'GET', pattern: '/api/map/pins', url: () => '/api/map/pins' },
   {
     method: 'GET',
     pattern: '/api/regions/:regionId/cells',

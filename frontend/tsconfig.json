@@ -10,6 +10,6 @@
     "outDir": "dist/types",
     "emitDeclarationOnly": true
   },
-  "include": ["src"],
+  "include": ["src", "src/**/*.json"],
   "references": [{ "path": "../shared" }]
 }

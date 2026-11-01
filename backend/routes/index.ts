@@ -8,6 +8,7 @@ import { exportRoutes } from './exports.js';
 import type { RouteDeps } from './deps.js';
 import { healthRoutes } from './health.js';
 import { leadRoutes } from './leads.js';
+import { mapRoutes } from './map.js';
 import { messageRoutes } from './messages.js';
 import { regionRoutes } from './regions.js';
 import { runLiveRoutes } from './runLive.js';
@@ -22,6 +23,7 @@ export async function registerRoutes(app: FastifyInstance, deps: RouteDeps): Pro
   await app.register(regionRoutes, deps);
   await app.register(countryRoutes, deps);
   await app.register(coverageRoutes, deps);
+  await app.register(mapRoutes, deps);
   await app.register(leadRoutes, deps);
   await app.register(crmRoutes, deps);
   await app.register(costRoutes, deps);

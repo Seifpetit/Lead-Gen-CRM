@@ -1,32 +1,32 @@
-import { Maximize2, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
+import type { CountryCode } from '@lead-gen-crm/shared';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useApi } from '../../api/context.js';
-import { CoverageMap } from '../../components/shared/CoverageMap.js';
-import { CoverageLegend, CoverageMatrix } from '../../components/shared/CoverageMatrix.js';
-import { CoverageRegionTable } from '../../components/shared/CoverageRegionTable.js';
-import { PanelSection } from '../../components/shared/PanelSection.js';
-import { SectionTitle } from '../../components/shared/SectionTitle.js';
 import { useToast } from '../../components/shared/Toast.js';
-import { EmptyState, ErrorState, LoadingState } from '../../components/states.js';
+import { ErrorState } from '../../components/states.js';
 import { useT } from '../../i18n/index.js';
-import { coverageRows, entryOf, type Metric } from '../../lib/coverageView.js';
+import { isExplored } from '../../lib/coverageView.js';
 import { useResource } from '../../lib/useResource.js';
-import { CoverageDetail } from './coverageview/CoverageDetail.js';
-import { CoverageExplorer } from './coverageview/CoverageExplorer.js';
-import { MetricSwitch } from './coverageview/MetricSwitch.js';
+import { GdprDialog, gdprAccepted } from '../country/GdprNotice.js';
+import { CountryPicker } from '../country/CountrySwitch.js';
+import { ScopeOverride } from '../country/ScopeOverride.js';
 import { CreateRunModal } from './CreateRunModal.js';
-import type { StartPrefill } from './prefill.js';
 import { startedMessage } from './startrun/startPlan.js';
+import { PinPanel } from './worldmap/PinPanel.js';
+import { RegionPanel } from './worldmap/RegionPanel.js';
+import { WorldMap } from './worldmap/WorldMap.js';
+import { PIN_COLORS } from './worldmap/worldStyle.js';
+import { countryTotals, pinsPerRegion, sortRegions, toneMap } from './worldmap/worldView.js';
 
-/** A click on any of these is a click on something, not on the empty panel. */
-const KEEP = 'button, a, input, select, textarea, label, [role="button"], [data-keep]';
+const NO_PINS: never[] = [];
+const NO_REGIONS: never[] = [];
+const LEGEND = ['exporter', 'importer', 'both', 'trader'] as const;
 
 /**
- * Coverage is one bordered panel that fills the window: the matrix of regions and sectors on
- * the left, the map fixed on the right. Picking a region (on the map or by its label) turns the
- * matrix into that region's table and zooms the map to it; the pick lives in the address
- * (?region=sfax) so refresh and Back work. Clicking the empty panel or pressing Escape resets.
+ * Coverage is a big map of the world. Every company the app has found is a pin; the countries the
+ * app works in are light grey, the rest dark grey and empty. Picking a country (in the picker or
+ * by clicking it) moves the camera there, shows its regions and opens "Coverage by region". The
+ * pick lives in the address (?focus=FR&region=bretagne) so refresh and Back work.
  */
 export function CoveragePage() {
   const t = useT();
@@ -34,228 +34,239 @@ export function CoveragePage() {
   const toast = useToast();
   const [params, setParams] = useSearchParams();
   const [refreshKey, setRefreshKey] = useState(0);
-  const [metric, setMetric] = useState<Metric>('status');
-  const [planning, setPlanning] = useState<StartPrefill | null>(null);
-  const [expanded, setExpanded] = useState(false);
+  const [hoverRegion, setHoverRegion] = useState<string | null>(null);
+  const [openPinId, setOpenPinId] = useState<string | null>(null);
+  const [planning, setPlanning] = useState<string | null>(null);
+  // The data-protection notice comes before the first run in a European country, as elsewhere.
+  const [noticeFor, setNoticeFor] = useState<string | null>(null);
+  const [toggled, setToggled] = useState<{ focus: CountryCode | null; open: boolean } | null>(null);
 
-  const coverage = useResource(() => api.coverage.get(), { deps: [refreshKey] });
-  const summaries = useResource(() => api.regions.list({ limit: 100 }), { deps: [refreshKey] });
-  const geometry = useResource(() => api.regions.geometry(), { deps: [refreshKey] });
-
-  const data = coverage.data;
-  const rows = useMemo(
-    () => (data && summaries.data ? coverageRows(data, summaries.data.items) : []),
-    [data, summaries.data],
-  );
-  const exploredIds = useMemo(
-    () => new Set(rows.filter((r) => r.explored).map((r) => r.regionId)),
-    [rows],
-  );
-
-  // The address says what is picked; a region that is unknown or greyed out counts as none.
-  const wanted = params.get('region');
-  const row = rows.find((r) => r.regionId === wanted && r.explored) ?? null;
-  const regionId = row?.regionId ?? null;
-  const wantedSector = params.get('sector');
-  const sector = regionId !== null ? data?.sectors.find((s) => s.id === wantedSector) : undefined;
-  const sectorId = sector?.id ?? null;
-  const asTable = row !== null && sectorId === null;
-
-  const cells = useResource(() => api.regions.cells(regionId!), {
-    enabled: regionId !== null,
-    deps: [regionId, refreshKey],
+  const countriesRes = useResource(() => api.countries.list());
+  const pinsRes = useResource(() => api.map.pins({ country: 'ALL' }), { deps: [refreshKey] });
+  const summariesRes = useResource(() => api.regions.all({ country: 'ALL' }), {
+    deps: [refreshKey],
   });
 
-  const select = useCallback(
-    (region: string | null, sectorOf: string | null = null) => {
+  const countries = useMemo(() => countriesRes.data?.items ?? [], [countriesRes.data]);
+  const supported = useMemo(
+    () => countries.filter((c) => c.enabled).map((c) => c.code),
+    [countries],
+  );
+  const pins = pinsRes.data?.items ?? NO_PINS;
+  const allSummaries = useMemo(() => summariesRes.data ?? [], [summariesRes.data]);
+
+  // The address says which country the camera is on; one that is unknown or switched off counts as none.
+  const wantedFocus = params.get('focus');
+  const focus = supported.find((c) => c === wantedFocus) ?? null;
+  const info = countries.find((c) => c.code === focus) ?? null;
+
+  const geometry = useResource(() => api.regions.geometry({ country: focus! }), {
+    enabled: focus !== null,
+    deps: [focus, refreshKey],
+  });
+  const regionShapes = useMemo(
+    () =>
+      focus ? (geometry.data?.items.filter((r) => r.country === focus) ?? NO_REGIONS) : NO_REGIONS,
+    [focus, geometry.data],
+  );
+  const summaries = useMemo(
+    () => (focus ? sortRegions(allSummaries.filter((r) => r.country === focus)) : []),
+    [focus, allSummaries],
+  );
+  const tones = useMemo(() => toneMap(summaries), [summaries]);
+  const totals = useMemo(
+    () => countryTotals(countries, allSummaries, pins),
+    [countries, allSummaries, pins],
+  );
+  const pinCounts = useMemo(() => pinsPerRegion(pins), [pins]);
+
+  const wantedRegion = params.get('region');
+  const region = summaries.find((r) => r.regionId === wantedRegion && isExplored(r)) ?? null;
+  const regionId = region?.regionId ?? null;
+
+  const pin = pins.find((p) => p.companyId === openPinId) ?? null;
+  const regionNames = useMemo(
+    () => new Map(allSummaries.map((r) => [r.regionId, r.name])),
+    [allSummaries],
+  );
+
+  // "Coverage by region" opens by itself when a country is picked; a click toggles it from there.
+  const open = toggled !== null && toggled.focus === focus ? toggled.open : focus !== null;
+
+  const go = useCallback(
+    (country: CountryCode | null, regionOf: string | null = null) => {
       const next = new URLSearchParams();
-      if (region !== null) next.set('region', region);
-      if (region !== null && sectorOf !== null) next.set('sector', sectorOf);
+      if (country !== null) next.set('focus', country);
+      if (country !== null && regionOf !== null) next.set('region', regionOf);
       setParams(next);
     },
     [setParams],
   );
-  const reset = useCallback(() => select(null), [select]);
+  const pickCountry = useCallback(
+    (country: CountryCode | null) => {
+      setOpenPinId(null);
+      setHoverRegion(null);
+      go(country);
+    },
+    [go],
+  );
 
-  // Escape resets the pick, unless a window is open (Escape closes that first).
+  // Escape steps back: the open pin, then the picked region, then the picked country. The
+  // listener reads the latest state from a ref, so two quick presses never see the old pick.
+  const stepBack = useRef(() => {});
+  stepBack.current = () => {
+    if (openPinId !== null) setOpenPinId(null);
+    else if (regionId !== null) go(focus);
+    else if (focus !== null) pickCountry(null);
+  };
   useEffect(() => {
-    if (wanted === null) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || document.querySelector('[aria-modal="true"]')) return;
-      reset();
+      stepBack.current();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [wanted, reset]);
+  }, []);
 
-  function onPanelClick(event: MouseEvent<HTMLElement>) {
-    if (wanted === null || (event.target as Element).closest(KEEP)) return;
-    reset();
-  }
-
-  function plan(prefill: StartPrefill) {
-    setExpanded(false);
-    setPlanning(prefill);
-  }
-
-  const loading = (coverage.loading && !data) || (summaries.loading && !summaries.data);
-  const failure = coverage.error ?? summaries.error;
-  const failed = failure !== null && (!data || !summaries.data);
+  const failure = countriesRes.error ?? pinsRes.error ?? summariesRes.error;
+  const failed = failure !== null && (!countriesRes.data || !pinsRes.data || !summariesRes.data);
   const retry = () => {
-    coverage.reload();
-    summaries.reload();
+    countriesRes.reload();
+    pinsRes.reload();
+    summariesRes.reload();
   };
-  const regionName = row?.name ?? '';
+  const cut = pinsRes.data && pinsRes.data.total > pinsRes.data.items.length;
+  const countryOf = (id: string) =>
+    countries.find((c) => c.code === allSummaries.find((r) => r.regionId === id)?.country);
+  const noticeCountry = noticeFor ? countryOf(noticeFor) : undefined;
+  const planningCountry = planning
+    ? allSummaries.find((r) => r.regionId === planning)?.country
+    : undefined;
 
   return (
     <main id="main" className="page dash-page">
-      <div className="dash-panel cov-panel" onClick={onPanelClick}>
-        <header className="dp-header">
-          <SectionTitle level={1}>{t('side.coverage')}</SectionTitle>
-          <div className="dp-header-controls">
-            <MetricSwitch metric={metric} onChange={setMetric} />
-            <button
-              type="button"
-              className="button button-icon"
-              aria-label={t('cov.expand')}
-              title={t('cov.expand')}
-              disabled={!data}
-              onClick={() => setExpanded(true)}
-            >
-              <Maximize2 size={16} aria-hidden="true" />
-            </button>
-          </div>
-        </header>
-
-        <div className="cov-body">
-          <PanelSection
-            title={asTable ? t('cov.table.title', { region: regionName }) : t('grid.title')}
-            tone="teal"
-            className="cov-left"
-            controls={
-              asTable ? (
-                <button type="button" className="button" onClick={reset}>
-                  {t('cov.table.back')}
-                </button>
-              ) : undefined
-            }
-          >
-            {failed ? (
-              <ErrorState error={failure} onRetry={retry} />
-            ) : loading || !data ? (
-              <LoadingState label={t('grid.loading')} />
-            ) : data.regions.length === 0 ? (
-              <EmptyState title={t('cov.empty.title')}>{t('cov.empty.body')}</EmptyState>
-            ) : asTable ? (
-              <div className="cov-scroll" data-keep="">
-                <CoverageRegionTable
-                  data={data}
-                  regionId={row.regionId}
-                  regionName={row.name}
-                  onPlanSector={(sectorOf) =>
-                    plan({ sectorIds: [sectorOf], regionIds: [row.regionId] })
-                  }
-                />
-              </div>
-            ) : (
-              <>
-                <div className="cov-scroll" data-keep="">
-                  <CoverageMatrix
-                    data={data}
-                    rows={rows}
-                    metric={metric}
-                    selected={{ regionId, sectorId }}
-                    onPlanRegion={(id) => plan({ regionId: id })}
-                    onPlanSector={(sectorOf) =>
-                      plan({ sectorIds: [sectorOf], regionIds: regionId ? [regionId] : [] })
-                    }
-                    onSelectCell={(id, s) => select(id, s)}
-                  />
-                </div>
-                {metric === 'status' ? (
-                  <CoverageLegend />
-                ) : (
-                  <p className="muted cov-scale">{t(`cov.scale.${metric}`)}</p>
-                )}
-                {row && sector && (
-                  <CoverageDetail
-                    regionName={row.name}
-                    sectorName={sector.name}
-                    entry={entryOf(data, row.regionId, sector.id)}
-                    onClose={() => select(row.regionId)}
-                  />
-                )}
-              </>
-            )}
-          </PanelSection>
-
-          <PanelSection
-            title={t('map.title')}
-            tone="sky"
-            className="cov-right"
-            controls={
-              regionId !== null ? (
-                <button
-                  type="button"
-                  className="button button-icon"
-                  aria-label={t('map.reset')}
-                  title={t('map.reset')}
-                  onClick={reset}
-                >
-                  <X size={16} aria-hidden="true" />
-                </button>
-              ) : undefined
-            }
-          >
-            {geometry.error !== null && !geometry.data ? (
-              <ErrorState error={geometry.error} onRetry={geometry.reload} />
-            ) : !geometry.data || !data ? (
-              <LoadingState label={t('map.loading')} />
-            ) : (
-              <CoverageMap
-                regions={geometry.data.items}
-                exploredIds={exploredIds}
-                regionId={regionId}
-                onRegionChange={(id) => select(id)}
-                cells={cells.data}
-                cellsLoading={cells.loading}
-                cellsError={cells.error}
-                onRetryCells={cells.reload}
+      <div className="dash-panel wm-panel">
+        <h1 className="visually-hidden">{t('side.coverage')}</h1>
+        <WorldMap
+          supported={supported}
+          country={focus}
+          regions={regionShapes}
+          tones={tones}
+          hoverRegion={hoverRegion}
+          selectedRegion={regionId}
+          pins={pins}
+          openPinId={pin?.companyId ?? null}
+          onCountry={(code) => code !== focus && pickCountry(code)}
+          onBackground={() => {
+            setOpenPinId(null);
+            if (regionId !== null) go(focus);
+          }}
+          onRegionHover={setHoverRegion}
+          onRegionClick={(id) => {
+            const row = summaries.find((r) => r.regionId === id);
+            if (focus && row && isExplored(row)) go(focus, id === regionId ? null : id);
+          }}
+          onPinClick={(p) => setOpenPinId(p.companyId)}
+          pinPanel={(at, size) =>
+            pin && at ? (
+              <PinPanel
+                pin={pin}
+                at={at}
+                size={size}
+                regionName={regionNames.get(pin.regionId) ?? null}
+                onClose={() => setOpenPinId(null)}
               />
-            )}
-          </PanelSection>
-        </div>
+            ) : null
+          }
+        >
+          <div className="wm-float wm-float-tl">
+            <CountryPicker
+              className="wm-picker"
+              choice={focus ?? 'ALL'}
+              countries={countries}
+              allowsAll
+              onChoose={(choice) => pickCountry(choice === 'ALL' ? null : choice)}
+            />
+          </div>
+
+          {failed ? (
+            <div className="wm-float wm-float-top">
+              <ErrorState error={failure} onRetry={retry} />
+            </div>
+          ) : (
+            pinsRes.data &&
+            pins.length === 0 && (
+              <p className="wm-float wm-float-top wm-notice" role="status">
+                {t('wm.empty')}
+              </p>
+            )
+          )}
+
+          <div className="wm-float wm-float-bl">
+            <RegionPanel
+              open={open}
+              onToggle={() => setToggled({ focus, open: !open })}
+              country={info}
+              totals={totals}
+              summaries={summaries}
+              pinCounts={pinCounts}
+              hover={hoverRegion}
+              onHover={setHoverRegion}
+              selected={regionId}
+              onSelect={(id) => go(focus, id)}
+              onPickCountry={pickCountry}
+              onStart={(id) => {
+                if (countryOf(id)?.gdprNotice && !gdprAccepted()) setNoticeFor(id);
+                else setPlanning(id);
+              }}
+            />
+          </div>
+
+          <div className="wm-float wm-float-br">
+            <ul className="wm-legend" aria-label={t('wm.legend')}>
+              {LEGEND.map((role) => (
+                <li key={role}>
+                  <span
+                    className="wm-swatch"
+                    style={{ background: PIN_COLORS[role] }}
+                    aria-hidden="true"
+                  />
+                  {t(`trade.role.${role}`)}
+                </li>
+              ))}
+            </ul>
+            <p className="wm-credits">
+              {cut && pinsRes.data
+                ? `${t('wm.cut', { shown: pinsRes.data.items.length, total: pinsRes.data.total })} `
+                : ''}
+              {t('wm.credit.world')}
+              {focus ? ` ${t(`map.attribution.${focus}`)}` : ''}
+            </p>
+          </div>
+        </WorldMap>
       </div>
 
-      {expanded && data && summaries.data && (
-        <CoverageExplorer
-          data={data}
-          rows={rows}
-          regions={summaries.data.items}
-          metric={metric}
-          onMetric={setMetric}
-          regionId={regionId}
-          sectorId={sectorId}
-          onSelectCell={(id, s) => select(id, s)}
-          onPlanRegion={(id) => plan({ regionId: id })}
-          onPlanSector={(sectorOf) =>
-            plan({ sectorIds: [sectorOf], regionIds: regionId ? [regionId] : [] })
-          }
-          onClearCell={() => select(regionId)}
-          onClose={() => setExpanded(false)}
+      {noticeFor && noticeCountry && (
+        <GdprDialog
+          info={noticeCountry}
+          onClose={() => {
+            setPlanning(noticeFor);
+            setNoticeFor(null);
+          }}
         />
       )}
-      {planning && (
-        <CreateRunModal
-          {...(planning.regionId ? { regionId: planning.regionId } : {})}
-          prefill={planning}
-          onCreated={(runs, notStarted) => {
-            setPlanning(null);
-            toast.show(startedMessage(t, runs, notStarted));
-            setRefreshKey((n) => n + 1);
-          }}
-          onCancel={() => setPlanning(null)}
-        />
+      {planning && planningCountry && (
+        <ScopeOverride country={planningCountry}>
+          <CreateRunModal
+            regionId={planning}
+            onCreated={(runs, notStarted) => {
+              setPlanning(null);
+              toast.show(startedMessage(t, runs, notStarted));
+              setRefreshKey((n) => n + 1);
+            }}
+            onCancel={() => setPlanning(null)}
+          />
+        </ScopeOverride>
       )}
     </main>
   );

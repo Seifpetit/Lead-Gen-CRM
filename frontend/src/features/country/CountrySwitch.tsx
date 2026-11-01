@@ -1,5 +1,6 @@
 import { Check, ChevronDown, Globe } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
+import type { CountryInfo } from '@lead-gen-crm/shared';
 import { useT } from '../../i18n/index.js';
 import { useCountry, type CountryChoice } from './CountryContext.js';
 
@@ -8,8 +9,27 @@ import { useCountry, type CountryChoice } from './CountryContext.js';
  * switched off is greyed and says why. Choosing one changes the screens at once.
  */
 export function CountrySwitch() {
-  const t = useT();
   const { choice, countries, choose, allowsAll } = useCountry();
+  return (
+    <CountryPicker choice={choice} countries={countries} allowsAll={allowsAll} onChoose={choose} />
+  );
+}
+
+/** The button and list behind the switch, told what is chosen; the Coverage map uses it too. */
+export function CountryPicker({
+  choice,
+  countries,
+  allowsAll,
+  onChoose,
+  className = '',
+}: {
+  choice: CountryChoice;
+  countries: readonly CountryInfo[];
+  allowsAll: boolean;
+  onChoose: (choice: CountryChoice) => void;
+  className?: string;
+}) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const id = useId();
   const root = useRef<HTMLDivElement>(null);
@@ -31,12 +51,12 @@ export function CountrySwitch() {
   const nameOf = (c: CountryChoice) =>
     c === 'ALL' ? t('country.all') : (countries.find((x) => x.code === c)?.name ?? c);
   const pick = (next: CountryChoice) => {
-    choose(next);
+    onChoose(next);
     setOpen(false);
   };
 
   return (
-    <div className="country-switch" ref={root}>
+    <div className={`country-switch ${className}`.trim()} ref={root}>
       <button
         type="button"
         className="country-button"

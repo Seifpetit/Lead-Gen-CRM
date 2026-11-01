@@ -1,3 +1,4 @@
+import type { CountryInfo } from '@lead-gen-crm/shared';
 import { useState } from 'react';
 import { Modal } from '../../components/Modal.js';
 import { useT } from '../../i18n/index.js';
@@ -5,7 +6,8 @@ import { useCountry } from './CountryContext.js';
 
 const KEY = 'leadgen.gdpr.accepted';
 
-function accepted(): boolean {
+/** Has this browser already read the notice? */
+export function gdprAccepted(): boolean {
   try {
     return window.localStorage.getItem(KEY) === '1';
   } catch {
@@ -18,17 +20,22 @@ function accepted(): boolean {
  * data-protection law (France, Germany, Italy), before any run there.
  */
 export function GdprNotice() {
-  const t = useT();
   const { info, showsAll } = useCountry();
-  const [done, setDone] = useState(accepted);
+  const [done, setDone] = useState(gdprAccepted);
   if (done || showsAll || !info?.gdprNotice) return null;
+  return <GdprDialog info={info} onClose={() => setDone(true)} />;
+}
+
+/** The notice itself; closing it remembers that this browser has read it. */
+export function GdprDialog({ info, onClose }: { info: CountryInfo; onClose: () => void }) {
+  const t = useT();
   const close = () => {
     try {
       window.localStorage.setItem(KEY, '1');
     } catch {
       // Asked again next visit; nothing else depends on it.
     }
-    setDone(true);
+    onClose();
   };
   return (
     <Modal title={t('gdpr.title', { country: info.name })} onClose={close}>

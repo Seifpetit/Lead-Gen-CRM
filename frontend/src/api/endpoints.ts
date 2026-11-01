@@ -5,6 +5,7 @@ import type {
   CardSelection,
   CountryCode,
   CountryInfo,
+  MapPins,
   TradeCheckPreview,
   TradeCheckStatus,
   CompanyCardDetail,
@@ -156,10 +157,25 @@ export function createApi(client: ApiClient) {
     },
 
     regions: {
-      list: (params: PageParams = {}) =>
+      list: (params: PageParams & { country?: CountryCode | 'ALL' } = {}) =>
         client.get<Page<RegionSummary>>('/api/regions', scoped(params)),
+      /** Every region's summary (all countries unless one is given), following the pages. */
+      async all(params: { country?: CountryCode | 'ALL' } = {}): Promise<RegionSummary[]> {
+        const all: RegionSummary[] = [];
+        for (let offset: number | null = 0; offset !== null;) {
+          const page: Page<RegionSummary> = await client.get<Page<RegionSummary>>(
+            '/api/regions',
+            scoped({ ...params, limit: 100, offset }),
+          );
+          all.push(...page.items);
+          offset = page.nextOffset;
+        }
+        return all;
+      },
       suggestion: () => client.get<RegionSuggestionView>('/api/regions/suggestion', scoped({})),
-      geometry: () => client.get<{ items: RegionGeometry[] }>('/api/regions/geometry', scoped({})),
+      /** `country: 'ALL'` asks for the regions of every country. */
+      geometry: (params: { country?: CountryCode | 'ALL' } = {}) =>
+        client.get<{ items: RegionGeometry[] }>('/api/regions/geometry', scoped(params)),
       /** All of a region's cells, following the pages. */
       async cells(regionId: string): Promise<CellSummary[]> {
         const all: CellSummary[] = [];
@@ -176,7 +192,14 @@ export function createApi(client: ApiClient) {
     },
 
     coverage: {
-      get: () => client.get<Coverage>('/api/coverage', scoped({})),
+      get: (params: { country?: CountryCode | 'ALL' } = {}) =>
+        client.get<Coverage>('/api/coverage', scoped(params)),
+    },
+
+    map: {
+      /** Every company with a place, for the Coverage map (all countries unless one is given). */
+      pins: (params: { country?: CountryCode | 'ALL' } = {}) =>
+        client.get<MapPins>('/api/map/pins', scoped(params)),
     },
 
     leads: {

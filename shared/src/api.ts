@@ -857,3 +857,34 @@ export interface CountryInfo {
   /** How many regions the country has. */
   regions: number;
 }
+
+// ---------------------------------------------------------------------------------------
+// The world map on the Coverage page
+
+/** One company with a known place, as a pin on the map. */
+export interface MapPin {
+  companyId: string;
+  name: string;
+  lat: number;
+  lng: number;
+  country: CountryCode;
+  regionId: string;
+  sector: string | null;
+  tradeRole: TradeRole | null;
+  category: string | null;
+  city: string | null;
+  phone: string | null;
+  website: string | null;
+  /** The company's card on the Companies board; null if it has none. */
+  stage: BoardStageKey | null;
+  score: number | null;
+  /** The best scored lead, for the link to its detail page; null when the company was never scored. */
+  runId: string | null;
+  leadId: string | null;
+}
+
+export interface MapPins {
+  items: MapPin[];
+  /** All the pins there are; more than items.length when the list was cut. */
+  total: number;
+}

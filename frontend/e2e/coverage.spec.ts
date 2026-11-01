@@ -1,136 +1,55 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
-// The Coverage panel with all 24 governorates and a busy matrix: the page never scrolls, the map
-// stays where it is while the matrix scrolls, a pick zooms the map and turns the matrix into a
-// table, and a click on the empty map puts it all back. Sign-in is real; the data is replaced.
+// The Coverage world map in a real browser: a big draggable, zoomable map; the camera flies to a
+// picked country; "Coverage by region" opens by itself and lights regions both ways; a pin opens
+// a small panel with a button to its lead. Sign-in and countries are real; the pins are replaced.
 
 const EMAIL = 'e2e@example.test';
 const PASSWORD = 'e2e-password-123';
 
-const SECTORS = [
-  'olive-oil',
-  'agri-food',
-  'dates-produce',
-  'textile',
-  'construction-materials',
-  'steel-metal',
-  'chemicals',
-  'plastics-packaging',
-  'automotive-parts',
-  'pharma',
-  'wholesale',
-  'import-export',
-  'retail-chains',
-  'furniture',
-  'mining',
-].map((id) => ({ id, name: id.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase()) }));
-
-// 24 rectangles on a 6 x 4 grid over Tunisia; the last four have no bounds, as in the real data.
-const REGIONS = Array.from({ length: 24 }, (_, i) => {
-  const col = i % 6;
-  const row = Math.floor(i / 6);
-  const west = 8 + col * 0.6;
-  const north = 37 - row * 1.5;
-  return {
-    regionId: `region-${i}`,
-    name: `Region ${String(i + 1).padStart(2, '0')}`,
-    bounds: i < 20 ? { south: north - 1.4, west, north, east: west + 0.55 } : (null as null),
-    explored: i < 20,
-  };
-});
-
-const square = (b: { south: number; west: number; north: number; east: number }) => ({
-  type: 'Polygon',
-  coordinates: [
-    [
-      [b.west, b.south],
-      [b.east, b.south],
-      [b.east, b.north],
-      [b.west, b.north],
-      [b.west, b.south],
-    ],
-  ],
-});
-
-const states = ['not_searched', 'yielding', 'saturated', 'maintenance'] as const;
+const PINS = [
+  {
+    companyId: 'c-fr',
+    name: 'Maison Breizh Export',
+    lat: 48.2,
+    lng: -2.9,
+    country: 'FR',
+    regionId: 'fr-bretagne',
+    sector: null,
+    tradeRole: 'importer',
+    category: 'Import-export company',
+    city: 'Rennes',
+    phone: '+33299000000',
+    website: 'https://breizh.example.test',
+    stage: 'found',
+    score: 64,
+    runId: 'run-1',
+    leadId: 'lead-1',
+  },
+  {
+    companyId: 'c-tn',
+    name: 'Huilerie Baccar',
+    lat: 34.74,
+    lng: 10.76,
+    country: 'TN',
+    regionId: 'sfax',
+    sector: null,
+    tradeRole: 'exporter',
+    category: 'Olive oil producer',
+    city: 'Sfax',
+    phone: null,
+    website: null,
+    stage: 'found',
+    score: null,
+    runId: null,
+    leadId: null,
+  },
+];
 
 async function signIn(page: Page) {
   await page.route(
-    (url) => url.pathname === '/api/coverage',
-    (route) =>
-      route.fulfill({
-        json: {
-          regions: REGIONS.map((r) => ({ regionId: r.regionId, name: r.name })),
-          sectors: SECTORS,
-          entries: REGIONS.slice(0, 12).flatMap((r, ri) =>
-            SECTORS.map((s, si) => ({
-              regionId: r.regionId,
-              sectorId: s.id,
-              queriesRun: (ri + si) % 5 === 0 ? 0 : 4 + si,
-              newPlaces: ri + si,
-              leads: (ri * 3 + si) % 11,
-              spendUsd: ((ri + 1) * (si + 2)) / 10,
-              costPerLeadUsd: 0.4,
-              lastRunAt: '2026-10-10T09:00:00.000Z',
-              state: states[(ri + si) % 4],
-            })),
-          ),
-        },
-      }),
-  );
-  await page.route(
-    (url) => url.pathname === '/api/regions',
-    (route) =>
-      route.fulfill({
-        json: {
-          items: REGIONS.map((r, i) => ({
-            regionId: r.regionId,
-            name: r.name,
-            hasBounds: r.bounds !== null,
-            status: 'active',
-            saturatedAt: null,
-            cellsTotal: 10,
-            cellsSearched: i < 12 ? 10 - (i % 10) : 0,
-            cellsExhausted: 0,
-            coverage: i < 12 ? (10 - (i % 10)) / 10 : null,
-            queriesRun: 0,
-            placesFound: 0,
-            newPlacesPerQuery: null,
-            qualifiedShare: null,
-            decisionMakerShare: null,
-            channelShare: null,
-            spendUsd: 0,
-            leads: i < 12 ? 5 : 0,
-            costPerLeadUsd: null,
-            runs: i < 12 ? 1 : 0,
-            lastRunAt: null,
-          })),
-          total: 24,
-          limit: 100,
-          offset: 0,
-          nextOffset: null,
-        },
-      }),
-  );
-  await page.route(
-    (url) => url.pathname === '/api/regions/geometry',
-    (route) =>
-      route.fulfill({
-        json: {
-          items: REGIONS.map((r) => ({
-            regionId: r.regionId,
-            name: r.name,
-            bounds: r.bounds,
-            outline: r.bounds ? square(r.bounds) : null,
-            outlineSource: r.bounds ? 'bounds' : null,
-          })),
-        },
-      }),
-  );
-  await page.route(
-    (url) => /^\/api\/regions\/region-\d+\/cells$/.test(url.pathname),
-    (route) =>
-      route.fulfill({ json: { items: [], total: 0, limit: 100, offset: 0, nextOffset: null } }),
+    (url) => url.pathname === '/api/map/pins',
+    (route) => route.fulfill({ json: { items: PINS, total: PINS.length } }),
   );
   await page.goto('/signin');
   await page.getByLabel('Email').fill(EMAIL);
@@ -146,90 +65,221 @@ const docFits = (page: Page) =>
       document.documentElement.scrollWidth <= window.innerWidth,
   );
 
-test('the matrix scrolls on its own while the map stays fixed, and a pick zooms the map', async ({
+/** The Leaflet map behind the page, for working out where a place is on screen. */
+const mapHost = (page: Page) => page.locator('.wm-host');
+async function openMap(page: Page, query = '') {
+  await page.goto(`/leadgen/coverage${query}`);
+  await expect(mapHost(page)).toHaveAttribute('data-ready', 'true');
+}
+const view = (host: Locator) =>
+  host.evaluate((el) => {
+    const { map } = (el as unknown as { __worldMap: { map: import('leaflet').Map } }).__worldMap;
+    return { zoom: map.getZoom(), lat: map.getCenter().lat, lng: map.getCenter().lng };
+  });
+/** Waits until the camera has been still for a moment (a flight to a country takes a second). */
+async function settled(host: Locator) {
+  let last = '';
+  let since = Date.now();
+  await expect
+    .poll(async () => {
+      const now = JSON.stringify(await view(host));
+      if (now !== last) {
+        last = now;
+        since = Date.now();
+      }
+      return Date.now() - since > 900;
+    })
+    .toBe(true);
+}
+/** Page coordinates of a place. */
+async function screenPoint(host: Locator, lat: number, lng: number) {
+  const box = (await host.boundingBox())!;
+  const p = await host.evaluate(
+    (el, [la, ln]) => {
+      const { map } = (el as unknown as { __worldMap: { map: import('leaflet').Map } }).__worldMap;
+      const pt = map.latLngToContainerPoint([la!, ln!]);
+      return { x: pt.x, y: pt.y };
+    },
+    [lat, lng],
+  );
+  return { x: box.x + p.x, y: box.y + p.y };
+}
+
+test('opens on the whole world with one picker on the map and "Coverage by region" closed', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await signIn(page);
-  await page.goto('/leadgen/coverage');
-  const grid = page.getByRole('grid', { name: 'Coverage by sector' });
-  await expect(grid).toBeVisible();
+  await openMap(page);
   expect(await docFits(page)).toBe(true);
 
-  // About 60% / 40%, side by side.
-  const left = (await page.locator('.cov-left').boundingBox())!;
-  const right = (await page.locator('.cov-right').boundingBox())!;
-  expect(left.width / (left.width + right.width)).toBeGreaterThan(0.55);
-  expect(left.width / (left.width + right.width)).toBeLessThan(0.65);
-  expect(right.x).toBeGreaterThan(left.x + left.width - 2);
-
-  // All 24 regions are rows; the greyed ones come last.
-  await expect(grid.getByRole('rowheader')).toHaveCount(25);
-  await expect(grid.locator('tbody tr.is-grey')).toHaveCount(4);
-  await expect(grid.locator('tbody tr').last()).toHaveClass(/is-grey/);
-
-  // Scrolling the matrix moves it, not the map.
-  const scroller = page.locator('.cov-left .cov-scroll');
-  expect(await scroller.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
-  const mapBefore = await page.locator('.cov-map').boundingBox();
-  await scroller.hover();
-  await page.mouse.wheel(0, 600);
-  await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(100);
-  expect(await page.locator('.cov-map').boundingBox()).toEqual(mapBefore);
-  expect(await docFits(page)).toBe(true);
+  // The map fills the panel and is draggable and zoomable.
+  const host = mapHost(page);
+  const box = (await host.boundingBox())!;
+  expect(box.width).toBeGreaterThan(900);
+  expect(box.height).toBeGreaterThan(500);
+  await expect(page.getByRole('button', { name: /^Country: / })).toHaveCount(1);
+  const head = page.getByRole('button', { name: /^Coverage by region/ });
+  await expect(head).toHaveAttribute('aria-expanded', 'false');
+  expect((await view(host)).zoom).toBeLessThanOrEqual(3);
   if (process.env.COVERAGE_SHOTS)
-    await page.screenshot({ path: `${process.env.COVERAGE_SHOTS}/matrix.png` });
+    await page.screenshot({ path: `${process.env.COVERAGE_SHOTS}/world.png` });
 
-  // Picking a region on the map turns the matrix into its table and zooms in.
-  const svg = page.getByRole('group', { name: 'Coverage map' });
-  const wide = await svg.getAttribute('viewBox');
-  await page.getByRole('button', { name: 'Region Region 03' }).click();
-  await expect(page.getByRole('table', { name: 'Region 03 by sector' })).toBeVisible();
-  await expect.poll(() => svg.getAttribute('viewBox')).not.toBe(wide);
-  await expect(page).toHaveURL(/region=region-2(&country=\w+)?$/);
-  expect(await docFits(page)).toBe(true);
+  const before = await view(host);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 - 160, box.y + box.height / 2 + 40, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(async () => (await view(host)).lng).toBeGreaterThan(before.lng + 5);
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -400);
+  await expect.poll(async () => (await view(host)).zoom).toBeGreaterThan(before.zoom);
+
+  // Click: totals of every country, with the switched-off ones greyed.
+  await head.click();
+  await expect(head).toHaveAttribute('aria-expanded', 'true');
+  const panel = page.getByRole('region', { name: 'Coverage by region' });
+  await expect(panel.getByRole('button', { name: /^Tunisia/ })).toBeEnabled();
+  await expect(panel.getByRole('button', { name: /^Germany/ })).toBeDisabled();
   if (process.env.COVERAGE_SHOTS)
-    await page.screenshot({ path: `${process.env.COVERAGE_SHOTS}/table.png` });
-
-  // The empty map background resets everything.
-  const box = (await svg.boundingBox())!;
-  await page.mouse.click(box.x + 4, box.y + 4);
-  await expect(grid).toBeVisible();
-  await expect(page).not.toHaveURL(/region=/);
-  await expect.poll(() => svg.getAttribute('viewBox')).toBe(wide);
+    await page.screenshot({ path: `${process.env.COVERAGE_SHOTS}/world-open.png` });
 });
 
-test('Expand opens a window with a larger matrix and the history, and Escape closes it', async ({
+test('picking France flies there, opens its regions, and lights a region and its row together', async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width: 1280, height: 720 });
   await signIn(page);
-  await page.goto('/leadgen/coverage');
-  await page.getByRole('button', { name: 'Expand' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Coverage' });
-  await expect(dialog).toBeVisible();
-  const box = (await dialog.boundingBox())!;
-  expect(box.width / 1440).toBeGreaterThan(0.9);
-  await expect(dialog.getByRole('tab', { name: 'History results' })).toBeVisible();
+  await openMap(page);
+  const host = mapHost(page);
+
+  await page.getByRole('button', { name: /^Country: / }).click();
+  await page
+    .getByRole('list', { name: 'Country' })
+    .getByRole('button', { name: /^France/ })
+    .click();
+  await expect(page).toHaveURL(/focus=FR/);
+  await expect
+    .poll(async () => {
+      const v = await view(host);
+      return v.lat > 43 && v.lat < 50 && v.lng > -4 && v.lng < 7;
+    })
+    .toBe(true);
+  const panelHead = page.getByRole('button', { name: /^Coverage by region: France/ });
+  await expect(panelHead).toHaveAttribute('aria-expanded', 'true');
+  await settled(host);
+  const rows = page.locator('.wm-row[data-region]');
+  await expect(rows.first()).toBeVisible();
+  expect(await rows.count()).toBeGreaterThanOrEqual(10);
   if (process.env.COVERAGE_SHOTS)
-    await page.screenshot({ path: `${process.env.COVERAGE_SHOTS}/expand.png` });
+    await page.screenshot({ path: `${process.env.COVERAGE_SHOTS}/france.png` });
+
+  // Hovering Brittany on the map lights its row; hovering the row lights the region.
+  const bretagne = page.locator('.wm-row[data-region="fr-bretagne"]');
+  // A spot inside Brittany that is not under its pin.
+  const at = await screenPoint(host, 48.0, -3.6);
+  await page.mouse.move(at.x, at.y);
+  await expect(bretagne).toHaveClass(/is-hot/);
+  await page.mouse.move(at.x + 5, at.y + 5);
+  await bretagne.hover();
+  await expect(bretagne).toHaveClass(/is-hot/);
+
+  // Clicking the region picks it: details and a run button appear, the address remembers.
+  await page.mouse.move(at.x, at.y);
+  const wide = (await view(host)).zoom;
+  await page.mouse.click(at.x, at.y);
+  await expect(page).toHaveURL(/region=fr-bretagne/);
+  // The camera moves in on the region.
+  await expect.poll(async () => (await view(host)).zoom).toBeGreaterThan(wide + 0.8);
+  await expect(page.getByRole('heading', { level: 2 })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Start a run in / })).toBeEnabled();
+  expect(await docFits(page)).toBe(true);
+  if (process.env.COVERAGE_SHOTS)
+    await page.screenshot({ path: `${process.env.COVERAGE_SHOTS}/region.png` });
+
+  // Escape steps back: first the region, then the country.
   await page.keyboard.press('Escape');
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Expand' })).toBeFocused();
+  await expect(page).not.toHaveURL(/region=/);
+  await page.keyboard.press('Escape');
+  await expect(page).not.toHaveURL(/focus=/);
+  await expect.poll(async () => (await view(host)).zoom).toBeLessThanOrEqual(3);
 });
 
-test('below 900px the matrix is on top and the map under it, with no page scroll', async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 800, height: 700 });
+test('clicking a pin springs a small panel open, with a button to the lead', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
   await signIn(page);
-  await page.goto('/leadgen/coverage');
-  await expect(page.getByRole('grid', { name: 'Coverage by sector' })).toBeVisible();
-  const left = (await page.locator('.cov-left').boundingBox())!;
-  const right = (await page.locator('.cov-right').boundingBox())!;
-  expect(right.y).toBeGreaterThanOrEqual(left.y + left.height - 3);
-  expect(Math.abs(right.x - left.x)).toBeLessThan(4);
+  await openMap(page, '?focus=FR');
+  const host = mapHost(page);
+  await expect.poll(async () => (await view(host)).lat).toBeGreaterThan(43);
+  await settled(host);
+
+  const at = await screenPoint(host, 48.2, -2.9);
+  // The pin and a region are under the same spot; a pin wins.
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.click(at.x, at.y);
+  const panel = page.getByRole('region', { name: 'Details of Maison Breizh Export' });
+  await expect(panel).toBeVisible();
+  await expect(panel.getByText('Score 64')).toBeVisible();
+  // It springs open with an animation (scale past 1 and back).
+  const animated = await panel.evaluate((el) =>
+    el.getAnimations().some((a) => (a as CSSAnimation).animationName === 'wm-pop'),
+  );
+  expect(animated).toBe(true);
+  // It stays on the map.
+  const mapBox = (await host.boundingBox())!;
+  const panelBox = (await panel.boundingBox())!;
+  expect(panelBox.x).toBeGreaterThanOrEqual(mapBox.x);
+  expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(mapBox.x + mapBox.width + 1);
+  expect(panelBox.y).toBeGreaterThanOrEqual(mapBox.y - 1);
+  if (process.env.COVERAGE_SHOTS) {
+    await page.waitForTimeout(700);
+    await page.screenshot({ path: `${process.env.COVERAGE_SHOTS}/pin.png` });
+  }
+
+  // Dragging the map moves the panel with the pin.
+  // First let the panel come to rest (opening a pin may nudge the camera).
+  let rest = -1;
+  let still = 0;
+  await expect
+    .poll(async () => {
+      const x = (await panel.boundingBox())!.x;
+      still = x === rest ? still + 1 : 0;
+      rest = x;
+      return still;
+    })
+    .toBeGreaterThanOrEqual(4);
+  const first = await panel.boundingBox();
+  await page.mouse.move(mapBox.x + 900, mapBox.y + 450);
+  await page.mouse.down();
+  await page.mouse.move(mapBox.x + 940, mapBox.y + 450, { steps: 4 });
+  await page.mouse.up();
+  await expect.poll(async () => (await panel.boundingBox())!.x).toBeGreaterThan(first!.x + 20);
+
+  await panel.getByRole('link', { name: 'Open the lead' }).click();
+  await expect(page).toHaveURL(/\/leadgen\/runs\/run-1\/leads\/lead-1/);
+});
+
+test('a country the app does not work in does nothing when clicked', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await signIn(page);
+  await openMap(page);
+  const host = mapHost(page);
+  const germany = await screenPoint(host, 51.0, 10.3);
+  await page.mouse.click(germany.x, germany.y);
+  await expect(page).not.toHaveURL(/focus=/);
+  // France is one the app works in: clicking it flies there.
+  const france = await screenPoint(host, 45.0, 2.5);
+  await page.mouse.click(france.x, france.y);
+  await expect(page).toHaveURL(/focus=FR/);
+});
+
+test('on a phone the map still fills the window with nothing scrolling', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signIn(page);
+  await openMap(page);
   expect(await docFits(page)).toBe(true);
+  await expect(page.getByRole('button', { name: /^Coverage by region/ })).toBeVisible();
   if (process.env.COVERAGE_SHOTS)
     await page.screenshot({ path: `${process.env.COVERAGE_SHOTS}/narrow.png` });
 });

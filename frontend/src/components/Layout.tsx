@@ -37,7 +37,10 @@ function Frame() {
   const t = useT();
   const auth = useAuth();
   const api = useApi();
-  const inLeadGen = useLocation().pathname.startsWith('/leadgen');
+  const pathname = useLocation().pathname;
+  const inLeadGen = pathname.startsWith('/leadgen');
+  // The Coverage map has its own country picker, floating over the map.
+  const onCoverage = pathname.startsWith('/leadgen/coverage');
 
   // The counts beside "Dashboard" (leads waiting for a decision) and "Runs" (runs in progress).
   const waiting = useResource(() => api.leads.list({ stage: ['system_suggested'], limit: 1 }), {
@@ -124,7 +127,7 @@ function Frame() {
               ],
             }
           : {})}
-        countrySwitch={<CountrySwitch />}
+        countrySwitch={onCoverage ? undefined : <CountrySwitch />}
         banner={<LiveBanner />}
         profileName={auth.user?.email ?? ''}
         profile={
