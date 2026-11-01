@@ -5,6 +5,11 @@ import type {
   CardSelection,
   CountryCode,
   CountryInfo,
+  DevEstimate,
+  DevHistoryEntry,
+  DevOptions,
+  DevStep,
+  DevStepInput,
   MapPins,
   TradeCheckPreview,
   TradeCheckStatus,
@@ -52,6 +57,8 @@ import { ApiClient } from './client.js';
 export interface SessionUser {
   id: string;
   email: string;
+  /** True only for the dev admin while DEV_CONSOLE is on: the page may show the Dev console. */
+  devConsole?: boolean;
 }
 
 export interface PageParams {
@@ -269,6 +276,23 @@ export function createApi(client: ApiClient) {
       budget: () => client.get<BudgetView>('/api/costs/budget'),
       setCap: (capUsd: number) =>
         client.request<BudgetView>('PUT', '/api/costs/budget', { body: { capUsd } }),
+    },
+
+    /** The developer console (404 unless DEV_CONSOLE is on and this is the dev admin). */
+    devConsole: {
+      options: () => client.get<DevOptions>('/api/dev/console/options'),
+      estimate: (step: DevStep, input: DevStepInput, signal?: AbortSignal) =>
+        client.request<DevEstimate>('POST', '/api/dev/console/estimate', {
+          body: { step, input },
+          ...(signal ? { signal } : {}),
+        }),
+      run: (step: DevStep, input: DevStepInput) =>
+        client.request<DevHistoryEntry>('POST', '/api/dev/console/run', { body: { step, input } }),
+      history: (step: DevStep) =>
+        client.get<{ items: DevHistoryEntry[] }>('/api/dev/console/history', { step }),
+      entry: (id: string) => client.get<DevHistoryEntry>(`/api/dev/console/history/${id}`),
+      clear: (step: DevStep) =>
+        client.request<void>('DELETE', '/api/dev/console/history', { query: { step } }),
     },
 
     exports: {

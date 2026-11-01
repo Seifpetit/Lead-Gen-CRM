@@ -32,6 +32,9 @@ export interface AuthPolicy {
 
 /** The one reserved login the dev shortcut accepts. It is not an email address. */
 export const DEV_ADMIN_LOGIN = 'test';
+
+/** The dev admin: the one account the developer console opens for. */
+export const isDevAdminEmail = (email: string): boolean => email.trim() === DEV_ADMIN_LOGIN;
 const DEV_ADMIN_PASSWORD = 'test';
 
 export const DEFAULT_POLICY: AuthPolicy = {

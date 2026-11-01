@@ -1,6 +1,7 @@
 import type { Db } from '../data/db.js';
 import type { ErrorReporter } from '../runner/errorReporter.js';
 import type { DailyJumpConfig, HealthFacts } from '../runner/healthView.js';
+import type { DevConsole } from '../runner/devConsole.js';
 import type { Orchestrator } from '../runner/orchestrator.js';
 import type { Watchdog } from '../runner/watchdog.js';
 
@@ -29,4 +30,6 @@ export interface RouteDeps {
   healthFacts: HealthFacts;
   /** When a day's spend counts as a jump. */
   dailyJump: DailyJumpConfig;
+  /** The developer console; null unless DEV_CONSOLE is on. Its routes do not exist without it. */
+  devConsole: DevConsole | null;
 }

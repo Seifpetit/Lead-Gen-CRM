@@ -349,6 +349,8 @@ export interface CostRow {
   /** What the ledger counts as spent: open estimates plus actuals. */
   totalUsd: number;
   entries: number;
+  /** For rows grouped by run: what kind of run it is (a console call is not a search run). */
+  runKind?: 'search' | 'trade_check' | 'dev_step' | null;
 }
 
 export interface BudgetView {

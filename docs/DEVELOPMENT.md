@@ -190,6 +190,14 @@ company removed to Noise has no pin.
   `PUBLIC_URL` is not a localhost URL, and logs a warning when it is on. To switch it off: set
   `DEV_ADMIN_LOGIN=false` and run `npm run auth:disable-dev-user` (deletes the `test` user and its
   sessions). While the flag is off, the `test` login is refused even if the row still exists.
+- **Developer console** (`DEV_CONSOLE=true`, default off): a "Dev console" button in the Dashboard
+  header opens `/dev/console`, where the admin (the `test` login) runs one step by hand: a Google
+  Maps search or the import/export classifier. It shows the exact request sent, the result, the cost
+  and a history, never saves leads and never touches companies, coverage or the CRM. Paid calls are
+  capped per call ($0.50 to $1.00 for a search, up to $0.50 for classifying), land in the cost
+  ledger on a hidden run of kind `dev_step`, and respect the monthly cap. Same start guards as
+  `DEV_ADMIN_LOGIN`. Turn it off while the app is shared through a tunnel. With the flag off every
+  `/api/dev/console` route answers 404.
 - **Logs** redact cookies, `Set-Cookie`, authorization headers and any `password`, `token` or
   `inviteCode` field; request bodies are never logged.
 - **CSRF:** `SameSite=Strict` cookies plus JSON-only endpoints. Behind a reverse proxy, enable

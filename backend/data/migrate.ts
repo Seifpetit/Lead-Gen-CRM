@@ -16,6 +16,7 @@ import { migration as m014 } from './migrations/014_failure_tracking.js';
 import { migration as m015 } from './migrations/015_messages_contacts.js';
 import { migration as m016 } from './migrations/016_import_export.js';
 import { migration as m017 } from './migrations/017_countries.js';
+import { migration as m018 } from './migrations/018_dev_console.js';
 
 export interface Migration {
   id: string;
@@ -42,6 +43,7 @@ export const MIGRATIONS: readonly Migration[] = [
   m015,
   m016,
   m017,
+  m018,
 ];
 
 const ENSURE_TABLE = `

@@ -10,7 +10,7 @@ import { Watchdog } from './runner/watchdog.js';
 import { createClassifier } from './providers/anthropicClassifier.js';
 import { ApifyClient } from './providers/apify.js';
 import { EmailFinderVerifier } from './providers/emailFinder.js';
-import { GoogleMapsApifyDiscovery } from './providers/googleMapsApify.js';
+import { GoogleMapsApifyDiscovery, mapsInput } from './providers/googleMapsApify.js';
 import {
   CompanyEmployeesFinder,
   LinkedinPeopleFinder,
@@ -18,6 +18,7 @@ import {
 } from './providers/linkedin.js';
 import { startImageBackfill } from './runner/imageBackfill.js';
 import { startNoisePurge } from './runner/noisePurge.js';
+import { DevConsole } from './runner/devConsole.js';
 import { Orchestrator } from './runner/orchestrator.js';
 
 let env: Env;
@@ -91,6 +92,18 @@ const runner = new Orchestrator({
   },
 });
 
+// The developer console exists only with DEV_CONSOLE=true (local development, see config/env.ts).
+const devConsole = env.DEV_CONSOLE
+  ? new DevConsole({
+      db,
+      discovery: new GoogleMapsApifyDiscovery(apify),
+      buildRequest: mapsInput,
+      classifier,
+      classifierModel: env.CLASSIFIER_MODEL,
+      secrets: SECRETS,
+    })
+  : null;
+
 const watchdog = new Watchdog({
   db,
   changes: runner.changes,
@@ -111,6 +124,7 @@ const app = await buildApp({
   secrets: SECRETS,
   errors,
   watchdog,
+  devConsole,
   healthFacts: {
     apifyToken: Boolean(env.APIFY_TOKEN),
     anthropicKey: Boolean(env.ANTHROPIC_API_KEY),
@@ -160,6 +174,11 @@ if (env.PAID_RUNS_ENABLED) {
 startNoisePurge(db, env.NOISE_RETENTION_DAYS, (data, message) => app.log.info(data, message));
 // Thumbnails: a free lookup of each company's website image, in the background.
 startImageBackfill(db, (data, message) => app.log.info(data, message));
+if (env.DEV_CONSOLE) {
+  app.log.warn(
+    'DEV_CONSOLE is ON: the dev admin can run single pipeline steps by hand (paid, capped per call). Local development only.',
+  );
+}
 if (env.DEV_ADMIN_LOGIN) {
   app.log.warn(
     'DEV_ADMIN_LOGIN is ON: the login test/test is accepted. Local development only; never deploy this.',

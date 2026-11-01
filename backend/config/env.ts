@@ -32,6 +32,15 @@ const EnvSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
+  /**
+   * Developer console (run one pipeline step by hand, see what went in and out). Local development
+   * only: the server refuses to start with this on in production, on a non-loopback host, or with
+   * a non-localhost PUBLIC_URL, and even then only the dev admin login can open it.
+   */
+  DEV_CONSOLE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
   /** Anthropic API key for the Claude classifier. Optional: without it, rules decide alone. */
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   /** Model the classifier calls. */
@@ -62,7 +71,7 @@ const EnvSchema = z.object({
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', '[::1]']);
 const LOCAL_URL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
-/** Why DEV_ADMIN_LOGIN=true must not run with this configuration, or null if it is safe. */
+/** Why a local-only switch (DEV_ADMIN_LOGIN, DEV_CONSOLE) must not be on with this configuration. */
 function devAdminLoginProblem(env: {
   NODE_ENV: string;
   HOST: string;
@@ -107,6 +116,12 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     const problem = devAdminLoginProblem(parsed.data);
     if (problem) {
       throw new EnvError([`DEV_ADMIN_LOGIN=true is refused because ${problem}. Set it to false`]);
+    }
+  }
+  if (parsed.data.DEV_CONSOLE) {
+    const problem = devAdminLoginProblem(parsed.data);
+    if (problem) {
+      throw new EnvError([`DEV_CONSOLE=true is refused because ${problem}. Set it to false`]);
     }
   }
   return parsed.data;
