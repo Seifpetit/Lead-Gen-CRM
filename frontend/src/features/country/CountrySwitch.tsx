@@ -2,18 +2,7 @@ import { Check, ChevronDown, Globe } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { CountryInfo } from '@lead-gen-crm/shared';
 import { useT } from '../../i18n/index.js';
-import { useCountry, type CountryChoice } from './CountryContext.js';
-
-/**
- * The country switch: a button showing the country, and a list under it. A country that is
- * switched off is greyed and says why. Choosing one changes the screens at once.
- */
-export function CountrySwitch() {
-  const { choice, countries, choose, allowsAll } = useCountry();
-  return (
-    <CountryPicker choice={choice} countries={countries} allowsAll={allowsAll} onChoose={choose} />
-  );
-}
+import type { CountryChoice } from './CountryContext.js';
 
 /** The button and list behind the switch, told what is chosen; the Coverage map uses it too. */
 export function CountryPicker({
