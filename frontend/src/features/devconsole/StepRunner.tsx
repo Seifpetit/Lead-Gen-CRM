@@ -104,7 +104,7 @@ export function StepRunner({
         ) : estimate === null ? (
           <p className="muted small">{t('devc.request.loading')}</p>
         ) : (
-          <JsonBox value={estimate.requests} label={requestLabel} />
+          <JsonBox value={estimate.requests} label={requestLabel} copy="devc.copy.request" />
         )}
       </section>
 

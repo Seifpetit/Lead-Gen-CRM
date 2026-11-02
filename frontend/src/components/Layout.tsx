@@ -12,7 +12,6 @@ import { useAuth } from '../features/auth/AuthContext.js';
 import { HealthNotice } from '../features/leadgen/health/HealthNotice.js';
 import { LiveBanner } from '../features/leadgen/live/LiveBanner.js';
 import { CountryProvider, useCountry } from '../features/country/CountryContext.js';
-import { CountrySwitch } from '../features/country/CountrySwitch.js';
 import { GdprNotice } from '../features/country/GdprNotice.js';
 import { useT } from '../i18n/index.js';
 import { useResource } from '../lib/useResource.js';
@@ -39,8 +38,6 @@ function Frame() {
   const api = useApi();
   const pathname = useLocation().pathname;
   const inLeadGen = pathname.startsWith('/leadgen');
-  // The Coverage map and the Dashboard carry their own country picker, so the sidebar's steps aside.
-  const ownPicker = pathname === '/leadgen' || pathname.startsWith('/leadgen/coverage');
 
   // The counts beside "Dashboard" (leads waiting for a decision) and "Runs" (runs in progress).
   const waiting = useResource(() => api.leads.list({ stage: ['system_suggested'], limit: 1 }), {
@@ -127,7 +124,6 @@ function Frame() {
               ],
             }
           : {})}
-        countrySwitch={ownPicker ? undefined : <CountrySwitch />}
         banner={<LiveBanner />}
         profileName={auth.user?.email ?? ''}
         profile={

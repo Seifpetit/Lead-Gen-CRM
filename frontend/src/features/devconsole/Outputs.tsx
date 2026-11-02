@@ -1,14 +1,54 @@
 import type { DevClassifyOutput, DevDiscoverOutput, DevHistoryEntry } from '@lead-gen-crm/shared';
+import { Copy } from 'lucide-react';
 import { useState } from 'react';
-import { useT } from '../../i18n/index.js';
+import { useToast } from '../../components/shared/Toast.js';
+import { useT, type StringKey } from '../../i18n/index.js';
 import { formatNumber, formatUsd } from '../../lib/format.js';
 
-/** Read-only JSON, as it was sent or came back. */
-export function JsonBox({ value, label }: { value: unknown; label: string }) {
+/** One click copies the text exactly as shown, and a toast says so. */
+export function CopyText({ text, what }: { text: string; what: StringKey }) {
+  const t = useT();
+  const toast = useToast();
+  const name = t(what);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.show(t('devc.copied', { what: name }));
+    } catch {
+      toast.show(t('devc.copy.failed'), 'error');
+    }
+  }
   return (
-    <pre className="dc-json" tabIndex={0} role="region" aria-label={label}>
-      {JSON.stringify(value, null, 2)}
-    </pre>
+    <button
+      type="button"
+      className="button button-small button-icon-text"
+      onClick={() => void copy()}
+    >
+      <Copy size={14} aria-hidden="true" />
+      {name}
+    </button>
+  );
+}
+
+/** Read-only JSON, as it was sent or came back. */
+export function JsonBox({
+  value,
+  label,
+  copy,
+}: {
+  value: unknown;
+  label: string;
+  /** When given, a copy button sits above the box. */
+  copy?: StringKey;
+}) {
+  const text = JSON.stringify(value, null, 2);
+  return (
+    <div className="dc-jsonwrap">
+      {copy && <CopyText text={text} what={copy} />}
+      <pre className="dc-json" tabIndex={0} role="region" aria-label={label}>
+        {text}
+      </pre>
+    </div>
   );
 }
 
@@ -20,7 +60,7 @@ function RawToggle({ value }: { value: unknown }) {
       <button type="button" className="button" aria-expanded={open} onClick={() => setOpen(!open)}>
         {open ? t('devc.raw.hide') : t('devc.raw.show')}
       </button>
-      {open && <JsonBox value={value} label={t('devc.raw.label')} />}
+      {open && <JsonBox value={value} label={t('devc.raw.label')} copy="devc.copy.raw" />}
     </div>
   );
 }
@@ -156,7 +196,7 @@ export function DiscoverOutputView({
       )}
 
       <h3 className="dc-h">{t('devc.out.sent')}</h3>
-      <JsonBox value={output.requests} label={t('devc.out.sent')} />
+      <JsonBox value={output.requests} label={t('devc.out.sent')} copy="devc.copy.sent" />
       <RawToggle value={output} />
     </div>
   );
@@ -221,6 +261,17 @@ export function EntryView({
   const t = useT();
   return (
     <div>
+      <div className="dc-copybar">
+        <CopyText text={JSON.stringify(entry.input, null, 2)} what="devc.copy.input" />
+        <CopyText
+          text={JSON.stringify(
+            entry.error ? { error: entry.error, output: entry.output } : entry.output,
+            null,
+            2,
+          )}
+          what="devc.copy.output"
+        />
+      </div>
       <p className="dc-entry-head">
         <strong>{t(`devc.status.${entry.status}` as const)}</strong>
         {' · '}

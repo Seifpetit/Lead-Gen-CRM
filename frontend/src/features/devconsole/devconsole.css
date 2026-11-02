@@ -231,3 +231,17 @@
     display: none;
   }
 }
+.dc-copybar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+.dc-jsonwrap {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}
+.dc-jsonwrap > .dc-json {
+  justify-self: stretch;
+}

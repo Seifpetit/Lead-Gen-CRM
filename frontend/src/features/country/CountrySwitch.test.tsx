@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { fakeServer } from '../../test/fakeServer.js';
 import { dashboardRoutes, page } from '../../test/fixtures.js';
 import { renderApp } from '../../test/render.js';
-import { STAGES } from '../crm/boardTestKit.js';
 
 const signedIn = {
   ...dashboardRoutes(),
@@ -77,26 +76,6 @@ describe('country switch', () => {
     expect(
       await screen.findByRole('button', { name: 'Country: Tunisia. Change country' }),
     ).toBeInTheDocument();
-  });
-
-  it('offers "All countries" on the boards and then asks for every country', async () => {
-    const server = fakeServer({
-      ...signedIn,
-      'GET /api/crm/companies': {
-        pipeline: 'companies',
-        stages: STAGES.companies.map((st) => ({ ...st, cards: [], total: 0, nextCursor: null })),
-        sectors: [],
-      },
-    });
-    renderApp(server, '/crm/companies');
-    await userEvent.click(await switchButton());
-    await userEvent.click(screen.getByRole('button', { name: 'All countries' }));
-    await waitFor(() => {
-      const calls = server.to('GET /api/crm/companies');
-      expect(calls.length).toBeGreaterThan(1);
-      expect(calls[calls.length - 1]!.query.has('country')).toBe(false);
-    });
-    expect(server.to('GET /api/crm/companies')[0]!.query.get('country')).toBe('TN');
   });
 
   it('keeps Costs and the run list across countries, with a Country column', async () => {

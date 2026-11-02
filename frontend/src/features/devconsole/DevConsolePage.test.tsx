@@ -206,6 +206,21 @@ describe('Dev console page', () => {
     expect(server.to('POST /api/dev/console/run')).toHaveLength(0);
   });
 
+  it('copies the input and the output of a call with one click each', async () => {
+    const { user } = await open([entry()]);
+    const written: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text: string) => void written.push(text) },
+    });
+    await user.click(await screen.findByRole('button', { name: /TN · importateur/ }));
+    await screen.findByText('Huilerie Baccar');
+    await user.click(screen.getByRole('button', { name: 'Copy input' }));
+    await user.click(screen.getByRole('button', { name: 'Copy output' }));
+    expect(JSON.parse(written[0]!)).toMatchObject({ country: expect.any(String) });
+    expect(JSON.parse(written[1]!)).toMatchObject({ counts: { returned: 1 } });
+  });
+
   it('carries the places of a result into the Classify tab', async () => {
     const { user } = await open([entry()]);
     await user.click(await screen.findByRole('button', { name: /TN · importateur/ }));
