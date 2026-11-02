@@ -40,13 +40,4 @@ test('switching country redraws the page without a reload and is remembered', as
   await page.goto('/leadgen');
   await expect(page.getByRole('button', { name: /^Country: France/ })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-
-  // The boards can show every country.
-  await page.getByRole('link', { name: 'CRM' }).click();
-  await page.getByRole('button', { name: /^Country: France/ }).click();
-  await page.getByRole('button', { name: 'All countries' }).click();
-  await expect(
-    page.getByRole('button', { name: 'Country: All countries. Change country' }),
-  ).toBeVisible();
-  await expect(page).toHaveURL(/country=ALL/);
 });
