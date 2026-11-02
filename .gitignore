@@ -13,3 +13,6 @@ playwright-report/
 *.xlsx
 *.sql
 *.dump
+
+# Output of npm run trade:tunisia.
+trade-tunisia-output/

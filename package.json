@@ -27,6 +27,7 @@
     "regions:set-bounds": "npm run regions:set-bounds -w backend --",
     "regions:build": "npm run regions:build -w backend --",
     "world:build": "npm run world:build -w backend --",
+    "trade:tunisia": "npm run trade:tunisia -w backend --",
     "auth:create-user": "npm run auth:create-user -w backend --",
     "auth:disable-dev-user": "npm run auth:disable-dev-user -w backend",
     "auth:create-invite": "npm run auth:create-invite -w backend"

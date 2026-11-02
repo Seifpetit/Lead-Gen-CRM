@@ -60,6 +60,27 @@ with fixtures and no network.
 | [Data layer](backend/data/README.md)         | The rules for database access and its commands              |
 | [Frontend](frontend/README.md)               | Folder map, UI rules and the browser smoke test             |
 
+## Which French regions trade most with Tunisia
+
+A small side tool, separate from the app: it reads the French customs open data and prints which
+French regions trade most with Tunisia. It touches no database and no paid service, and it
+costs nothing.
+
+```
+npm run trade:tunisia                  # download once, print the tables, write a CSV
+npm run trade:tunisia -- --refresh     # download again
+npm run trade:tunisia -- --eurostat    # also France, Germany and Italy side by side
+npm run trade:tunisia -- --data-url <address>   # if it cannot tell which file is the data
+```
+
+It prints trade with Tunisia (imports, exports, total, share) per region for the latest four
+quarters in the file, the top 10 product groups, the quarters used, and a note on how to read
+it. The same tables go to `trade-tunisia-output/` (a CSV, not committed). The region is where the
+goods physically leave or arrive, not where the company sits; some flows are hidden for
+confidentiality; the values are euros, not a number of companies. Data:
+[Statistiques régionales et départementales du commerce extérieur](https://www.data.gouv.fr/fr/datasets/5369a0b4a3a729239d206418/)
+(French customs, on data.gouv.fr); the script prints the licence the dataset states.
+
 ## Known limits
 
 - It is an early prototype. One real test run so far found company contacts well but few named
