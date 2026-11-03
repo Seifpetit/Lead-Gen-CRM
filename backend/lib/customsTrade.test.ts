@@ -9,8 +9,9 @@ import {
   parseCodeNames,
   parseDepartmentRegion,
   parseNumber,
-  pickData,
-  pickMappings,
+  chooseFiles,
+  classifyPreview,
+  formatResourceList,
   readTradeRows,
   readZip,
   splitLine,
@@ -173,39 +174,80 @@ describe('adding up', () => {
   });
 });
 
-describe('choosing the dataset files', () => {
-  const r = (title: string, format: string, url = `https://x.test/${title}`): Resource => ({
+describe('choosing the dataset files by what is inside', () => {
+  const r = (title: string, format = 'csv', size: number | null = null): Resource => ({
     title,
     format,
-    url,
-  });
-  const files = [
-    r('Statistiques régionales trimestrielles', 'csv'),
-    r('Statistiques régionales trimestrielles', 'zip'),
-    r('Departement_region.txt', 'txt'),
-    r('Libelle_PAYS.txt', 'txt'),
-    r('Notice', 'pdf'),
-  ];
-
-  it('finds the name files by title', () => {
-    const m = pickMappings(files);
-    expect(m.departments.title).toBe('Departement_region.txt');
-    expect(m.countries.title).toBe('Libelle_PAYS.txt');
-    expect(m.products).toBeNull();
+    url: `https://x.test/${encodeURIComponent(title)}`,
+    size,
   });
 
-  it('prefers the csv of the regional file', () => {
-    expect(pickData(files)).toMatchObject({ format: 'csv' });
+  it('lists every file with its format and size', () => {
+    const text = formatResourceList([r('Données', 'csv', 12_500_000), r('Notice', 'pdf')]);
+    expect(text).toMatch(/1\s+Données\s+csv\s+12.5 MB/);
+    expect(text).toMatch(/2\s+Notice\s+pdf\s+size not stated/);
   });
 
-  it('stops with the candidates when two files look equally likely', () => {
-    const tie = [r('Données A', 'csv'), r('Données B', 'csv'), ...files.slice(2)];
-    expect(() => pickData(tie)).toThrow(/--data-url[\s\S]*|Données A/);
-    expect(() => pickData(tie)).toThrow(/Données B/);
+  it('recognises the regional data by its columns, whatever the title', () => {
+    expect(classifyPreview(DATA).kind).toBe('data');
+    expect(classifyPreview(DATA)).toMatchObject({ hasDepartment: true, hasQuarter: true });
+    // A national file has no region or department code.
+    expect(
+      classifyPreview('Flux;Trimestre;Année;Code CPF4;Code Pays;Valeur;Masse\nI;1;2024;01;TN;5;1')
+        .kind,
+    ).toBe('unknown');
   });
 
-  it('says plainly when a name file is missing', () => {
-    expect(() => pickMappings([r('x', 'csv')])).toThrow(/Departement_region/);
+  it('recognises a region-names file and a country file', () => {
+    expect(classifyPreview(DEPT_REGION).kind).toBe('regions');
+    expect(classifyPreview(COUNTRIES).kind).toBe('countries');
+    expect(classifyPreview('Code;Libellé\nAA;Autre\n').kind).toBe('unknown');
+  });
+
+  it('picks the data file, the region names and the countries from their content', () => {
+    const looked = [
+      { resource: r('Titre sans rapport'), info: classifyPreview(COUNTRIES) },
+      { resource: r('Données A'), info: classifyPreview(DATA) },
+      { resource: r('Noms'), info: classifyPreview(DEPT_REGION) },
+      { resource: r('Nationales'), info: classifyPreview('Flux;Valeur;Code Pays\nI;1;TN') },
+    ];
+    const choice = chooseFiles(looked);
+    expect(choice.data.title).toBe('Données A');
+    expect(choice.regions?.title).toBe('Noms');
+    expect(choice.countries?.title).toBe('Titre sans rapport');
+  });
+
+  it('does not stop when no file names the regions: it says there is none', () => {
+    const choice = chooseFiles([{ resource: r('Données'), info: classifyPreview(DATA) }]);
+    expect(choice.regions).toBeNull();
+  });
+
+  it('stops and shows what each file holds when no file is regional data', () => {
+    const looked = [
+      { resource: r('Nationales'), info: classifyPreview('Flux;Valeur;Code Pays\nI;1;TN') },
+    ];
+    expect(() => chooseFiles(looked)).toThrow(
+      /Nationales[\s\S]*Flux \| Valeur \| Code Pays[\s\S]*--data-url/,
+    );
+  });
+
+  it('stops when two files look equally like the data', () => {
+    const looked = [
+      { resource: r('A'), info: classifyPreview(DATA) },
+      { resource: r('B'), info: classifyPreview(DATA) },
+    ];
+    expect(() => chooseFiles(looked)).toThrow(/More than one file[\s\S]*A[\s\S]*B/);
+  });
+});
+
+describe('without a region-names file', () => {
+  it('prints the region code as it is', () => {
+    const read = readTradeRows(DATA, 'TN', {
+      regionOfDepartment: new Map(),
+      regionName: new Map(),
+    });
+    const totals = totalsByRegion(read.rows, latestQuarters(read.quarters), new Map());
+    expect(totals.map((t) => t.regionName)).toEqual(['11', '84']);
   });
 });
 

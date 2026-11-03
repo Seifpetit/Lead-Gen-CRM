@@ -3,17 +3,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  chooseFiles,
+  classifyPreview,
   csvCell,
   decodeText,
   eurostatUrl,
   findTunisia,
+  formatResourceList,
   formatEur,
   formatShare,
   latestQuarters,
   parseCodeNames,
   parseDepartmentRegion,
-  pickData,
-  pickMappings,
   quarterLabel,
   readTradeRows,
   readZip,
@@ -22,6 +23,8 @@ import {
   topProducts,
   totalsByRegion,
   type EurostatTotals,
+  type Looked,
+  type RegionNames,
   type Resource,
 } from '../lib/customsTrade.js';
 
@@ -106,41 +109,100 @@ function textOf(bytes: Buffer): string {
   return decodeText(files[0]!.data);
 }
 
+const PREVIEW_BYTES = 64 * 1024;
+
+/**
+ * The start of a file, enough to read its header: one small request for a text file, the whole
+ * (kept) download for a zip, since a zip's index is at its end.
+ */
+async function preview(resource: Resource): Promise<string | null> {
+  const isZip = /zip/i.test(resource.format) || /\.zip(\?|$)/i.test(resource.url);
+  if (isZip) {
+    const files = readZip(await download(resource.url, `data-${safeName(resource)}`)).filter((f) =>
+      /\.(csv|txt)$/i.test(f.name),
+    );
+    files.sort((a, b) => b.data.length - a.data.length);
+    return files[0] ? decodeText(files[0].data.subarray(0, PREVIEW_BYTES)) : null;
+  }
+  try {
+    const res = await fetch(resource.url, {
+      headers: { 'user-agent': USER_AGENT, range: `bytes=0-${PREVIEW_BYTES - 1}` },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!res.ok || !res.body) return null;
+    // A server that ignores the range sends the whole file: read the first part and stop.
+    const chunks: Buffer[] = [];
+    let got = 0;
+    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+      chunks.push(Buffer.from(chunk));
+      got += chunk.length;
+      if (got >= PREVIEW_BYTES) break;
+    }
+    const bytes = Buffer.concat(chunks).subarray(0, PREVIEW_BYTES);
+    // Cut at the last full line so a half line is not read as data.
+    const cut = bytes.lastIndexOf(10);
+    return decodeText(got >= PREVIEW_BYTES && cut > 0 ? bytes.subarray(0, cut) : bytes);
+  } catch {
+    return null;
+  }
+}
+
 async function main(): Promise<void> {
   const datasetBytes = await download(DATASET_URL, 'dataset.json');
   const dataset = JSON.parse(datasetBytes.toString()) as {
     title?: string;
     license?: string;
-    resources?: { title?: string; format?: string; url?: string }[];
+    resources?: { title?: string; format?: string; url?: string; filesize?: number | null }[];
   };
   const resources: Resource[] = (dataset.resources ?? []).map((r) => ({
     title: r.title ?? '',
     format: r.format ?? '',
     url: r.url ?? '',
+    size: typeof r.filesize === 'number' ? r.filesize : null,
   }));
   console.log(`\nDataset: ${dataset.title ?? DATASET_ID}`);
   console.log(`Licence (as the dataset states it): ${dataset.license ?? 'not stated'}`);
+  console.log(
+    `\nFiles in the dataset (${resources.length}):\n\n${formatResourceList(resources)}\n`,
+  );
 
-  let mappings;
+  // Which file is which is judged by what is inside, so the title does not matter. Only
+  // table-like files are looked at; pdf and json are skipped.
+  const worth = resources.filter(
+    (r) => r.url !== '' && /csv|txt|zip|tsv|text/i.test(r.format || r.url),
+  );
+  const looked: Looked[] = [];
+  for (const resource of worth) {
+    const text = await preview(resource);
+    if (text !== null) looked.push({ resource, info: classifyPreview(text) });
+  }
+  let choice;
   try {
-    mappings = pickMappings(resources);
+    choice = chooseFiles(looked);
   } catch (err) {
-    fail(err instanceof Error ? err.message : String(err));
+    if (dataUrlOverride === null) fail(err instanceof Error ? err.message : String(err));
+    choice = null;
   }
-  let dataResource: Resource;
-  if (dataUrlOverride !== null) {
-    dataResource = { title: 'chosen with --data-url', format: '', url: dataUrlOverride };
-  } else {
-    try {
-      dataResource = pickData(resources);
-    } catch (err) {
-      fail(err instanceof Error ? err.message : String(err));
-    }
+  const dataResource: Resource =
+    dataUrlOverride !== null
+      ? { title: 'chosen with --data-url', format: '', url: dataUrlOverride, size: null }
+      : choice!.data;
+  console.log(`Regional data file used: ${dataResource.title} (${dataResource.url})`);
+  const countriesFile =
+    choice?.countries ?? looked.find((l) => l.info.kind === 'countries')?.resource ?? null;
+  const regionsFile =
+    choice?.regions ?? looked.find((l) => l.info.kind === 'regions')?.resource ?? null;
+  console.log(
+    `Country names file: ${countriesFile?.title ?? 'none found'}. Region names file: ${regionsFile?.title ?? 'none found, region codes will be printed as they are'}.\n`,
+  );
+  if (!countriesFile) {
+    fail(
+      "No file in the dataset lists country names, so Tunisia's code cannot be looked up and none is guessed.",
+    );
   }
-  console.log(`Regional data file used: ${dataResource.title} (${dataResource.url})\n`);
 
   const countries = parseCodeNames(
-    textOf(await download(mappings.countries.url, `countries-${safeName(mappings.countries)}`)),
+    textOf(await download(countriesFile.url, `countries-${safeName(countriesFile)}`)),
   );
   const tunisia = findTunisia(countries);
   if (tunisia.code === null) {
@@ -153,16 +215,13 @@ async function main(): Promise<void> {
   }
   console.log(`Tunisia's code in the country file: ${tunisia.code}`);
 
-  const regions = parseDepartmentRegion(
-    textOf(await download(mappings.departments.url, `regions-${safeName(mappings.departments)}`)),
-  );
-  const productNames = mappings.products
-    ? new Map(
-        parseCodeNames(
-          textOf(await download(mappings.products.url, `products-${safeName(mappings.products)}`)),
-        ).map((p) => [p.code, p.name]),
+  const regions: RegionNames = regionsFile
+    ? parseDepartmentRegion(
+        textOf(await download(regionsFile.url, `regions-${safeName(regionsFile)}`)),
       )
-    : new Map<string, string>();
+    : { regionOfDepartment: new Map(), regionName: new Map() };
+  // No product-group names are looked up: their file was not seen, so codes are printed.
+  const productNames = new Map<string, string>();
 
   const dataText = textOf(await download(dataResource.url, `data-${safeName(dataResource)}`));
   let read;

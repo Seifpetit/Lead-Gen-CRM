@@ -163,68 +163,112 @@ export function readZip(buf: Buffer): ZipEntry[] {
 }
 
 // ---------------------------------------------------------------------------------------
-// Which of the dataset's files is which
+// Which of the dataset's files is which: judged by what is inside, not by the titles
 
 export interface Resource {
   title: string;
   format: string;
   url: string;
+  /** Bytes, as the dataset states it; null when it does not. */
+  size: number | null;
 }
 
-export interface Mappings {
-  departments: Resource;
-  countries: Resource;
-  products: Resource | null;
+const megabytes = (n: number | null) =>
+  n === null
+    ? 'size not stated'
+    : n < 1e6
+      ? `${Math.max(1, Math.round(n / 1e3))} KB`
+      : `${(n / 1e6).toFixed(1)} MB`;
+
+/** Every file of the dataset, as the script prints it before doing anything else. */
+export function formatResourceList(resources: Resource[]): string {
+  return textTable(
+    ['#', 'Title', 'Format', 'Size'],
+    resources.map((r, i) => [
+      String(i + 1),
+      r.title || '(no title)',
+      r.format || '?',
+      megabytes(r.size),
+    ]),
+    3,
+  );
 }
 
-const label = (r: Resource) => `${r.title} ${r.url}`;
-const isDeptRegion = (r: Resource) => /d[eé]partement[\s_-]*r[eé]gion/i.test(label(r));
-const isCountries = (r: Resource) => /libell[eé][\s_-]*pays/i.test(label(r));
-const isProducts = (r: Resource) => /libell[eé][\s_-]*a?129|a129[\s_-]*libell/i.test(label(r));
+export type FileKind = 'data' | 'regions' | 'countries' | 'unknown';
 
-/** The name files (departments and regions, countries, and product groups if there is one). */
-export function pickMappings(resources: Resource[]): Mappings {
-  const need = (test: (r: Resource) => boolean, what: string) => {
-    const found = resources.find(test);
-    if (!found) throw new Error(`No file for ${what} in the dataset's file list.`);
-    return found;
-  };
-  return {
-    departments: need(isDeptRegion, 'the department and region names (Departement_region)'),
-    countries: need(isCountries, 'the country names (Libelle_PAYS)'),
-    products: resources.find(isProducts) ?? null,
-  };
+export interface Classified {
+  kind: FileKind;
+  /** Headers as the file spells them (first line), when it has a table layout. */
+  headers: string[];
+  /** For data files: it has the department column as well as the region one. */
+  hasDepartment: boolean;
+  hasQuarter: boolean;
 }
 
 /**
- * The regional quarterly data file, chosen by title and format. When it is not clear this
- * throws with the candidates, so a person can pass --data-url.
+ * What a file is, from the start of its text. A trade data file has Flux, Valeur, a country
+ * code and a region or department code. A region-names file has a region code and a region
+ * name but no trade columns. A country file mentions Tunisia. Anything else is unknown.
  */
-export function pickData(resources: Resource[]): Resource {
-  const candidates = resources
-    .filter((r) => ['csv', 'zip'].includes(r.format.trim().toLowerCase()))
-    .filter((r) => !isDeptRegion(r) && !isCountries(r) && !isProducts(r))
-    .filter((r) => !/nomenclature|notice|lisez|libell/i.test(label(r)));
-  const scored = candidates
-    .map((r) => {
-      const t = normalizeHeader(r.title);
-      let score = 0;
-      if (/region/.test(t)) score += 3;
-      if (/trimestr/.test(t)) score += 2;
-      if (/departement/.test(t)) score += 1;
-      if (r.format.trim().toLowerCase() === 'csv') score += 1;
-      return { r, score };
+export function classifyPreview(text: string): Classified {
+  const all = [...lines(text)];
+  const first = all[0] ?? '';
+  const delimiter = detectDelimiter(first);
+  const headers = delimiter ? splitLine(first, delimiter) : [];
+  const keys = headers.map(normalizeHeader);
+  const hasRegionCode = keys.some((k) => /reg/.test(k) && /cod/.test(k));
+  const hasDepartment = keys.some((k) => /dep/.test(k) && /cod/.test(k));
+  const hasQuarter = keys.some((k) => k.includes('trimestre'));
+  const isData =
+    findColumn(keys, ['flux']) !== -1 &&
+    findColumn(keys, ['valeur']) !== -1 &&
+    findColumn(keys, ['code pays', 'pays']) !== -1 &&
+    (hasRegionCode || hasDepartment);
+  if (isData) return { kind: 'data', headers, hasDepartment, hasQuarter };
+  const regionName = keys.some((k) => /reg/.test(k) && !/cod/.test(k));
+  if (hasRegionCode && regionName) return { kind: 'regions', headers, hasDepartment, hasQuarter };
+  if (all.some((l) => /tunis/i.test(stripAccents(l)))) {
+    return { kind: 'countries', headers, hasDepartment, hasQuarter };
+  }
+  return { kind: 'unknown', headers, hasDepartment, hasQuarter };
+}
+
+export interface Looked {
+  resource: Resource;
+  info: Classified;
+}
+
+export interface FileChoice {
+  data: Resource;
+  /** Null when no file in the dataset names the regions: codes are then printed as they are. */
+  regions: Resource | null;
+  countries: Resource | null;
+  /** What was found, one line each, for the "I could not pick" messages. */
+  summary: string;
+}
+
+/** Picks the files from what was looked at. Throws, listing what each file holds, if the data is unclear. */
+export function chooseFiles(looked: Looked[]): FileChoice {
+  const summary = looked
+    .map((l) => {
+      const cols = l.info.headers.length > 0 ? l.info.headers.join(' | ') : '(no table header)';
+      return `  - ${l.resource.title} (${l.resource.format}): ${l.info.kind}; ${cols}`;
     })
-    .sort((a, b) => b.score - a.score);
-  const top = scored[0];
-  if (!top || (scored[1] && scored[1].score === top.score)) {
-    const names = scored.map((s) => `  - ${s.r.title} (${s.r.format}) ${s.r.url}`).join('\n');
+    .join('\n');
+  const score = (l: Looked) => Number(l.info.hasDepartment) + Number(l.info.hasQuarter);
+  const data = looked.filter((l) => l.info.kind === 'data').sort((a, b) => score(b) - score(a));
+  const top = data[0];
+  const tied = data[1] !== undefined && top !== undefined && score(data[1]) === score(top);
+  if (!top || tied) {
     throw new Error(
-      `Could not tell which file is the regional quarterly data. Candidates:\n${names || '  (none)'}\n` +
-        'Pick one and run again with --data-url <address>.',
+      (top
+        ? 'More than one file looks like the regional data, so none was chosen.'
+        : 'No file has the columns of regional trade data (flow, value, country code, region or department code).') +
+        `\nWhat each file holds:\n${summary}\nPick one and run again with --data-url <address>.`,
     );
   }
-  return top.r;
+  const find = (kind: FileKind) => looked.find((l) => l.info.kind === kind)?.resource ?? null;
+  return { data: top.resource, regions: find('regions'), countries: find('countries'), summary };
 }
 
 // ---------------------------------------------------------------------------------------
@@ -436,7 +480,7 @@ export function totalsByRegion(
   return [...by.entries()]
     .map(([regionCode, t]) => ({
       regionCode,
-      regionName: names.get(regionCode) ?? `(region ${regionCode})`,
+      regionName: names.get(regionCode) ?? regionCode,
       importEur: t.i,
       exportEur: t.e,
       totalEur: t.i + t.e,
@@ -479,10 +523,12 @@ export const formatEur = (n: number) =>
 export const formatShare = (s: number) => `${(s * 100).toFixed(1)} %`;
 
 /** A plain-text table with left-aligned first column and right-aligned numbers. */
-export function textTable(headers: string[], body: string[][]): string {
+export function textTable(headers: string[], body: string[][], leftColumns = 1): string {
   const widths = headers.map((h, i) => Math.max(h.length, ...body.map((r) => (r[i] ?? '').length)));
   const row = (cells: string[]) =>
-    cells.map((c, i) => (i === 0 ? c.padEnd(widths[i]!) : c.padStart(widths[i]!))).join('  ');
+    cells
+      .map((c, i) => (i < leftColumns ? c.padEnd(widths[i]!) : c.padStart(widths[i]!)))
+      .join('  ');
   return [row(headers), widths.map((w) => '-'.repeat(w)).join('  '), ...body.map(row)].join('\n');
 }
 
