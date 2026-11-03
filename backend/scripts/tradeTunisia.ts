@@ -1,50 +1,54 @@
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { mkdir, open, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import {
-  chooseFiles,
-  classifyPreview,
   csvCell,
   decodeText,
   eurostatUrl,
   findTunisia,
-  formatResourceList,
   formatEur,
+  formatResourceList,
   formatShare,
-  latestQuarters,
+  labelMap,
+  latestMonths,
+  looksUtf8,
+  monthLabel,
+  NationalReader,
   parseCodeNames,
-  parseDepartmentRegion,
-  quarterLabel,
-  readTradeRows,
-  readZip,
+  pickNationalFiles,
   sumJsonStat,
+  summarize,
   textTable,
-  topProducts,
-  totalsByRegion,
   type EurostatTotals,
-  type Looked,
-  type RegionNames,
   type Resource,
+  type Summary,
 } from '../lib/customsTrade.js';
 
-// Which French regions trade most with Tunisia, from the customs open data on data.gouv.fr.
+// Which goods France buys from Tunisia, and sells to it, from the customs open data on
+// data.gouv.fr (the national monthly file, product by product).
 //
 //   npm run trade:tunisia                     download (once), print the tables, write a CSV
 //   npm run trade:tunisia -- --refresh        download again even if a copy is kept
 //   npm run trade:tunisia -- --eurostat       also print France, Germany and Italy side by side
-//   npm run trade:tunisia -- --data-url URL   use this file as the regional data (if the
-//                                             script cannot tell which one it is)
+//   npm run trade:tunisia -- --data-url URL   use this file as the national monthly data
 //
-// Free and read-only: it touches no database, no app data and no paid service. It makes one
-// download per file, and keeps them in a temp folder so a re-run does not download again.
+// Free and read-only: it touches no database, no app data and no paid service. The big file
+// is read one line at a time and never held in memory. The dataset has no regional file, so
+// there is nothing here by region.
 
 const DATASET_ID = '5369a0b4a3a729239d206418';
 const DATASET_URL =
   process.env.TRADE_DATASET_URL ?? `https://www.data.gouv.fr/api/1/datasets/${DATASET_ID}/`;
 const USER_AGENT =
   'lead-gen-crm-trade-script/1.0 (reads open customs statistics for a Tunisian transport lead tool)';
-const TIMEOUT_MS = 120_000;
+const SMALL_TIMEOUT_MS = 60_000;
+const BIG_TIMEOUT_MS = 15 * 60_000;
+const TRIES = 3;
+const WAIT_MS = [5_000, 20_000];
 
 const args = process.argv.slice(2);
 const refresh = args.includes('--refresh');
@@ -60,6 +64,8 @@ function fail(message: string): never {
   process.exit(1);
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function exists(path: string): Promise<boolean> {
   try {
     await stat(path);
@@ -69,29 +75,80 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-/** One download per file; a kept copy is reused unless --refresh. */
-async function download(url: string, name: string): Promise<Buffer> {
+/**
+ * One download per file, written straight to disk and kept for next time (--refresh to download
+ * again). A slow or failing server (5xx, timeout, no answer) is tried again up to 3 times, with
+ * a wait between tries; anything else, such as "not found", stops at once.
+ */
+async function download(url: string, name: string, timeoutMs = SMALL_TIMEOUT_MS): Promise<string> {
   const path = join(cacheDir, name);
   if (!refresh && (await exists(path))) {
     console.log(`Using the copy already downloaded: ${name}`);
-    return readFile(path);
+    return path;
   }
-  console.log(`Downloading ${url}`);
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      headers: { 'user-agent': USER_AGENT },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-  } catch (err) {
-    const why = err instanceof Error ? err.message : String(err);
-    fail(`Could not reach ${url}. Check your internet connection and try again. (${why})`);
-  }
-  if (!res.ok) fail(`${url} answered with HTTP ${res.status}. Try again later.`);
-  const bytes = Buffer.from(await res.arrayBuffer());
   await mkdir(cacheDir, { recursive: true });
-  await writeFile(path, bytes);
-  return bytes;
+  for (let attempt = 1; attempt <= TRIES; attempt++) {
+    console.log(`Downloading ${url}${attempt > 1 ? ` (try ${attempt} of ${TRIES})` : ''}`);
+    let problem: string;
+    try {
+      const res = await fetch(url, {
+        headers: { 'user-agent': USER_AGENT },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (res.ok && res.body) {
+        const part = `${path}.part`;
+        await pipeline(Readable.fromWeb(res.body as never), createWriteStream(part));
+        await rename(part, path);
+        return path;
+      }
+      if (res.status < 500) fail(`${url} answered with HTTP ${res.status}. Check the address.`);
+      problem = `the server answered HTTP ${res.status}, which usually means it is busy`;
+    } catch (err) {
+      problem = `no complete answer (${err instanceof Error ? err.message : String(err)})`;
+    }
+    if (attempt === TRIES) {
+      fail(`Giving up on ${url}: ${problem}. Check your internet connection or try again later.`);
+    }
+    const wait = WAIT_MS[attempt - 1] ?? 20_000;
+    console.log(
+      `  The download did not work: ${problem}. Waiting ${wait / 1000} s, then trying again.`,
+    );
+    await sleep(wait);
+  }
+  fail(`Could not download ${url}.`);
+}
+
+/** A small file (names list), read whole. */
+async function readText(path: string): Promise<string> {
+  return decodeText(await readFile(path));
+}
+
+/** The lines of a big file, one at a time, read as UTF-8 or Latin-1 (judged from its start). */
+async function* readLines(path: string): AsyncGenerator<string> {
+  const handle = await open(path, 'r');
+  const head = Buffer.alloc(64 * 1024);
+  const { bytesRead } = await handle.read(head, 0, head.length, 0);
+  await handle.close();
+  let sample = head.subarray(0, bytesRead);
+  const cut = sample.lastIndexOf(10);
+  if (bytesRead === head.length && cut > 0) sample = sample.subarray(0, cut);
+  const decoder = new TextDecoder(looksUtf8(sample) ? 'utf-8' : 'latin1');
+  let rest = '';
+  let first = true;
+  for await (const chunk of createReadStream(path)) {
+    rest += decoder.decode(chunk as Buffer, { stream: true });
+    if (first) {
+      rest = rest.replace(/^\uFEFF/, '');
+      first = false;
+    }
+    let at: number;
+    while ((at = rest.indexOf('\n')) !== -1) {
+      const line = rest.slice(0, at).replace(/\r$/, '');
+      rest = rest.slice(at + 1);
+      if (line.trim() !== '') yield line;
+    }
+  }
+  if (rest.trim() !== '') yield rest.replace(/\r$/, '');
 }
 
 const safeName = (r: Resource) =>
@@ -100,56 +157,18 @@ const safeName = (r: Resource) =>
     .pop()
     ?.replace(/[^\w.-]/g, '_') || 'file';
 
-function textOf(bytes: Buffer): string {
-  if (bytes.subarray(0, 2).toString() !== 'PK') return decodeText(bytes);
-  const files = readZip(bytes).filter((f) => /\.(csv|txt)$/i.test(f.name));
-  if (files.length === 0) fail('The downloaded zip has no .csv or .txt file in it.');
-  files.sort((a, b) => b.data.length - a.data.length);
-  console.log(`Reading ${files[0]!.name} from the zip.`);
-  return decodeText(files[0]!.data);
-}
-
-const PREVIEW_BYTES = 64 * 1024;
-
-/**
- * The start of a file, enough to read its header: one small request for a text file, the whole
- * (kept) download for a zip, since a zip's index is at its end.
- */
-async function preview(resource: Resource): Promise<string | null> {
-  const isZip = /zip/i.test(resource.format) || /\.zip(\?|$)/i.test(resource.url);
-  if (isZip) {
-    const files = readZip(await download(resource.url, `data-${safeName(resource)}`)).filter((f) =>
-      /\.(csv|txt)$/i.test(f.name),
-    );
-    files.sort((a, b) => b.data.length - a.data.length);
-    return files[0] ? decodeText(files[0].data.subarray(0, PREVIEW_BYTES)) : null;
+async function names(file: Resource | null, what: string): Promise<Map<string, string>> {
+  if (!file) {
+    console.log(`No ${what} file in the dataset: codes will be printed without names.`);
+    return new Map();
   }
-  try {
-    const res = await fetch(resource.url, {
-      headers: { 'user-agent': USER_AGENT, range: `bytes=0-${PREVIEW_BYTES - 1}` },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    if (!res.ok || !res.body) return null;
-    // A server that ignores the range sends the whole file: read the first part and stop.
-    const chunks: Buffer[] = [];
-    let got = 0;
-    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
-      chunks.push(Buffer.from(chunk));
-      got += chunk.length;
-      if (got >= PREVIEW_BYTES) break;
-    }
-    const bytes = Buffer.concat(chunks).subarray(0, PREVIEW_BYTES);
-    // Cut at the last full line so a half line is not read as data.
-    const cut = bytes.lastIndexOf(10);
-    return decodeText(got >= PREVIEW_BYTES && cut > 0 ? bytes.subarray(0, cut) : bytes);
-  } catch {
-    return null;
-  }
+  const path = await download(file.url, `${what}-${safeName(file)}`);
+  return labelMap(parseCodeNames(await readText(path)));
 }
 
 async function main(): Promise<void> {
-  const datasetBytes = await download(DATASET_URL, 'dataset.json');
-  const dataset = JSON.parse(datasetBytes.toString()) as {
+  const datasetPath = await download(DATASET_URL, 'dataset.json');
+  const dataset = JSON.parse(await readFile(datasetPath, 'utf8')) as {
     title?: string;
     license?: string;
     resources?: { title?: string; format?: string; url?: string; filesize?: number | null }[];
@@ -160,136 +179,161 @@ async function main(): Promise<void> {
     url: r.url ?? '',
     size: typeof r.filesize === 'number' ? r.filesize : null,
   }));
+  const licence = dataset.license ?? 'not stated';
   console.log(`\nDataset: ${dataset.title ?? DATASET_ID}`);
-  console.log(`Licence (as the dataset states it): ${dataset.license ?? 'not stated'}`);
+  console.log(`Licence (as the dataset states it): ${licence}`);
   console.log(
     `\nFiles in the dataset (${resources.length}):\n\n${formatResourceList(resources)}\n`,
   );
 
-  // Which file is which is judged by what is inside, so the title does not matter. Only
-  // table-like files are looked at; pdf and json are skipped.
-  const worth = resources.filter(
-    (r) => r.url !== '' && /csv|txt|zip|tsv|text/i.test(r.format || r.url),
-  );
-  const looked: Looked[] = [];
-  for (const resource of worth) {
-    const text = await preview(resource);
-    if (text !== null) looked.push({ resource, info: classifyPreview(text) });
-  }
-  let choice;
+  let files;
   try {
-    choice = chooseFiles(looked);
+    files = pickNationalFiles(resources);
   } catch (err) {
     if (dataUrlOverride === null) fail(err instanceof Error ? err.message : String(err));
-    choice = null;
+    files = null;
   }
-  const dataResource: Resource =
+  // With --data-url the label files are still looked for on their own.
+  if (files === null) {
+    try {
+      files = pickNationalFiles([
+        ...resources,
+        {
+          title: 'statistiques-nationales-du-commerce-exterieur.csv',
+          format: 'csv',
+          url: 'x.csv',
+          size: null,
+        },
+      ]);
+    } catch (err) {
+      fail(err instanceof Error ? err.message : String(err));
+    }
+  }
+  const dataFile: Resource =
     dataUrlOverride !== null
-      ? { title: 'chosen with --data-url', format: '', url: dataUrlOverride, size: null }
-      : choice!.data;
-  console.log(`Regional data file used: ${dataResource.title} (${dataResource.url})`);
-  const countriesFile =
-    choice?.countries ?? looked.find((l) => l.info.kind === 'countries')?.resource ?? null;
-  const regionsFile =
-    choice?.regions ?? looked.find((l) => l.info.kind === 'regions')?.resource ?? null;
-  console.log(
-    `Country names file: ${countriesFile?.title ?? 'none found'}. Region names file: ${regionsFile?.title ?? 'none found, region codes will be printed as they are'}.\n`,
-  );
-  if (!countriesFile) {
-    fail(
-      "No file in the dataset lists country names, so Tunisia's code cannot be looked up and none is guessed.",
-    );
-  }
+      ? { title: 'chosen with --data-url', format: 'csv', url: dataUrlOverride, size: null }
+      : files.data;
+  console.log(`National monthly file: ${dataFile.title} (${dataFile.url})`);
+  console.log(`Country names: ${files.countries.title}`);
+  console.log(`Product group names (A129): ${files.groups?.title ?? 'none'}`);
+  console.log(`Product names (NC8): ${files.products?.title ?? 'none'}\n`);
 
-  const countries = parseCodeNames(
-    textOf(await download(countriesFile.url, `countries-${safeName(countriesFile)}`)),
+  const countryEntries = parseCodeNames(
+    await readText(await download(files.countries.url, `countries-${safeName(files.countries)}`)),
   );
-  const tunisia = findTunisia(countries);
+  const tunisia = findTunisia(countryEntries);
   if (tunisia.code === null) {
     const list = tunisia.candidates.map((c) => `  ${c.code}  ${c.name}`).join('\n');
     fail(
       tunisia.candidates.length === 0
-        ? `Tunisia was not found in the country file (${countries.length} countries read).`
+        ? `Tunisia was not found in the country file (${countryEntries.length} countries read).`
         : `More than one code could be Tunisia, so nothing was guessed:\n${list}`,
     );
   }
   console.log(`Tunisia's code in the country file: ${tunisia.code}`);
+  const groupNames = await names(files.groups, 'groups');
+  const productNames = await names(files.products, 'products');
 
-  const regions: RegionNames = regionsFile
-    ? parseDepartmentRegion(
-        textOf(await download(regionsFile.url, `regions-${safeName(regionsFile)}`)),
-      )
-    : { regionOfDepartment: new Map(), regionName: new Map() };
-  // No product-group names are looked up: their file was not seen, so codes are printed.
-  const productNames = new Map<string, string>();
-
-  const dataText = textOf(await download(dataResource.url, `data-${safeName(dataResource)}`));
-  let read;
-  try {
-    read = readTradeRows(dataText, tunisia.code, regions);
-  } catch (err) {
-    fail(err instanceof Error ? err.message : String(err));
+  const dataPath = await download(dataFile.url, `data-${safeName(dataFile)}`, BIG_TIMEOUT_MS);
+  console.log('\nReading the national file line by line (this can take a minute)...');
+  let reader: NationalReader | null = null;
+  for await (const line of readLines(dataPath)) {
+    if (reader === null) {
+      try {
+        reader = new NationalReader(line, tunisia.code);
+      } catch (err) {
+        fail(err instanceof Error ? err.message : String(err));
+      }
+      continue;
+    }
+    reader.add(line);
+    if (reader.rowsRead % 2_000_000 === 0) console.log(`  ${reader.rowsRead} rows read...`);
   }
-  const quarters = latestQuarters(read.quarters, 4);
-  if (quarters.length === 0) fail('The data file has no readable quarters.');
-  const byRegion = totalsByRegion(read.rows, quarters, regions.regionName);
-  const imports = topProducts(read.rows, quarters, 'import', productNames);
-  const exports_ = topProducts(read.rows, quarters, 'export', productNames);
+  if (reader === null) fail('The data file is empty.');
+  const { months, leftOut } = latestMonths(reader.monthRows, 12);
+  if (months.length === 0) fail('The data file has no readable months.');
 
-  const usedLabel = quarters.map(quarterLabel).join(', ');
-  console.log(`\nTrade with Tunisia by French region, quarters used: ${usedLabel}\n`);
-  console.log(
+  const rows = reader.rows;
+  const imports = summarize(rows, months, 'import', productNames, groupNames);
+  const exports_ = summarize(rows, months, 'export', productNames, groupNames);
+  const usedLabel = `${monthLabel(months[0]!)} to ${monthLabel(months[months.length - 1]!)} (${months.length} months)`;
+
+  const goodsTable = (s: Summary) =>
     textTable(
-      ['Region', 'Imports (EUR)', 'Exports (EUR)', 'Total (EUR)', 'Share'],
-      byRegion.map((r) => [
-        r.regionName,
-        formatEur(r.importEur),
-        formatEur(r.exportEur),
-        formatEur(r.totalEur),
-        formatShare(r.share),
+      ['NC8', 'Product', 'Value (EUR)', 'Share', 'Kg'],
+      s.goods.map((g) => [
+        g.code,
+        g.name || '(no label)',
+        formatEur(g.valueEur),
+        formatShare(g.share),
+        formatEur(g.massKg),
       ]),
-    ),
-  );
-  const product = (rows: typeof imports) =>
-    textTable(
-      ['Product group (A129)', 'Value (EUR)'],
-      rows.map((p) => [p.name ? `${p.code} ${p.name}` : p.code, formatEur(p.valueEur)]),
+      2,
     );
+  const groupsTable = (s: Summary) =>
+    textTable(
+      ['A129', 'Product group', 'Value (EUR)', 'Share', 'Kg'],
+      s.groups.map((g) => [
+        g.code,
+        g.name || '(no label)',
+        formatEur(g.valueEur),
+        formatShare(g.share),
+        formatEur(g.massKg),
+      ]),
+      2,
+    );
+  const section = (title: string, table: string) => `\n${title}\n\n${table}`;
+  console.log(`\nGoods traded between France and Tunisia, months used: ${usedLabel}`);
+  console.log(`Total imports from Tunisia: ${formatEur(imports.totalEur)} EUR`);
+  console.log(`Total exports to Tunisia: ${formatEur(exports_.totalEur)} EUR`);
+  console.log(section('Top 20 goods France buys from Tunisia (NC8)', goodsTable(imports)));
   console.log(
-    `\nTop 10 product groups, imports from Tunisia (all of France)\n\n${product(imports)}`,
+    section('Top 10 product groups France buys from Tunisia (A129)', groupsTable(imports)),
   );
+  console.log(section('Top 20 goods France sells to Tunisia (NC8)', goodsTable(exports_)));
   console.log(
-    `\nTop 10 product groups, exports to Tunisia (all of France)\n\n${product(exports_)}`,
+    section('Top 10 product groups France sells to Tunisia (A129)', groupsTable(exports_)),
   );
 
   console.log(`
-Rows read: ${read.rowsRead} (of which ${read.rows.length} for Tunisia). Quarters in the file: ${read.quarters.map(quarterLabel).join(', ')}.
-Quarters used: ${usedLabel}.
+Rows read: ${reader.rowsRead}. Rows for Tunisia that could not be used: ${reader.skipped}.
+Months used: ${months.map(monthLabel).join(', ')}.${leftOut !== null ? `\nLeft out because it looked only partly filled: ${monthLabel(leftOut)}.` : ''}
 Please note:
-  - The region is where the goods physically leave France (exports) or arrive (imports),
-    not where the company has its head office.
+  - Regions are NOT available: this file is national, with no region or department.
   - Some flows are hidden for confidentiality, so totals can be too low.
-  - Values are euros of goods, not a number of companies.`);
+  - Values are euros of goods traded, not a number of companies; they say nothing about who trades.
+  - Shares are of the total imports (or exports) with Tunisia over the months used.`);
 
   await mkdir(outDir, { recursive: true });
-  const csvPath = join(outDir, `trade-tunisia-${quarters[quarters.length - 1]}.csv`);
-  const csv = [
-    ['Region code', 'Region', 'Imports EUR', 'Exports EUR', 'Total EUR', 'Share'],
-    ...byRegion.map((r) => [
-      r.regionCode,
-      r.regionName,
-      Math.round(r.importEur),
-      Math.round(r.exportEur),
-      Math.round(r.totalEur),
-      r.share.toFixed(4),
+  const csvPath = join(outDir, `trade-tunisia-${months[months.length - 1]}.csv`);
+  const csvRows = (label: string, s: Summary) => [
+    ...s.goods.map((g) => [
+      label,
+      'NC8',
+      g.code,
+      g.name,
+      Math.round(g.valueEur),
+      g.share.toFixed(4),
+      Math.round(g.massKg),
     ]),
+    ...s.groups.map((g) => [
+      label,
+      'A129',
+      g.code,
+      g.name,
+      Math.round(g.valueEur),
+      g.share.toFixed(4),
+      Math.round(g.massKg),
+    ]),
+  ];
+  const csv = [
+    ['Direction', 'Level', 'Code', 'Label', 'Value EUR', 'Share', 'Kg'],
+    ...csvRows('import from Tunisia', imports),
+    ...csvRows('export to Tunisia', exports_),
     [],
-    ['Flow', 'Product code', 'Product', 'Value EUR'],
-    ...imports.map((p) => ['import', p.code, p.name, Math.round(p.valueEur)]),
-    ...exports_.map((p) => ['export', p.code, p.name, Math.round(p.valueEur)]),
-    [],
-    ['Quarters used', usedLabel],
-    ['Licence', dataset.license ?? 'not stated'],
+    ['Months used', usedLabel],
+    ['Regions', 'not available in this file'],
+    ['Licence', licence],
   ]
     .map((r) => r.map(csvCell).join(';'))
     .join('\r\n');
@@ -302,7 +346,7 @@ Please note:
 async function eurostatValue(reporter: string, flow: 1 | 2, year: number): Promise<number | null> {
   const res = await fetch(eurostatUrl(reporter, flow, year), {
     headers: { 'user-agent': USER_AGENT, accept: 'application/json' },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
+    signal: AbortSignal.timeout(SMALL_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return sumJsonStat(await res.json());

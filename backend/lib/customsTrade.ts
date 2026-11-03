@@ -1,7 +1,5 @@
-import { inflateRawSync } from 'node:zlib';
-
-// Pure helpers for the French customs regional trade script (npm run trade:tunisia): reading
-// the files, finding Tunisia, adding up by region. No network and no files in here, so the
+// Pure helpers for the French customs national trade script (npm run trade:tunisia): reading
+// the files, finding Tunisia, adding up goods by month. No network and no files in here, so the
 // tests run on small fixtures. The real file layouts were not seen when this was written;
 // everything that depends on a header name or a code looks the real one up and says so when
 // it cannot find it.
@@ -17,6 +15,16 @@ export function decodeText(bytes: Uint8Array): string {
       .replace(/^\uFEFF/, '');
   } catch {
     return new TextDecoder('latin1').decode(bytes);
+  }
+}
+
+/** True when the bytes are valid UTF-8 (used on the start of a big file to pick how to read it). */
+export function looksUtf8(bytes: Uint8Array): boolean {
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -122,48 +130,47 @@ export function parseTable(text: string): { table: Table; rows: string[][] } {
 }
 
 // ---------------------------------------------------------------------------------------
-// Zip (the dataset ships some files zipped)
+// Names: countries, departments and regions
 
-export interface ZipEntry {
-  name: string;
-  data: Buffer;
-}
-
-/** The files in a zip, read from its central directory. Handles stored and deflated entries. */
-export function readZip(buf: Buffer): ZipEntry[] {
-  let eocd = -1;
-  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65_557); i--) {
-    if (buf.readUInt32LE(i) === 0x06054b50) {
-      eocd = i;
-      break;
+/** Code and name pairs from a mapping file, whatever its layout: delimited, or "CODE  NAME". */
+export function parseCodeNames(text: string): { code: string; name: string }[] {
+  const { table, rows } = parseTable(text);
+  const out: { code: string; name: string }[] = [];
+  if (table.delimiter) {
+    const code = findColumn(table.keys, ['code', 'cod']);
+    const frenchKeys = table.keys.map((k) => (/angl|engl|english/.test(k) ? '' : k));
+    const name = findColumn(frenchKeys, ['libelle', 'lib', 'nom', 'name']);
+    const c = code === -1 ? 0 : code;
+    const n = name === -1 ? 1 : name;
+    // A file with no header row has data on its first line: keep it.
+    const first = table.headers;
+    for (const r of [first, ...rows]) {
+      if (r[c] && r[n]) out.push({ code: r[c]!, name: r[n]! });
     }
-  }
-  if (eocd === -1) throw new Error('That file is not a zip archive.');
-  const count = buf.readUInt16LE(eocd + 10);
-  let at = buf.readUInt32LE(eocd + 16);
-  const out: ZipEntry[] = [];
-  for (let n = 0; n < count; n++) {
-    if (buf.readUInt32LE(at) !== 0x02014b50) throw new Error('The zip directory is damaged.');
-    const method = buf.readUInt16LE(at + 10);
-    const size = buf.readUInt32LE(at + 20);
-    const nameLen = buf.readUInt16LE(at + 28);
-    const extraLen = buf.readUInt16LE(at + 30);
-    const commentLen = buf.readUInt16LE(at + 32);
-    const local = buf.readUInt32LE(at + 42);
-    const name = buf.subarray(at + 46, at + 46 + nameLen).toString('utf8');
-    at += 46 + nameLen + extraLen + commentLen;
-    if (name.endsWith('/')) continue;
-    const dataAt = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
-    const raw = buf.subarray(dataAt, dataAt + size);
-    if (method === 0) out.push({ name, data: raw });
-    else if (method === 8) out.push({ name, data: inflateRawSync(raw) });
-    else throw new Error(`The zip uses an unsupported compression (${method}).`);
+  } else {
+    for (const l of lines(text)) {
+      const m = /^\s*(\S+)\s+(.+?)\s*$/.exec(l);
+      if (m) out.push({ code: m[1]!, name: m[2]! });
+    }
   }
   return out;
 }
 
+export interface CountryLookup {
+  code: string | null;
+  /** Every distinct code whose name looks like Tunisia, for the "ambiguous" message. */
+  candidates: { code: string; name: string }[];
+}
+
+/** Tunisia's code in the country file. Null when there is not exactly one distinct code. */
+export function findTunisia(entries: { code: string; name: string }[]): CountryLookup {
+  const candidates = entries.filter((e) => /tunis/i.test(stripAccents(e.name)));
+  const codes = new Set(candidates.map((c) => c.code));
+  return { code: codes.size === 1 ? [...codes][0]! : null, candidates };
+}
+
 // ---------------------------------------------------------------------------------------
-// Which of the dataset's files is which: judged by what is inside, not by the titles
+// Which of the dataset's files is which: by title (the dataset's own file names)
 
 export interface Resource {
   title: string;
@@ -194,173 +201,70 @@ export function formatResourceList(resources: Resource[]): string {
   );
 }
 
-export type FileKind = 'data' | 'regions' | 'countries' | 'unknown';
-
-export interface Classified {
-  kind: FileKind;
-  /** Headers as the file spells them (first line), when it has a table layout. */
-  headers: string[];
-  /** For data files: it has the department column as well as the region one. */
-  hasDepartment: boolean;
-  hasQuarter: boolean;
-}
-
-/**
- * What a file is, from the start of its text. A trade data file has Flux, Valeur, a country
- * code and a region or department code. A region-names file has a region code and a region
- * name but no trade columns. A country file mentions Tunisia. Anything else is unknown.
- */
-export function classifyPreview(text: string): Classified {
-  const all = [...lines(text)];
-  const first = all[0] ?? '';
-  const delimiter = detectDelimiter(first);
-  const headers = delimiter ? splitLine(first, delimiter) : [];
-  const keys = headers.map(normalizeHeader);
-  const hasRegionCode = keys.some((k) => /reg/.test(k) && /cod/.test(k));
-  const hasDepartment = keys.some((k) => /dep/.test(k) && /cod/.test(k));
-  const hasQuarter = keys.some((k) => k.includes('trimestre'));
-  const isData =
-    findColumn(keys, ['flux']) !== -1 &&
-    findColumn(keys, ['valeur']) !== -1 &&
-    findColumn(keys, ['code pays', 'pays']) !== -1 &&
-    (hasRegionCode || hasDepartment);
-  if (isData) return { kind: 'data', headers, hasDepartment, hasQuarter };
-  const regionName = keys.some((k) => /reg/.test(k) && !/cod/.test(k));
-  if (hasRegionCode && regionName) return { kind: 'regions', headers, hasDepartment, hasQuarter };
-  if (all.some((l) => /tunis/i.test(stripAccents(l)))) {
-    return { kind: 'countries', headers, hasDepartment, hasQuarter };
-  }
-  return { kind: 'unknown', headers, hasDepartment, hasQuarter };
-}
-
-export interface Looked {
-  resource: Resource;
-  info: Classified;
-}
-
-export interface FileChoice {
+export interface NationalFiles {
   data: Resource;
-  /** Null when no file in the dataset names the regions: codes are then printed as they are. */
-  regions: Resource | null;
-  countries: Resource | null;
-  /** What was found, one line each, for the "I could not pick" messages. */
-  summary: string;
+  countries: Resource;
+  /** Product group (A129) names; null when the dataset has none. */
+  groups: Resource | null;
+  /** Detailed product (NC8) names, the newest year; null when the dataset has none. */
+  products: Resource | null;
 }
 
-/** Picks the files from what was looked at. Throws, listing what each file holds, if the data is unclear. */
-export function chooseFiles(looked: Looked[]): FileChoice {
-  const summary = looked
-    .map((l) => {
-      const cols = l.info.headers.length > 0 ? l.info.headers.join(' | ') : '(no table header)';
-      return `  - ${l.resource.title} (${l.resource.format}): ${l.info.kind}; ${cols}`;
-    })
-    .join('\n');
-  const score = (l: Looked) => Number(l.info.hasDepartment) + Number(l.info.hasQuarter);
-  const data = looked.filter((l) => l.info.kind === 'data').sort((a, b) => score(b) - score(a));
-  const top = data[0];
-  const tied = data[1] !== undefined && top !== undefined && score(data[1]) === score(top);
-  if (!top || tied) {
+const slug = (r: Resource) => stripAccents(`${r.title} ${r.url}`).toLowerCase();
+
+/** The national monthly file and its label files, picked by title. Throws, listing the files, if the data is not clear. */
+export function pickNationalFiles(resources: Resource[]): NationalFiles {
+  const isCsv = (r: Resource) => /csv/i.test(r.format) || /\.csv(\?|$)/i.test(r.url);
+  const data = resources.filter(
+    (r) =>
+      isCsv(r) && /statistiques[-_ ]nationales[-_ ]du[-_ ]commerce[-_ ]exterieur/.test(slug(r)),
+  );
+  if (data.length !== 1) {
+    const names = resources.map((r) => `  - ${r.title} (${r.format}) ${r.url}`).join('\n');
     throw new Error(
-      (top
-        ? 'More than one file looks like the regional data, so none was chosen.'
-        : 'No file has the columns of regional trade data (flow, value, country code, region or department code).') +
-        `\nWhat each file holds:\n${summary}\nPick one and run again with --data-url <address>.`,
+      `${data.length === 0 ? 'No file' : 'More than one file'} is called "statistiques-nationales-du-commerce-exterieur" as a csv. Files found:\n${names}\n` +
+        'Pick one and run again with --data-url <address>.',
     );
   }
-  const find = (kind: FileKind) => looked.find((l) => l.info.kind === kind)?.resource ?? null;
-  return { data: top.resource, regions: find('regions'), countries: find('countries'), summary };
+  const labelFile = (test: RegExp) => resources.filter((r) => isCsv(r) && test.test(slug(r)));
+  const countries = labelFile(/libelle[-_ ]*pays/)[0];
+  if (!countries)
+    throw new Error('No "libelle-PAYS" csv in the dataset: Tunisia\'s code cannot be looked up.');
+  const nc8 = labelFile(/libelle[-_ ]*nc8/)
+    .map((r) => ({
+      r,
+      year: Number(/(\d{4})/.exec(slug(r).replace(/.*libelle[-_ ]*nc8/, ''))?.[1] ?? 0),
+    }))
+    .sort((a, b) => b.year - a.year)[0];
+  return {
+    data: data[0]!,
+    countries,
+    groups: labelFile(/libelle[-_ ]*a129/)[0] ?? null,
+    products: nc8?.r ?? null,
+  };
 }
 
 // ---------------------------------------------------------------------------------------
-// Names: countries, departments and regions
+// Labels
 
-/** Code and name pairs from a mapping file, whatever its layout: delimited, or "CODE  NAME". */
-export function parseCodeNames(text: string): { code: string; name: string }[] {
-  const { table, rows } = parseTable(text);
-  const out: { code: string; name: string }[] = [];
-  if (table.delimiter) {
-    const code = findColumn(table.keys, ['code', 'cod']);
-    const name = findColumn(table.keys, ['libelle', 'lib', 'nom', 'name']);
-    const c = code === -1 ? 0 : code;
-    const n = name === -1 ? 1 : name;
-    // A file with no header row has data on its first line: keep it.
-    const first = table.headers;
-    for (const r of [first, ...rows]) {
-      if (r[c] && r[n]) out.push({ code: r[c]!, name: r[n]! });
-    }
-  } else {
-    for (const l of lines(text)) {
-      const m = /^\s*(\S+)\s+(.+?)\s*$/.exec(l);
-      if (m) out.push({ code: m[1]!, name: m[2]! });
-    }
+/** code -> name, also reachable without leading zeros (a spreadsheet may have dropped them). */
+export function labelMap(entries: { code: string; name: string }[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const e of entries) {
+    map.set(e.code, e.name);
+    const bare = e.code.replace(/^0+/, '');
+    if (!map.has(bare)) map.set(bare, e.name);
   }
-  return out;
+  return map;
 }
 
-export interface CountryLookup {
-  code: string | null;
-  /** Every distinct code whose name looks like Tunisia, for the "ambiguous" message. */
-  candidates: { code: string; name: string }[];
-}
-
-/** Tunisia's code in the country file. Null when there is not exactly one distinct code. */
-export function findTunisia(entries: { code: string; name: string }[]): CountryLookup {
-  const candidates = entries.filter((e) => /tunis/i.test(stripAccents(e.name)));
-  const codes = new Set(candidates.map((c) => c.code));
-  return { code: codes.size === 1 ? [...codes][0]! : null, candidates };
-}
-
-export interface RegionNames {
-  /** department code -> region code */
-  regionOfDepartment: Map<string, string>;
-  /** region code -> region name */
-  regionName: Map<string, string>;
-}
-
-/** Department -> region and region names, found by header; empty maps when the layout is unknown. */
-export function parseDepartmentRegion(text: string): RegionNames {
-  const { table, rows } = parseTable(text);
-  const regionOfDepartment = new Map<string, string>();
-  const regionName = new Map<string, string>();
-  const k = table.keys;
-  const regCode = k.findIndex((h) => /reg/.test(h) && /code|cod/.test(h));
-  const regName = k.findIndex((h) => /reg/.test(h) && !/code|cod/.test(h));
-  const depCode = k.findIndex((h) => /dep/.test(h) && /code|cod/.test(h));
-  for (const r of rows) {
-    const reg = regCode === -1 ? undefined : r[regCode];
-    if (reg && regName !== -1 && r[regName]) regionName.set(reg, r[regName]!);
-    if (reg && depCode !== -1 && r[depCode]) regionOfDepartment.set(r[depCode]!, reg);
-  }
-  return { regionOfDepartment, regionName };
-}
+export const labelOf = (map: Map<string, string>, code: string): string =>
+  map.get(code) ?? map.get(code.replace(/^0+/, '')) ?? '';
 
 // ---------------------------------------------------------------------------------------
-// The trade rows
+// The national monthly rows, read one line at a time
 
 export type Flow = 'import' | 'export';
-
-export interface TradeRow {
-  flow: Flow;
-  /** Sortable quarter, like 20243 for the third quarter of 2024. */
-  quarter: number;
-  regionCode: string;
-  productCode: string;
-  valueEur: number;
-}
-
-export interface ReadResult {
-  /** Only the rows for the country asked for. */
-  rows: TradeRow[];
-  rowsRead: number;
-  /** Every quarter the file has, ascending. */
-  quarters: number[];
-  /** Flow values the file uses, for the error message when they are not recognised. */
-  columns: { name: string; at: number }[];
-}
-
-export function quarterLabel(q: number): string {
-  return `${Math.floor(q / 10)} T${q % 10}`;
-}
 
 function flowOf(raw: string): Flow | null {
   const v = stripAccents(raw).trim().toLowerCase();
@@ -369,149 +273,191 @@ function flowOf(raw: string): Flow | null {
   return null;
 }
 
-/** 2024 + "3" or "T3" -> 20243; or "2024T3" / "2024-Q3" alone. */
-function quarterOf(year: string, quarter: string): number | null {
-  const q = /([1-4])\s*$/.exec(quarter.trim());
+/** Year and month -> 202403. The month may be "3", "03" or "2024-03". */
+function monthOf(year: string, month: string): number | null {
+  const m = /^\s*(\d{1,2})\s*$/.exec(month);
   const y = /(\d{4})/.exec(year);
-  if (y && q) return Number(y[1]) * 10 + Number(q[1]);
-  const both = /(\d{4}).*?([1-4])/.exec(quarter);
-  return both ? Number(both[1]) * 10 + Number(both[2]) : null;
+  if (m && y) return Number(y[1]) * 100 + Number(m[1]);
+  const both = /(\d{4})\D+(\d{1,2})/.exec(month);
+  return both ? Number(both[1]) * 100 + Number(both[2]) : null;
+}
+
+export const monthLabel = (m: number) =>
+  `${Math.floor(m / 100)}-${String(m % 100).padStart(2, '0')}`;
+
+export interface Good {
+  flow: Flow;
+  month: number;
+  nc8: string;
+  group: string;
+  valueEur: number;
+  massKg: number;
 }
 
 /**
- * Reads the regional data file, keeping only the rows for `countryCode`. The header names are
- * looked up, not assumed; if one is missing this throws and names the headers it found. A
- * department is turned into its region when the file has no region column value.
+ * Adds up the national file line by line, keeping only the country asked for, so the whole file
+ * never sits in memory. The first line is the header: its names are looked up, and if one
+ * needed is missing this throws and names the headers it found.
  */
-export function readTradeRows(text: string, countryCode: string, regions: RegionNames): ReadResult {
-  const iter = lines(text);
-  const first = iter.next();
-  if (first.done) throw new Error('The data file is empty.');
-  const delimiter = detectDelimiter(first.value);
-  if (!delimiter)
-    throw new Error(`Could not find the separator in the header line: ${first.value}`);
-  const headers = splitLine(first.value, delimiter);
-  const keys = headers.map(normalizeHeader);
-  const at = {
-    flux: findColumn(keys, ['flux']),
-    trimestre: findColumn(keys, ['trimestre']),
-    annee: findColumn(keys, ['annee']),
-    departement: findColumn(keys, ['code departement', 'departement']),
-    region: findColumn(keys, ['code region', 'region']),
-    product: findColumn(keys, ['code a129', 'a129']),
-    country: findColumn(keys, ['code pays', 'pays']),
-    value: findColumn(keys, ['valeur']),
-  };
-  const missing = (['flux', 'trimestre', 'country', 'value'] as const).filter((n) => at[n] === -1);
-  if (at.region === -1 && at.departement === -1) missing.push('region' as never);
-  if (missing.length > 0) {
-    throw new Error(
-      `The data file has no column for: ${missing.join(', ')}. Its headers are: ${headers.join(' | ')}`,
-    );
+export class NationalReader {
+  readonly delimiter: string;
+  private readonly at: Record<
+    'flux' | 'mois' | 'annee' | 'a129' | 'nc8' | 'pays' | 'valeur' | 'masse',
+    number
+  >;
+  /** Rows read, and rows per month (to tell a half-filled last month). */
+  rowsRead = 0;
+  readonly monthRows = new Map<number, number>();
+  /** Rows for the country whose flow was not import or export, or whose number was unreadable. */
+  skipped = 0;
+  private readonly goods = new Map<string, Good>();
+  private readonly country: string;
+
+  constructor(headerLine: string, countryCode: string) {
+    const delimiter = detectDelimiter(headerLine);
+    if (!delimiter)
+      throw new Error(`Could not find the separator in the header line: ${headerLine}`);
+    this.delimiter = delimiter;
+    const headers = splitLine(headerLine, delimiter);
+    const keys = headers.map(normalizeHeader);
+    const at = {
+      flux: findColumn(keys, ['flux']),
+      mois: findColumn(keys, ['mois']),
+      annee: findColumn(keys, ['annee']),
+      a129: findColumn(keys, ['code a129', 'a129']),
+      nc8: findColumn(keys, ['code nc8', 'nc8']),
+      pays: findColumn(keys, ['code pays', 'pays']),
+      valeur: findColumn(keys, ['valeur']),
+      masse: findColumn(keys, ['masse']),
+    };
+    const missing = Object.entries(at)
+      .filter(([, i]) => i === -1)
+      .map(([name]) => name);
+    if (missing.length > 0) {
+      throw new Error(
+        `The data file has no column for: ${missing.join(', ')}. Its headers are: ${headers.join(' | ')}`,
+      );
+    }
+    this.at = at;
+    this.country = countryCode.trim().replace(/^0+/, '');
   }
 
-  const rows: TradeRow[] = [];
-  const quarters = new Set<number>();
-  const wantedCountry = countryCode.trim().replace(/^0+/, '');
-  let rowsRead = 0;
-  for (const line of iter) {
-    rowsRead++;
-    const cells = splitLine(line, delimiter);
-    const q = quarterOf(at.annee === -1 ? '' : (cells[at.annee] ?? ''), cells[at.trimestre] ?? '');
-    if (q !== null) quarters.add(q);
-    if ((cells[at.country] ?? '').replace(/^0+/, '') !== wantedCountry) continue;
-    const flow = flowOf(cells[at.flux] ?? '');
-    const value = parseNumber(cells[at.value] ?? '');
-    if (flow === null || value === null || q === null) continue;
-    let region = at.region === -1 ? '' : (cells[at.region] ?? '');
-    if (region === '' && at.departement !== -1) {
-      region = regions.regionOfDepartment.get(cells[at.departement] ?? '') ?? '';
+  add(line: string): void {
+    this.rowsRead++;
+    const c = splitLine(line, this.delimiter);
+    const month = monthOf(c[this.at.annee] ?? '', c[this.at.mois] ?? '');
+    if (month !== null) this.monthRows.set(month, (this.monthRows.get(month) ?? 0) + 1);
+    if ((c[this.at.pays] ?? '').replace(/^0+/, '') !== this.country) return;
+    const flow = flowOf(c[this.at.flux] ?? '');
+    const value = parseNumber(c[this.at.valeur] ?? '');
+    if (flow === null || value === null || month === null) {
+      this.skipped++;
+      return;
     }
-    rows.push({
-      flow,
-      quarter: q,
-      regionCode: region || '?',
-      productCode: at.product === -1 ? '' : (cells[at.product] ?? ''),
-      valueEur: value,
-    });
+    const nc8 = c[this.at.nc8] ?? '';
+    const group = c[this.at.a129] ?? '';
+    const key = `${flow}|${month}|${nc8}|${group}`;
+    const g = this.goods.get(key) ?? { flow, month, nc8, group, valueEur: 0, massKg: 0 };
+    g.valueEur += value;
+    g.massKg += parseNumber(c[this.at.masse] ?? '') ?? 0;
+    this.goods.set(key, g);
   }
-  return {
-    rows,
-    rowsRead,
-    quarters: [...quarters].sort((a, b) => a - b),
-    columns: headers.map((name, i) => ({ name, at: i })),
-  };
+
+  get rows(): Good[] {
+    return [...this.goods.values()];
+  }
 }
 
 // ---------------------------------------------------------------------------------------
 // Adding up
 
-/** The latest `n` quarters, ascending. */
-export function latestQuarters(quarters: number[], n = 4): number[] {
-  return [...new Set(quarters)].sort((a, b) => a - b).slice(-n);
+export interface MonthChoice {
+  /** The months used, ascending. */
+  months: number[];
+  /** The last month in the file when it looked half-filled and was left out, else null. */
+  leftOut: number | null;
 }
 
-export interface RegionTotal {
-  regionCode: string;
-  regionName: string;
-  importEur: number;
-  exportEur: number;
-  totalEur: number;
-  /** Share of the national total with the country, 0 to 1. */
-  share: number;
-}
-
-export function totalsByRegion(
-  rows: TradeRow[],
-  quarters: number[],
-  names: Map<string, string>,
-): RegionTotal[] {
-  const wanted = new Set(quarters);
-  const by = new Map<string, { i: number; e: number }>();
-  for (const r of rows) {
-    if (!wanted.has(r.quarter)) continue;
-    const t = by.get(r.regionCode) ?? { i: 0, e: 0 };
-    if (r.flow === 'import') t.i += r.valueEur;
-    else t.e += r.valueEur;
-    by.set(r.regionCode, t);
+/**
+ * The latest `n` months in the file. The newest is left out when it has less than half the rows
+ * of the months before it, which is what a month still being filled looks like.
+ */
+export function latestMonths(monthRows: Map<number, number>, n = 12): MonthChoice {
+  const all = [...monthRows.keys()].sort((a, b) => a - b);
+  let leftOut: number | null = null;
+  const last = all[all.length - 1];
+  if (last !== undefined && all.length >= 2) {
+    const before = all.slice(-4, -1).map((m) => monthRows.get(m) ?? 0);
+    const typical = before.reduce((a, b) => a + b, 0) / before.length;
+    if ((monthRows.get(last) ?? 0) < typical / 2) {
+      leftOut = last;
+      all.pop();
+    }
   }
-  let national = 0;
-  for (const t of by.values()) national += t.i + t.e;
-  return [...by.entries()]
-    .map(([regionCode, t]) => ({
-      regionCode,
-      regionName: names.get(regionCode) ?? regionCode,
-      importEur: t.i,
-      exportEur: t.e,
-      totalEur: t.i + t.e,
-      share: national > 0 ? (t.i + t.e) / national : 0,
-    }))
-    .sort((a, b) => b.totalEur - a.totalEur);
+  return { months: all.slice(-n), leftOut };
 }
 
-export interface ProductTotal {
+export interface GoodTotal {
   code: string;
   name: string;
   valueEur: number;
+  /** Share of the direction's total value, 0 to 1. */
+  share: number;
+  massKg: number;
 }
 
-export function topProducts(
-  rows: TradeRow[],
-  quarters: number[],
+export interface Summary {
+  totalEur: number;
+  goods: GoodTotal[];
+  groups: GoodTotal[];
+}
+
+/** Top goods (NC8) and top product groups (A129) for one direction over the months chosen. */
+export function summarize(
+  rows: Good[],
+  months: number[],
   flow: Flow,
-  names: Map<string, string>,
-  limit = 10,
-): ProductTotal[] {
-  const wanted = new Set(quarters);
-  const by = new Map<string, number>();
-  for (const r of rows) {
-    if (r.flow !== flow || !wanted.has(r.quarter)) continue;
-    by.set(r.productCode, (by.get(r.productCode) ?? 0) + r.valueEur);
+  productNames: Map<string, string>,
+  groupNames: Map<string, string>,
+  goodsLimit = 20,
+  groupsLimit = 10,
+): Summary {
+  const wanted = new Set(months);
+  const byGood = new Map<string, { v: number; kg: number }>();
+  const byGroup = new Map<string, { v: number; kg: number }>();
+  let total = 0;
+  const bump = (m: Map<string, { v: number; kg: number }>, k: string, g: Good) => {
+    const t = m.get(k) ?? { v: 0, kg: 0 };
+    t.v += g.valueEur;
+    t.kg += g.massKg;
+    m.set(k, t);
+  };
+  for (const g of rows) {
+    if (g.flow !== flow || !wanted.has(g.month)) continue;
+    total += g.valueEur;
+    bump(byGood, g.nc8, g);
+    bump(byGroup, g.group, g);
   }
-  return [...by.entries()]
-    .map(([code, valueEur]) => ({ code, name: names.get(code) ?? '', valueEur }))
-    .sort((a, b) => b.valueEur - a.valueEur)
-    .slice(0, limit);
+  const top = (
+    m: Map<string, { v: number; kg: number }>,
+    names: Map<string, string>,
+    limit: number,
+  ) =>
+    [...m.entries()]
+      .map(([code, t]) => ({
+        code,
+        name: labelOf(names, code),
+        valueEur: t.v,
+        share: total > 0 ? t.v / total : 0,
+        massKg: t.kg,
+      }))
+      .sort((a, b) => b.valueEur - a.valueEur)
+      .slice(0, limit);
+  return {
+    totalEur: total,
+    goods: top(byGood, productNames, goodsLimit),
+    groups: top(byGroup, groupNames, groupsLimit),
+  };
 }
 
 // ---------------------------------------------------------------------------------------
