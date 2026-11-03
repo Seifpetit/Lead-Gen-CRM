@@ -12,7 +12,9 @@ import {
   NationalReader,
   parseCodeNames,
   parseNumber,
-  pickNationalFiles,
+  chooseDataFile,
+  pickDataFile,
+  pickLabelFiles,
   splitLine,
   summarize,
   sumJsonStat,
@@ -100,16 +102,23 @@ describe('Tunisia in the country file', () => {
   });
 });
 
-describe('choosing the files by title', () => {
-  const r = (title: string, format: string): Resource => ({
+describe('choosing the files', () => {
+  const r = (title: string, format: string, url = `https://x.test/${title}`): Resource => ({
     title,
     format,
-    url: `https://x.test/${title}`,
+    url,
     size: null,
   });
+  const EXPORT =
+    'https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/statistiques-nationales-du-commerce-exterieur/exports/csv';
   const files = [
     r('202002-national-2019-import.zip', 'zip'),
-    r('statistiques-nationales-du-commerce-exterieur.csv', 'csv'),
+    r(
+      '202002-stat-national-ce-import.zip',
+      'zip',
+      'https://x.test/statistiques-nationales-du-commerce-exterieur.zip',
+    ),
+    r('statistiques-nationales-du-commerce-exterieur.csv', 'csv', EXPORT),
     r('statistiques-nationales-du-commerce-exterieur.json', 'json'),
     r('LISEZ-MOI.txt', 'txt'),
     r('libelle-NC8-2023.csv', 'csv'),
@@ -118,36 +127,61 @@ describe('choosing the files by title', () => {
     r('libelle-A129.csv', 'csv'),
   ];
 
-  it('takes the national csv, the country and group names, and the newest product names', () => {
-    const picked = pickNationalFiles(files);
-    expect(picked.data.title).toBe('statistiques-nationales-du-commerce-exterieur.csv');
-    expect(picked.countries.title).toBe('libelle-PAYS.csv');
-    expect(picked.groups?.title).toBe('libelle-A129.csv');
-    expect(picked.products?.title).toBe('libelle-NC8-2024.csv');
+  it('takes the country and group names, and the newest product names, in any order', () => {
+    for (const list of [files, [...files].reverse()]) {
+      const picked = pickLabelFiles(list);
+      expect(picked.countries.title).toBe('libelle-PAYS.csv');
+      expect(picked.groups?.title).toBe('libelle-A129.csv');
+      expect(picked.products?.title).toBe('libelle-NC8-2024.csv');
+    }
   });
 
-  it('does not depend on the order of the files', () => {
-    expect(pickNationalFiles([...files].reverse()).products?.title).toBe('libelle-NC8-2024.csv');
-  });
-
-  it('works without the optional name files', () => {
-    const picked = pickNationalFiles([files[1]!, files[6]!]);
+  it('works without the optional name files, and stops when the country names are missing', () => {
+    const picked = pickLabelFiles([files[7]!]);
     expect(picked.groups).toBeNull();
     expect(picked.products).toBeNull();
+    expect(() => pickLabelFiles([files[2]!])).toThrow(/libelle-PAYS/);
   });
 
-  it('stops and lists the files when the national csv is not there', () => {
-    expect(() => pickNationalFiles([files[0]!, files[6]!])).toThrow(
-      /No file is called[\s\S]*202002-national-2019-import\.zip[\s\S]*--data-url/,
+  it('ignores zips and takes the csv whose address ends in /exports/csv', () => {
+    expect(pickDataFile(files).url).toBe(EXPORT);
+  });
+
+  it('uses exactly the --data-url address and never runs the picker', () => {
+    // Two files that would stop the picker: the address given is still used, as it is.
+    const messy = [files[2]!, r('same again', 'csv', `${EXPORT}?use_labels=false`)];
+    const mine = 'https://example.test/my/data.csv?x=1';
+    expect(chooseDataFile(messy, mine).url).toBe(mine);
+    expect(chooseDataFile([], mine).url).toBe(mine);
+    expect(chooseDataFile(files, null).url).toBe(EXPORT);
+  });
+
+  it('prefers the /exports/csv address over a plain csv with the same name', () => {
+    const plain = r(
+      'statistiques-nationales-du-commerce-exterieur.csv',
+      'csv',
+      'https://x.test/statistiques-nationales-du-commerce-exterieur.csv',
     );
+    expect(pickDataFile([plain, files[2]!]).url).toBe(EXPORT);
   });
 
-  it('stops when the country names are missing', () => {
-    expect(() => pickNationalFiles([files[1]!])).toThrow(/libelle-PAYS/);
+  it('prefers use_labels=true when several exports remain', () => {
+    const labelled = r('avec libellés', 'csv', `${EXPORT}?use_labels=true`);
+    const bare = r('sans libellés', 'csv', `${EXPORT}?use_labels=false`);
+    expect(pickDataFile([bare, labelled]).url).toBe(`${EXPORT}?use_labels=true`);
+    expect(pickDataFile([labelled, bare]).url).toBe(`${EXPORT}?use_labels=true`);
+  });
+
+  it('stops and lists the files when nothing, or more than one, is left', () => {
+    expect(() => pickDataFile([files[0]!, files[7]!])).toThrow(
+      /No file[\s\S]*202002-national-2019-import\.zip[\s\S]*--data-url/,
+    );
+    const two = [r('a', 'csv', `${EXPORT}?x=1`), r('b', 'csv', `${EXPORT}?x=2`)];
+    expect(() => pickDataFile(two)).toThrow(/More than one file[\s\S]*--data-url/);
   });
 
   it('lists every file with its format and size', () => {
-    const text = formatResourceList([{ ...files[0]!, size: 12_500_000 }, files[3]!]);
+    const text = formatResourceList([{ ...files[0]!, size: 12_500_000 }, files[4]!]);
     expect(text).toMatch(/1\s+202002-national-2019-import\.zip\s+zip\s+12.5 MB/);
     expect(text).toMatch(/2\s+LISEZ-MOI\.txt\s+txt\s+size not stated/);
   });

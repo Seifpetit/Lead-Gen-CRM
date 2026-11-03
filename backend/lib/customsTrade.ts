@@ -201,8 +201,7 @@ export function formatResourceList(resources: Resource[]): string {
   );
 }
 
-export interface NationalFiles {
-  data: Resource;
+export interface LabelFiles {
   countries: Resource;
   /** Product group (A129) names; null when the dataset has none. */
   groups: Resource | null;
@@ -211,21 +210,12 @@ export interface NationalFiles {
 }
 
 const slug = (r: Resource) => stripAccents(`${r.title} ${r.url}`).toLowerCase();
+const isZip = (r: Resource) => /zip/i.test(r.format) || /\.zip(\?|$)/i.test(r.url);
+const isCsv = (r: Resource) =>
+  !isZip(r) && (/csv/i.test(r.format) || /\.csv(\?|$)|\/exports\/csv(\?|$)/i.test(r.url));
 
-/** The national monthly file and its label files, picked by title. Throws, listing the files, if the data is not clear. */
-export function pickNationalFiles(resources: Resource[]): NationalFiles {
-  const isCsv = (r: Resource) => /csv/i.test(r.format) || /\.csv(\?|$)/i.test(r.url);
-  const data = resources.filter(
-    (r) =>
-      isCsv(r) && /statistiques[-_ ]nationales[-_ ]du[-_ ]commerce[-_ ]exterieur/.test(slug(r)),
-  );
-  if (data.length !== 1) {
-    const names = resources.map((r) => `  - ${r.title} (${r.format}) ${r.url}`).join('\n');
-    throw new Error(
-      `${data.length === 0 ? 'No file' : 'More than one file'} is called "statistiques-nationales-du-commerce-exterieur" as a csv. Files found:\n${names}\n` +
-        'Pick one and run again with --data-url <address>.',
-    );
-  }
+/** The name files (countries, product groups, products), picked by title. Zips are ignored. */
+export function pickLabelFiles(resources: Resource[]): LabelFiles {
   const labelFile = (test: RegExp) => resources.filter((r) => isCsv(r) && test.test(slug(r)));
   const countries = labelFile(/libelle[-_ ]*pays/)[0];
   if (!countries)
@@ -237,11 +227,45 @@ export function pickNationalFiles(resources: Resource[]): NationalFiles {
     }))
     .sort((a, b) => b.year - a.year)[0];
   return {
-    data: data[0]!,
     countries,
     groups: labelFile(/libelle[-_ ]*a129/)[0] ?? null,
     products: nc8?.r ?? null,
   };
+}
+
+/**
+ * The national monthly file. Zips are ignored. Among the csv files of the national dataset, the
+ * one whose address is the dataset's export (…/exports/csv) wins; if several remain, the one
+ * with use_labels=true. Throws, listing the files, when that does not leave exactly one.
+ * (Not used when --data-url gives the address.)
+ */
+export function pickDataFile(resources: Resource[]): Resource {
+  const national = resources.filter(
+    (r) =>
+      isCsv(r) && /statistiques[-_ ]nationales[-_ ]du[-_ ]commerce[-_ ]exterieur/.test(slug(r)),
+  );
+  const exports_ = national.filter((r) => /\/exports\/csv(\?|$)/i.test(r.url));
+  let pool = exports_.length > 0 ? exports_ : national;
+  if (pool.length > 1) {
+    const labelled = pool.filter((r) => /[?&]use_labels=true(&|$)/i.test(r.url));
+    if (labelled.length > 0) pool = labelled;
+  }
+  if (pool.length !== 1) {
+    const names = resources.map((r) => `  - ${r.title} (${r.format}) ${r.url}`).join('\n');
+    throw new Error(
+      `${pool.length === 0 ? 'No file' : 'More than one file'} looks like the national monthly csv. Files found:\n${names}\n` +
+        'Pick one and run again with --data-url <address>.',
+    );
+  }
+  return pool[0]!;
+}
+
+/** The data file: exactly the address from --data-url when given (no picking at all), else the picked one. */
+export function chooseDataFile(resources: Resource[], dataUrl: string | null): Resource {
+  if (dataUrl !== null) {
+    return { title: 'chosen with --data-url', format: 'csv', url: dataUrl, size: null };
+  }
+  return pickDataFile(resources);
 }
 
 // ---------------------------------------------------------------------------------------

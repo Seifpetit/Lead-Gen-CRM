@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, open, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -19,7 +20,8 @@ import {
   monthLabel,
   NationalReader,
   parseCodeNames,
-  pickNationalFiles,
+  chooseDataFile,
+  pickLabelFiles,
   sumJsonStat,
   summarize,
   textTable,
@@ -151,11 +153,9 @@ async function* readLines(path: string): AsyncGenerator<string> {
   if (rest.trim() !== '') yield rest.replace(/\r$/, '');
 }
 
+/** A cache file name from the address: its last part, plus a short hash so two addresses never share a copy. */
 const safeName = (r: Resource) =>
-  r.url
-    .split('/')
-    .pop()
-    ?.replace(/[^\w.-]/g, '_') || 'file';
+  `${(r.url.split('?')[0]!.split('/').pop() ?? 'file').replace(/[^\w.-]/g, '_')}-${createHash('sha1').update(r.url).digest('hex').slice(0, 8)}`;
 
 async function names(file: Resource | null, what: string): Promise<Map<string, string>> {
   if (!file) {
@@ -188,31 +188,17 @@ async function main(): Promise<void> {
 
   let files;
   try {
-    files = pickNationalFiles(resources);
+    files = pickLabelFiles(resources);
   } catch (err) {
-    if (dataUrlOverride === null) fail(err instanceof Error ? err.message : String(err));
-    files = null;
+    fail(err instanceof Error ? err.message : String(err));
   }
-  // With --data-url the label files are still looked for on their own.
-  if (files === null) {
-    try {
-      files = pickNationalFiles([
-        ...resources,
-        {
-          title: 'statistiques-nationales-du-commerce-exterieur.csv',
-          format: 'csv',
-          url: 'x.csv',
-          size: null,
-        },
-      ]);
-    } catch (err) {
-      fail(err instanceof Error ? err.message : String(err));
-    }
+  // With --data-url that exact address is the data file and the picker is skipped.
+  let dataFile: Resource;
+  try {
+    dataFile = chooseDataFile(resources, dataUrlOverride);
+  } catch (err) {
+    fail(err instanceof Error ? err.message : String(err));
   }
-  const dataFile: Resource =
-    dataUrlOverride !== null
-      ? { title: 'chosen with --data-url', format: 'csv', url: dataUrlOverride, size: null }
-      : files.data;
   console.log(`National monthly file: ${dataFile.title} (${dataFile.url})`);
   console.log(`Country names: ${files.countries.title}`);
   console.log(`Product group names (A129): ${files.groups?.title ?? 'none'}`);
